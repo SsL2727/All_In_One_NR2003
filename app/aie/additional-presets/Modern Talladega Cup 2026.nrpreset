@@ -1,0 +1,58 @@
+{
+  "description": "Modern Talladega pack profile for Cup-style racing. Keeps track grip and rubber neutral, with conservative pack spacing and reduced panic braking. The side-draft, awareness, and multigroove fields are not applied by SteelFire; import this .nrpreset into the original AI Enhanced executable to use those modes. AIMOD's Live team and manufacturer pit strategy option handles coordinated fuel and pit calls.",
+  "auto_keywords": [
+    "talladega"
+  ],
+  "auto_priority": 100,
+  "env_grip": {
+    "base": 1.0,
+    "maxrace": 1.0,
+    "minrace": 1.0
+  },
+  "rubber_buildup": {
+    "active": false,
+    "rate": 0.0,
+    "grip_mult": 1.0
+  },
+  "settings": {
+    "ai_bunching_distance": 1.8,
+    "ai_dlat_pad": 1.18,
+    "ai_drafting_distance": 1.8,
+    "ai_panic_decel": 3.2
+  },
+  "special_modes": {
+    "side_draft_active": true,
+    "side_draft_opts": {
+      "lonWinBak": 4.3,
+      "latWin": 4.0,
+      "latWinBak": 2.0,
+      "rearLonWin": 6.0,
+      "engRight": 0.5,
+      "engLeft": 0.7,
+      "chsRight": 0.75,
+      "chsLeft": 0.9,
+      "chsBehind": 0.75,
+      "slideAmount": 1.0
+    },
+    "awareness_active": true,
+    "awareness_opts": {
+      "brakeForWrecks": true,
+      "draftingTeamwork": true,
+      "leaderBlocks": true,
+      "leaderBlocksMode": 0,
+      "moveDirection": 1,
+      "sandbagging": true,
+      "slowCarsMoveOver": true
+    },
+    "tandem_active": false,
+    "long_run_spread_active": false,
+    "pit_adjust_active": false,
+    "self_spins_active": false
+  },
+  "multigroove": {
+    "enabled": true,
+    "left_bound": "maxrace",
+    "right_bound": "minrace",
+    "space_cars": true
+  }
+}

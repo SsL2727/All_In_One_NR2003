@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: file:; font-src 'self' file:; connect-src 'self'">
+<title>RaceControl graphics</title>
+<link rel="stylesheet" href="broadcast.css">
+<style>
+:root{--accent:var(--psf-tv-accent);--up:var(--psf-tv-green);--down:var(--psf-tv-red);--gold:var(--psf-tv-accent)}
+html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden;font-family:var(--psf-tv-font);color:var(--psf-tv-white)}
+.box{position:absolute;left:0;top:0;transform-origin:0 0;opacity:0;transition:opacity .35s}.box.show{opacity:1}
+/* choose cone board */
+.board{width:560px;background:rgba(var(--psf-tv-bg-rgb),.97);border-radius:3px;box-shadow:0 3px 9px #0009;overflow:hidden;border-top:4px solid var(--accent)}
+.board .hd{display:flex;align-items:baseline;justify-content:space-between;padding:9px 16px 6px;background:rgba(var(--psf-tv-header-rgb),.98)}
+.board .ti{font:800 30px/1 var(--psf-tv-font);letter-spacing:.08em}.board .pg{font:600 15px/1 var(--psf-tv-font);color:var(--psf-tv-muted)}
+.board .cols{display:grid;grid-template-columns:44px 1fr 1fr;gap:0 10px;padding:0 14px 6px;font:700 13px/1 var(--psf-tv-font);letter-spacing:.14em;color:var(--psf-tv-muted)}
+.board .rows{padding:0 10px 12px}
+.row{display:grid;grid-template-columns:44px 1fr 1fr;gap:0 10px;align-items:center;height:58px;border-top:1px solid var(--psf-tv-line)}
+.row .n{font:800 26px/1 var(--psf-tv-font);color:var(--psf-tv-muted);text-align:center}
+.slot{display:flex;align-items:center;gap:10px;height:46px;border-radius:2px;padding:0 10px;background:rgba(var(--psf-tv-row-odd-rgb),.96);min-width:0}
+.slot.fill{background:rgba(var(--psf-tv-row-even-rgb),.98);animation:pop .45s ease-out}
+@keyframes pop{from{transform:translateX(-16px);opacity:0}to{transform:none;opacity:1}}
+.slot .car{min-width:56px;height:36px;border-radius:2px;background:#d8232a;display:flex;align-items:center;justify-content:center;font:800 26px/1 var(--psf-tv-font);text-shadow:0 1px 2px #000a}
+.slot.me .car{background:var(--gold);color:#111;text-shadow:none}
+.slot .mv{margin-left:auto;font:800 20px/1 var(--psf-tv-font)}.mv.up{color:var(--up)}.mv.down{color:var(--down)}.mv.same{color:var(--psf-tv-muted)}
+.slot .ft{font:600 12px/1 var(--psf-tv-font);color:var(--psf-tv-muted);white-space:nowrap}
+.board .ft2{padding:0 18px 10px;font:600 13px var(--psf-tv-font);color:var(--psf-tv-muted)}
+/* caution panel */
+.status{min-width:420px;background:rgba(var(--psf-tv-bg-rgb),.97);border-radius:3px;border-left:5px solid var(--gold);box-shadow:0 3px 9px #0009;padding:9px 15px 11px}
+.status .ph{display:flex;align-items:center;gap:14px}.status .ph b{font:800 32px/1 var(--psf-tv-font);letter-spacing:.06em;color:var(--gold)}
+.status .ph .lap{font:600 18px var(--psf-tv-font);color:#c4c4cc}
+.pill{margin-left:auto;padding:3px 10px;border-radius:2px;font:800 15px/1.3 var(--psf-tv-font);letter-spacing:.08em}.pill.open{background:var(--up);color:#06210f}.pill.closed{background:var(--down);color:#fff}
+.status .ln{display:flex;gap:8px;align-items:baseline;margin-top:6px;font:500 17px/1.35 var(--psf-tv-font);color:#e6e6ec}.status .ln i{font:700 13px/1 var(--psf-tv-font);font-style:normal;letter-spacing:.1em;color:var(--psf-tv-muted);min-width:96px}
+.status .ln span{display:inline-block;margin-right:6px;padding:0 7px;border-radius:2px;background:rgba(var(--psf-tv-row-even-rgb),.98);font-weight:700}
+.pit{width:600px;background:rgba(var(--psf-tv-bg-rgb),.97);border-radius:3px;box-shadow:0 3px 9px #0009;overflow:hidden;border-top:4px solid var(--gold)}
+.pit .hd{display:flex;align-items:baseline;justify-content:space-between;padding:9px 16px 6px;background:rgba(var(--psf-tv-header-rgb),.98)}.pit .ti{font:800 28px/1 var(--psf-tv-font);letter-spacing:.08em}.pit .pg{font:600 15px/1 var(--psf-tv-font);color:var(--psf-tv-muted)}
+.pit .strip{padding:2px 16px 8px;font:600 15px var(--psf-tv-font);color:#c4c4cc;display:flex;flex-wrap:wrap;gap:6px;align-items:center}.pit .strip i{font:700 12px/1 var(--psf-tv-font);font-style:normal;letter-spacing:.12em;color:var(--psf-tv-muted);margin-right:4px}
+.pit .strip span{padding:1px 8px;border-radius:2px;background:rgba(var(--psf-tv-row-even-rgb),.98);font-weight:700}
+.prow{display:grid;grid-template-columns:62px 1fr 150px 120px 70px;gap:0 10px;align-items:center;min-height:50px;padding:0 14px;border-top:1px solid var(--psf-tv-line)}
+.prow .car{min-width:54px;height:34px;border-radius:2px;display:flex;align-items:center;justify-content:center;font:800 24px/1 var(--psf-tv-font);text-shadow:0 1px 2px #000a}
+.prow .nm{font:700 20px/1 var(--psf-tv-font);text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.prow .sv{font:700 14px/1.2 var(--psf-tv-font);color:var(--gold);letter-spacing:.04em}
+.prow .ps{font:600 15px/1 var(--psf-tv-font);color:#c4c4cc}.prow .tm{font:800 20px/1 var(--psf-tv-font);text-align:right;color:#fff}.prow.on{background:rgba(var(--psf-tv-row-odd-rgb),.96)}
+/* AIMOD 2.2's subtitle box (the scanner): the number card, who is speaking, exactly what is said */
+.sub{display:flex;align-items:stretch;max-width:780px;filter:drop-shadow(0 3px 8px #000a)}
+.sub .sc{min-width:74px;display:flex;align-items:center;justify-content:center;padding:4px 14px 4px 10px;clip-path:polygon(0 0,100% 0,calc(100% - 12px) 100%,0 100%);background:#c82828;font:800 34px/1 var(--psf-tv-font);color:#fff;text-shadow:0 1px 2px #000a}
+.sub .sc img{height:46px;max-width:90px;object-fit:contain}
+.sub .st{background:rgba(6,8,12,.92);padding:6px 16px 8px 14px;margin-left:-6px;display:flex;flex-direction:column;justify-content:center}
+.sub .st i{font:italic 700 13px/1.2 var(--psf-tv-font);letter-spacing:.06em;color:#ffc400;text-transform:uppercase}.sub .st b{font:700 21px/1.25 var(--psf-tv-font);color:#fff}
+/* AIMOD's rivals card (racing intensity & rivals): the car on TV and his rival, VS, and what it is between them */
+.riv{display:flex;align-items:center;gap:8px;padding:6px;border-radius:11px;background:rgba(8,10,14,.59);border:3px solid var(--rc,#ff8020)}
+.riv .rc{min-width:62px;height:44px;border-radius:4px;display:flex;align-items:center;justify-content:center;font:800 30px/1 var(--psf-tv-font);color:#fff;text-shadow:0 1px 2px #000a;background:#3a3a3a;overflow:hidden}
+.riv .rc img{height:100%;max-width:100%;object-fit:contain}
+.riv .mid{display:flex;flex-direction:column;align-items:center;min-width:64px}.riv .vs{font:800 22px/1 var(--psf-tv-font);color:#fff}.riv .kd{font:800 12px/1.3 var(--psf-tv-font);letter-spacing:.08em;color:var(--rc,#ff8020)}
+</style></head><body>
+<div class="box" id="board"></div><div class="box" id="status"></div><div class="box" id="pit"></div><div class="box" id="riv"></div><div class="box" id="sub"></div>
+<script>
+const $ = (i) => document.getElementById(i);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const q = new URLSearchParams(location.search), path = location.pathname.replace(/\/+$/, '');
+const view = q.get('v') || (path === '/board' ? 'board' : path === '/status' ? 'status' : path === '/pit' ? 'pit' : 'both');
+const web = !(window.shl && window.shl.rcGfx);
+// "x, y, scale" in 1080-high units
+function place(el, spec, def) {
+  const p = String(spec || '').split(',').map(Number);
+  const v = p.length >= 3 && p.every(Number.isFinite) ? p : def;
+  const k = innerHeight / 1080;
+  el.style.left = Math.round(v[0] * k) + 'px'; el.style.top = Math.round(v[1] * k) + 'px'; el.style.transform = 'scale(' + (v[2] * k) + ')';
+}
+function slot(e) {
+  if (!e) return '<div class="slot"></div>';
+  const mv = e.gained > 0 ? '<span class="mv up">▲' + e.gained + '</span>' : e.gained < 0 ? '<span class="mv down">▼' + (-e.gained) + '</span>' : '<span class="mv same">–</span>';
+  return '<div class="slot fill' + (e.player ? ' me' : '') + '"><div class="car">' + esc(e.num) + '</div><span class="ft">' + (e.from ? 'P' + e.from + ' → ' : '') + 'P' + e.to + '</span>' + mv + '</div>';
+}
+let boardKey = '';
+function renderBoard(c) {
+  const el = $('board');
+  if (!c || view === 'status' || view === 'pit') { el.classList.remove('show'); boardKey = ''; return; }
+  const key = JSON.stringify(c);
+  if (key !== boardKey) {
+    boardKey = key;
+    el.innerHTML = '<div class="board"><div class="hd"><span class="ti">' + esc(c.title) + '</span><span class="pg">' + c.placed + ' / ' + c.cars + ' cars' + (c.pages > 1 ? ' · page ' + c.page + '/' + c.pages : '') + '</span></div>' +
+      '<div class="cols"><span></span><span>INSIDE</span><span>OUTSIDE</span></div><div class="rows">' +
+      c.rows.map((r) => '<div class="row"><div class="n">' + r.n + '</div>' + slot(r.inside) + slot(r.outside) + '</div>').join('') + '</div>' +
+      (c.done ? '<div class="ft2">Field set for the restart</div>' : '') + '</div>';
+  }
+  el.classList.add('show');
+}
+const nums = (a) => (a && a.length ? a.map((n) => '<span>#' + esc(n) + '</span>').join('') : '');
+function renderStatus(s) {
+  const el = $('status');
+  if (!s || view === 'board' || view === 'pit') { el.classList.remove('show'); return; }
+  let h = '<div class="status"><div class="ph"><b>' + esc(s.phase) + '</b><span class="lap">LAP ' + esc(s.lap) + '</span><span class="pill ' + (s.pits === 'OPEN' ? 'open' : 'closed') + '">PITS ' + esc(s.pits) + '</span></div>';
+  if (s.hold) h += '<div class="ln"><i>HOLD</i>one to go held for the pit stops</div>';
+  if (s.free != null) h += '<div class="ln"><i>FREE PASS</i>' + nums([s.free]) + '</div>';
+  if (s.around && s.around.length) h += '<div class="ln"><i>GOING AROUND</i>' + nums(s.around) + '</div>';
+  const w = (s.waved || []).filter((n) => !(s.around || []).includes(n));
+  if (w.length) h += '<div class="ln"><i>WAVE AROUND</i>' + nums(w) + '</div>';
+  if (s.stayedOut && s.stayedOut.length) h += '<div class="ln"><i>STAYED OUT</i>' + nums(s.stayedOut) + '</div>';
+  if (s.pitted) h += '<div class="ln"><i>PITTED</i>' + esc(s.pitted) + ' cars</div>';
+  el.innerHTML = h + '</div>';
+  el.classList.add('show');
+}
+function renderPit(p) {
+  const el = $('pit');
+  if (!p || !/^(both|pit)$/.test(view)) { el.classList.remove('show'); return; }
+  const off = p.mode === 'race_off';
+  let h = '<div class="pit"><div class="hd">' + (p.logo_url ? '<img src="' + esc(p.logo_url) + '" alt="" style="height:1.3em;vertical-align:middle;margin-right:6px" onerror="this.remove()">' : '') + '<span class="ti">' + (off ? 'RACE OFF PIT ROAD' : 'PIT ROAD') + '</span><span class="pg">' + (p.total > 0 ? 'LAP ' + esc(p.lap) + ' / ' + esc(p.total) : 'LAP ' + esc(p.lap)) + (p.track ? ' \u00B7 ' + esc(p.track) : '') + '</span></div>';
+  const chips = (a) => a.map((x) => '<span style="border-left:4px solid ' + esc(x.color || '#888') + '">' + (x.pos ? 'P' + esc(x.pos) + ' ' : '') + '#' + esc(x.number) + '</span>').join('');
+  if (off && p.stayed_out && p.stayed_out.length) h += '<div class="strip"><i>STAYED OUT</i>' + chips(p.stayed_out) + '</div>';
+  if (p.coming_in && p.coming_in.length) h += '<div class="strip"><i>COMING IN</i>' + chips(p.coming_in) + '</div>';
+  for (const s of (p.stops || []).slice(0, 8)) {
+    const done = s.state === 'out' || s.pos_out != null;
+    const where = done ? 'P' + esc(s.pos_in) + ' \u2192 P' + esc(s.pos_out != null ? s.pos_out : s.pos_now) + (s.gained ? ' <b style="color:' + (s.gained > 0 ? 'var(--up)' : 'var(--down)') + '">' + (s.gained > 0 ? '\u25B2' : '\u25BC') + Math.abs(s.gained) + '</b>' : '') : 'P' + esc(s.pos_in) + ' \u00B7 in the pits';
+    const t = s.service > 0 ? s.service.toFixed(1) + ' s' : s.road > 0 ? s.road.toFixed(0) + ' s' : '';
+    // AIMOD's art set (when found): the painted number and the driver's headshot; the plain number if the image cannot load (web page)
+    const num = s.img_num ? '<img src="' + esc(s.img_num) + '" alt="' + esc(s.number) + '" style="height:100%;max-width:100%;object-fit:contain" onerror="this.replaceWith(this.alt)">' : esc(s.number);
+    const head = s.img_head ? '<img src="' + esc(s.img_head) + '" alt="" style="height:1.4em;vertical-align:middle;margin-right:5px;border-radius:3px" onerror="this.remove()">' : '';
+    h += '<div class="prow' + (done ? '' : ' on') + '"><div class="car" style="background:' + esc(s.color || '#d8232a') + '">' + num + '</div><div class="nm">' + head + esc(s.last || s.name) + '</div><div class="sv">' + esc(s.label) + '</div><div class="ps">' + where + '</div><div class="tm">' + t + '</div></div>';
+  }
+  el.innerHTML = h + '</div>';
+  el.classList.add('show');
+}
+// AIMOD's RIVAL_KINDS: label and colour
+const RIVAL_KINDS = { grudge: ['GRUDGE', '#ffc440'], feud: ['FEUD', '#ff8020'], rival: ['RIVALS', '#78aaff'], retaliate: ['RETALIATION', '#ff3838'], ally: ['ALLIES', '#46d27e'] };   // ally: RaceLab's trusted allies
+let rivKey = '', rivSince = 0;
+function renderRiv(r) {
+  const el = $('riv');
+  // stays up at least 2 s (AIMOD's RIVAL_HOLD: no flicker when the gap hovers at the edge)
+  if (!r) { if (el.classList.contains('show') && Date.now() - rivSince < 2000) return; el.classList.remove('show'); el.style.opacity = ''; rivKey = ''; return; }
+  const key = [r.car, r.rival, r.kind, r.level, r.car_img, r.rival_img].join('|');
+  if (key === rivKey) return;
+  rivKey = key; rivSince = Date.now();
+  const k = RIVAL_KINDS[r.kind] || [String(r.kind || '').toUpperCase(), '#dcdcdc'];
+  const name = r.kind === 'feud' && r.level ? 'FEUD L' + r.level : k[0];
+  const card = (num, img, color) => '<div class="rc" style="background:' + esc(color || '#3a3a3a') + '">' + (img ? '<img src="' + esc(img) + '" alt="' + esc(num) + '" onerror="this.replaceWith(this.alt)">' : esc(num)) + '</div>';
+  el.style.setProperty('--rc', k[1]);
+  el.innerHTML = '<div class="riv">' + card(r.car, r.car_img, r.car_color) + '<div class="mid"><span class="vs">' + (r.kind === 'ally' ? '&amp;' : 'VS') + '</span><span class="kd">' + esc(name) + '</span></div>' + card(r.rival, r.rival_img, r.rival_color) + '</div>';
+  el.style.opacity = r.cfg && r.cfg.opacity != null ? String(r.cfg.opacity) : '';
+  el.classList.add('show');
+}
+let subKey = '';
+function renderSub(s) {
+  const el = $('sub');
+  if (!s) { el.classList.remove('show'); subKey = ''; return; }
+  const key = [s.number, s.title, s.text, s.img].join('|');
+  if (key !== subKey) {
+    subKey = key;
+    const num = s.img ? '<img src="' + esc(s.img) + '" alt="' + esc(s.number || '') + '" onerror="this.replaceWith(this.alt)">' : esc(s.number || '');
+    el.innerHTML = '<div class="sub">' + (s.number != null ? '<div class="sc" style="background:' + esc(s.color || '#c82828') + '">' + num + '</div>' : '') + '<div class="st"><i>' + esc(s.title) + '</i><b>' + esc(s.text) + '</b></div></div>';
+  }
+  el.style.opacity = s.opacity != null ? String(s.opacity) : '';
+  el.classList.add('show');
+}
+function render(d) {
+  d = d || {};
+  const L = d.layout || {};
+  renderSub(d.sub); place($('sub'), L.sub, [270, 860, 1]);
+  renderRiv(d.riv); place($('riv'), L.riv, [40, 160, 1]);
+  renderBoard(d.cone); place($('board'), L.board, web ? [20, view === 'both' ? 290 : 20, 1] : [40, 150, 1]);
+  renderStatus(d.status); place($('status'), L.status, web ? [20, 20, 1] : [40, 60, 1]);
+  renderPit(d.pit); place($('pit'), L.pit, web ? [20, view === 'pit' ? 20 : 560, 1] : [1280, 150, 1]);
+}
+if (!web) { window.shl.rcGfx.onData(render); window.shl.rcGfx.ready(); }
+else {
+  const poll = () => fetch('/state.json', { cache: 'no-store' }).then((r) => r.json()).then(render).catch(() => render(null));
+  poll(); setInterval(poll, 500);
+}
+</script></body></html>

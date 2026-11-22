@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>Qualifying — RaceControl</title>
+<style>
+:root { --bg:#0c0e12; --card:#141821; --border:#222834; --border2:#2c3443; --text:#e8ebf2; --dim:#8b94a7; --accent:#e8c84a; --green:#2ecc71; --orange:#f0a030; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.45 'Segoe UI', Arial, sans-serif; }
+button, select, input, textarea { font: inherit; color: var(--text); }
+button { background: #1b212d; border: 1px solid var(--border2); border-radius: 6px; font-weight: 600; padding: 6px 12px; cursor: pointer; }
+button:hover:not(:disabled) { border-color: #3a4457; background: #232b3a; }
+button:disabled { opacity: .45; cursor: default; }
+button.go { border-color: #1e6b3d; color: var(--green); font-weight: 700; } button.stop { border-color: #6b2c2c; color: #ff7d72; font-weight: 700; }
+input[type=number], input[type=text], select, textarea { background: #0b0d11; border: 1px solid var(--border2); border-radius: 4px; padding: 5px 8px; }
+input[type=number] { width: 84px; } textarea { width: 100%; resize: vertical; }
+input[type=checkbox] { accent-color: var(--green); width: 15px; height: 15px; vertical-align: -2px; }
+header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #10131a; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+header h1 { margin: 0; font-size: 16px; letter-spacing: .08em; text-transform: uppercase; }
+.chip { display: inline-flex; padding: 3px 10px; border-radius: 12px; background: #1a1e26; border: 1px solid var(--border2); font-size: 12px; }
+.chip.ok { color: var(--green); border-color: #1e4630; } .chip.warn { color: var(--orange); border-color: #5a4010; }
+main { padding: 14px 18px 28px; overflow: auto; height: calc(100% - 52px); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.box { background: var(--card); border: 1px solid var(--border); border-radius: 9px; padding: 12px 14px; }
+.box h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 7px 0; }
+.row label.l { min-width: 190px; color: #c5cad6; }
+.muted { color: var(--dim); } .small { font-size: 12px; }
+.status { font: 13px Consolas, monospace; background: #0b0d11; border: 1px solid var(--border2); border-radius: 4px; padding: 8px 10px; min-height: 40px; }
+pre.board { font: 12px Consolas, monospace; background: #0b0d11; border: 1px solid var(--border2); border-radius: 4px; padding: 8px 10px; margin: 8px 0 0; min-height: 120px; max-height: 340px; overflow: auto; white-space: pre; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; } td, th { border-bottom: 1px solid var(--border); padding: 3px 6px; text-align: left; }
+.hide { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🏁 Qualifying</h1>
+  <span class="chip" id="chip-rc">RaceControl: —</span>
+  <span class="chip" id="chip-fmt">Off</span>
+  <label class="small"><input type="checkbox" id="rc-on"> Run RaceControl <span class="muted">(qualifying is part of it)</span></label>
+  <label class="small"><input type="checkbox" id="rc-dry"> Read-only test mode</label>
+</header>
+<main>
+  <div class="box" style="margin-bottom:12px">
+    <h3>How it works</h3>
+    <div class="muted small">
+      Qualifying is run in the <b>practice session just before qualifying</b>, with the AI cars held in their pit boxes. You can sit it out and watch on the TV cameras, or take your own turn: you are in the order, the game pauses for you, and your lap counts.
+      In the qualifying session after it, every lap the AI post is replaced with these laps, so the leaderboard and the starting grid follow them. If you take a run, your own lap is written there too.
+      Let the qualifying session run (or sim it to the end); don't skip it. A car that doesn't pull out in time, or wrecks on its run, is a DNQ and starts behind every car with a time.
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="box">
+      <h3>Format</h3>
+      <div class="row"><label class="l">Format</label>
+        <select id="fmt"><option value="off">Off (the game's own practice and qualifying)</option><option value="single">NASCAR: single car runs</option><option value="knockout">NASCAR: knockout rounds</option><option value="indyoval">Indy oval: N-lap average (single car)</option><option value="indyroad">Indy road / street: groups, Fast 12, Fast Six</option></select></div>
+
+      <div id="single-opts">
+        <div class="row" id="laps-row"><label class="l">Timed laps per car</label><input type="number" id="laps" min="1" max="5"><span class="muted small">the out lap never counts</span></div>
+        <div class="row" id="indylaps-row"><label class="l">Laps in the average</label><input type="number" id="indylaps" min="2" max="10"><span class="muted small">ranked by the average of consecutive timed laps; every lap counts, a run that isn't finished gets no time</span></div>
+        <div class="row"><label class="l">Next car goes</label>
+          <select id="release"><option value="pitroad">when the car before is on pit road</option><option value="seconds">N seconds after the car before left</option><option value="percent">when the car before is N% round its last lap</option><option value="gap">green N s after the car before finishes</option></select>
+          <input type="number" id="relval" min="0" max="600"></div>
+        <div class="muted small" id="gap-note">Green gap: every box is a different distance from pit exit, so each car's release is timed from its own predicted out lap (learned from the cars already run) to take the green about N seconds after the car before ends its last timed lap. The first pair can be late.</div>
+        <div class="row"><label class="l">Most cars out at once</label><input type="number" id="maxout" min="1" max="10"><span class="muted small">a car on its in-lap counts until it reaches pit road</span></div>
+        <div class="row"><label class="l">DNQ if not out within (s)</label><input type="number" id="dnq" min="15" max="600"></div>
+      </div>
+
+      <div id="order-opts">
+        <div class="row"><label class="l">Running order</label><span class="muted small">car numbers, space or comma separated; the rest are drawn after them. Empty = random draw.</span></div>
+        <textarea id="order" rows="2" placeholder="e.g. 24 48 5 11"></textarea>
+        <div class="row"><button id="getfield">Get the field</button><button id="draw">Random draw</button></div>
+        <div class="row" title="QualControl: the practice before qualifying starts with the cars running free while every car's laps are timed. When you have enough laps, Set the order from practice (or Keep my list): the cars are called in and held, and Start starts qualifying. The order also goes into the list above, so it stands for a new session too.">
+          <label class="l">Running order from practice</label><input type="checkbox" id="porder">
+          <select id="pfast"><option value="first">fastest goes out first</option><option value="last">fastest goes out last</option></select></div>
+        <div class="row hide" id="ptiming-row"><button id="psetorder">Set the order from practice</button><button id="pkeep">Keep my list</button><span class="muted small">cars without a lap go to the other end in a random draw</span></div>
+        <div class="muted small" id="pnote"></div>
+      </div>
+
+      <div id="ko-opts">
+        <div class="row"><label class="l">Rounds (minutes : cars through)</label><input type="text" id="rounds" style="width:240px"></div>
+        <div class="muted small">25:24, 10:12, 5:12 = 25 minutes, top 24 go through; 10 minutes, top 12; 5 minutes for pole. Grid: the last round by its times, then each earlier round's other cars. Practice needs about <b id="ko-need">—</b> minutes.</div>
+        <div class="row"><label class="l">Break between rounds (s)</label><input type="number" id="brk" min="0" max="600"></div>
+      </div>
+
+      <div id="indy-opts">
+        <div class="row"><label class="l">Groups split by</label>
+          <select id="isplit"><option value="rating">Driver rating (fastest alternate)</option><option value="list">Running order list (alternate)</option><option value="random">Random draw</option></select></div>
+        <div class="row"><label class="l">Group 1 and 2: minutes, top N through</label><input type="number" id="igmin" min="1" max="60"><input type="number" id="igadv" min="1" max="20"></div>
+        <div class="row"><label class="l">Fast 12: minutes, top N through</label><input type="number" id="if12min" min="1" max="60"><input type="number" id="if12adv" min="1" max="12"></div>
+        <div class="row"><label class="l">Fast Six: minutes</label><input type="number" id="if6min" min="1" max="60"></div>
+        <div class="row"><label class="l">Break between rounds (s)</label><input type="number" id="ibrk" min="0" max="600"></div>
+        <div class="muted small">Group 1 and Group 2 run in turn; the fastest of each go to the Fast 12, the fastest of that to the Fast Six for pole. Grid from 13th: Group 1 on the odd spots, Group 2 on the even ones. Practice needs about <b id="indy-need">—</b> minutes.</div>
+      </div>
+
+      <div id="requal-opts">
+        <div class="row" title="Once every car has made its first run, the two lanes open for this many minutes (game time).&#10;Lane 1 (priority): the car gives up its time and goes before Lane 2. Its result is then its best Lane 1 run, which can be slower than the time it gave up (or no time at all).&#10;Lane 2: the car keeps its time and a faster run replaces it, but it only goes when Lane 1 is empty and no Lane 1 car is on track, so it may never get its chance.&#10;The AI teams pick their lane from where they stand: no time or outside the field = Lane 1, on the bubble = mostly Lane 2, well down on what their rating says = sometimes.&#10;You pick yours with the lane buttons under Run while the lanes are open.">
+          <label class="l">Re-qualifying lanes for</label><input type="checkbox" id="requal"><input type="number" id="requalmin" min="1" max="120"><span class="muted small">min, up to</span><input type="number" id="requalruns" min="2" max="10" title="Runs a car may make in all, its first run included."><span class="muted small">runs a car</span></div>
+        <div class="row" title="An AI team can wave off a run before its last timed lap (the run counts for nothing): a Lane 2 run that can't beat its time, a first run well off the car's pace (it goes to Lane 1), a Lane 1 run heading outside the field with time left to go again. Yours: come back onto pit road before your last timed lap.">
+          <label class="l">AI wave-offs</label><input type="checkbox" id="waveoffs"><span class="muted small">only with the re-qualifying lanes</span></div>
+      </div>
+    </div>
+
+    <div class="box">
+      <h3>Saved results <span class="muted small">(QualControl)</span></h3>
+      <div class="muted small">Save this weekend's qualifying (each car's laps as they go to the game), then reapply it at a later weekend - other weather, other time of day - and the qualifying session writes the same grid exactly. Cars are matched by their .car file, else by car number; the player's car is always the player.</div>
+      <div class="row"><button id="qsave">Save results...</button><button id="qreapply">Reapply saved results...</button><button id="qfolder">Open the folder</button><span class="muted small" id="qsave-note"></span></div>
+      <h3 style="margin-top:12px">Merge sessions</h3>
+      <div class="muted small">Several qualifying sessions (two groups, two rosters) into one order: the round reached, then the time; a driver's best counts; ties go to the earlier session. Then the race field (the cut), a merged results file to reapply, and a race roster .lst.</div>
+      <div class="row"><button id="madd">Add sessions...</button><label class="l" style="width:auto">Cars in the race</label><input type="number" id="mcars" min="1" max="46" title="Stock NR2003 races 43 cars; a patched exe can run up to 46.">
+        <label title="On: your car is in the race from any place (the last AI car inside the cut drops out)."><input type="checkbox" id="mplayer"> my car always makes it</label></div>
+      <div id="msessions" class="small"></div>
+      <pre id="mlist" class="board" style="max-height:260px;overflow:auto"></pre>
+      <div class="row"><button id="msave">Save merged results...</button><button id="mroster" title="Writes a NEW roster for the race weekend: a copy of the roster your sessions used with + for the field's AI cars and - for every other car. A field car it doesn't list is added at the end. Your own car is never in a roster.">Write race roster (.lst)...</button><span class="muted small" id="mnote"></span></div>
+    </div>
+
+    <div class="box">
+      <h3>The field</h3>
+      <div class="row" title="0 = every car makes the field. Otherwise only the top cars after qualifying do; the rest did not qualify.">
+        <label class="l">Cars that make the field</label><input type="number" id="starters" min="0" max="100">
+        <select id="startersunit"><option value="cars">cars</option><option value="percent">% of the field</option></select><span class="muted small">0 = every car</span></div>
+      <div class="row" title="At the start of the race the AI cars that didn't qualify get engine damage past NR2003's must-pit line and are called in, so they go to their stalls and retire there (like an engine failure). One still out when the pace car pulls off gets a tow. A car that is still running at the green starts from the back. Your own car is never touched.">
+        <label class="l">Take the DNQ cars out before the green</label><input type="checkbox" id="dnqscratch"><span class="muted small">engine damage and a call to pit road at the start of the race; in Happy Hour they stay in their boxes</span></div>
+    </div>
+
+    <div class="box">
+      <h3>Pace and fuel</h3>
+      <div class="row"><label class="l">Qualifying pace for the AI</label><input type="checkbox" id="qpace"><span class="muted small">the speed bonus the game gives the AI in its own qualifying session</span></div>
+      <div class="row"><label class="l">Fuel load (% of tank, 0 = leave)</label><input type="number" id="fuel" min="0" max="100"></div>
+      <div class="row" title="RaceControl 2.0: how strong the speed bonus is that the AI get on their qualifying runs. 100 = the game's own formula, more = faster (needs Qualifying pace for the AI)."><label class="l">Qualifying pace strength (%)</label><input type="number" id="qboost" min="50" max="300" step="5"></div>
+      <div class="row"><label class="l">Match the stock qualifying pace</label><input type="checkbox" id="match"><span class="muted small">practice laps scaled by the median of the game's own qualifying lap ÷ practice lap (order unchanged)</span></div>
+    </div>
+
+    <div class="box">
+      <h3>Your own run</h3>
+      <div class="row"><label class="l">Include me in qualifying</label><input type="checkbox" id="qplayer"><span class="muted small">you take your turn in the order (or the round) and your lap counts</span></div>
+      <div class="row"><label class="l">Pause the game for my turn</label><input type="checkbox" id="qready"><span class="muted small">a ready card: set your camera, resume with your pause key or the button</span></div>
+      <div class="row"><label class="l">Pause key</label><input type="text" id="pausekey" style="width:90px"><span class="muted small">Pause, F1-F12 or a letter - only used when the game's own pause can't be called</span></div>
+      <div class="row"><label class="l">Climb out within (s)</label><input type="number" id="climb" min="10" max="600"><span class="muted small">after you stop in your box the broadcast waits this long for you to leave the car</span></div>
+      <div class="row"><label class="l">Show the calls to me over the game</label><input type="checkbox" id="qcalls"><button id="placebanner">Place the banner…</button></div>
+      <div class="muted small">A banner across the game: YOUR RUN: GO NOW, TIMED LAP 1 OF 2, RUN COMPLETE, CHECKERED, THROUGH TO ROUND 2, DNQ… with a countdown on the right. NR2003 must run windowed or borderless.</div>
+    </div>
+
+    <div class="box">
+      <h3>Graphics over the game</h3>
+      <div class="row"><label class="l">Show the box over the game</label><input type="checkbox" id="showbox"><button id="placebox">Place it…</button></div>
+      <div class="row"><label class="l">Style</label><select id="qstyle"><option value="box">Timing box</option><option value="broadcast">Broadcast panel (telemetry, laps, running order)</option></select></div>
+      <div class="row"><label class="l">Lap times as</label><select id="qunit"><option value="time">time (38.402)</option><option value="speed">average speed (mph)</option></select></div>
+      <div class="muted small">The timing box: pole on top, the car on TV below with its live gap to pole (green = faster), its lap time at the line, OUT LAP / IN LAP otherwise. The broadcast panel adds the car's speed, gear, rpm, throttle and brake, its laps, and the running order.</div>
+    </div>
+  </div>
+
+  <div class="box">
+    <h3>Run</h3>
+    <div class="row"><button id="start" class="go">Start qualifying</button><button id="stop" class="stop">Stop</button>
+      <span class="muted small">Start once every car is sitting in its box (the count in the status stops growing). Stop lets the cars go and writes no grid.</span></div>
+    <div class="row hide" id="lane-row"><label class="l">Your lane</label>
+      <button id="lane1">Lane 1 (give up time)</button><button id="lane2">Lane 2 (keep time)</button><button id="lane0">Done with the lanes</button>
+      <span class="muted small" id="lane-note"></span></div>
+    <div class="status" id="status">—</div>
+    <pre class="board" id="board"></pre>
+    <div class="row"><span class="muted small">Knockout status for broadcast tools: %PROGRAMDATA%\NR2003 Companions\qualifying_state.txt / .json (written live only)</span></div>
+    <table id="roster" class="hide"><thead><tr><th>#</th><th>Driver</th></tr></thead><tbody></tbody></table>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const rc = window.shl.rc, qual = window.shl.qual;
+let cfg = {};
+const set = patch => rc.set(patch).then(s => { paint(s); });
+
+const bind = (id, key, conv) => { $(id).addEventListener('change', () => { const el = $(id); set({ [key]: conv ? conv(el) : (el.type === 'checkbox' ? el.checked : el.value) }); }); };
+const ival = (lo, hi, d) => e => Math.max(lo, Math.min(hi, parseInt(e.value, 10) || d));
+bind('fmt', 'QualFormat'); bind('laps', 'QualLaps', ival(1, 5, 1)); bind('indylaps', 'QualIndyLaps', ival(2, 10, 4)); bind('maxout', 'QualMaxOut', ival(1, 10, 3));
+bind('isplit', 'QualIndySplit'); bind('igmin', 'QualIndyGroupMin', ival(1, 60, 10)); bind('igadv', 'QualIndyGroupAdv', ival(1, 20, 6));
+bind('if12min', 'QualIndyF12Min', ival(1, 60, 10)); bind('if12adv', 'QualIndyF12Adv', ival(1, 12, 6)); bind('if6min', 'QualIndyF6Min', ival(1, 60, 6)); bind('ibrk', 'QualIndyBreak', ival(0, 600, 60));
+bind('qplayer', 'QualPlayer'); bind('qready', 'QualReadyPause'); bind('qcalls', 'ShowPlayerCalls'); bind('pausekey', 'PauseKey', e => e.value.trim() || 'Pause'); bind('climb', 'QualClimbOut', ival(10, 600, 90));
+bind('qstyle', 'QualStyle'); bind('qunit', 'QualLapUnit');
+bind('release', 'QualRelease'); bind('relval', 'QualReleaseValue', e => Math.max(0, Math.min(600, parseInt(e.value, 10) || 0)));
+bind('dnq', 'QualDnq', e => Math.max(15, Math.min(600, parseInt(e.value, 10) || 90))); bind('order', 'QualOrder', e => e.value.trim());
+bind('rounds', 'QualRounds', e => e.value.trim()); bind('brk', 'QualBreak', e => Math.max(0, Math.min(600, parseInt(e.value, 10) || 0)));
+bind('qpace', 'QualPace'); bind('fuel', 'QualFuel', e => Math.max(0, Math.min(100, parseInt(e.value, 10) || 0)));
+bind('match', 'QualMatchPace'); bind('showbox', 'ShowQualBox');
+bind('porder', 'QualPracticeOrder'); bind('pfast', 'QualFastestLast', e => e.value === 'last'); bind('qboost', 'QualBoost', ival(50, 300, 100));
+bind('mcars', 'QualMergeCars', ival(1, 46, 43)); bind('mplayer', 'QualMergePlayerIn');
+const note = (id) => (r) => { $(id).textContent = (r && r.message) || ''; refresh(); };
+$('psetorder').addEventListener('click', () => qual.practiceOrder().then(note('pnote')));
+$('pkeep').addEventListener('click', () => qual.keepList().then(note('pnote')));
+$('qsave').addEventListener('click', () => qual.saveResults().then(note('qsave-note')));
+$('qreapply').addEventListener('click', () => qual.reapply().then(note('qsave-note')));
+$('qfolder').addEventListener('click', () => qual.openResults());
+$('madd').addEventListener('click', () => qual.mergeAdd().then(refresh));
+$('msave').addEventListener('click', () => qual.mergeSave().then(note('mnote')));
+$('mroster').addEventListener('click', () => qual.mergeRoster().then(note('mnote')));
+$('msessions').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; const i = +b.dataset.i; (b.dataset.do === 'x' ? qual.mergeRemove(i) : qual.mergeMove(i, b.dataset.do === 'up' ? -1 : 1)).then(refresh); });
+bind('requal', 'QualReQual'); bind('requalmin', 'QualReQualMin', ival(1, 120, 20)); bind('requalruns', 'QualReQualRuns', ival(2, 10, 3)); bind('waveoffs', 'QualWaveOffs');
+bind('starters', 'QualStarters', ival(0, 100, 0)); bind('startersunit', 'QualStartersUnit'); bind('dnqscratch', 'QualDnqScratch');
+let laneMsg = '';
+for (const n of [0, 1, 2]) $('lane' + n).addEventListener('click', () => qual.lane(n).then(r => { laneMsg = (r && r.message) || ''; refresh(); }));
+$('rc-on').addEventListener('change', () => set({ enabled: $('rc-on').checked }));
+$('rc-dry').addEventListener('change', () => set({ dryRun: $('rc-dry').checked }));
+$('start').addEventListener('click', () => qual.start().then(refresh));
+$('stop').addEventListener('click', () => qual.stop().then(refresh));
+$('placebox').addEventListener('click', () => qual.placeBox());
+$('placebanner').addEventListener('click', () => qual.placeBanner());
+$('draw').addEventListener('click', () => { $('order').value = ''; set({ QualOrder: '' }); });
+$('getfield').addEventListener('click', async () => {
+  const r = await qual.roster();
+  if (!r.length) { $('status').textContent = 'No AI cars found in their boxes yet - the field shows up once practice is running.'; return; }
+  $('order').value = r.map(c => c.number).join(' '); set({ QualOrder: $('order').value });
+  $('roster').classList.remove('hide');
+  $('roster').querySelector('tbody').innerHTML = r.map(c => `<tr><td>${c.number}</td><td>${c.name.replace(/[<>&]/g, '')}</td></tr>`).join('');
+});
+
+function koNeed(text, brk) {
+  const rounds = String(text || '').split(/[,;]/).map(s => s.split(':')).filter(a => a.length === 2 && parseFloat(a[0]) > 0 && /^\s*\d+\s*$/.test(a[1])).map(a => parseFloat(a[0]));
+  if (!rounds.length) return '—';
+  return Math.round(rounds.reduce((a, b) => a + b, 0) + (brk || 0) / 60 * (rounds.length - 1) + 3);
+}
+function fill(id, v) { const el = $(id); if (document.activeElement === el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v == null ? '' : v; }
+
+function paint(s) {
+  if (!s) return;
+  const c = s.config || {}, q = s.qual || {};
+  cfg = c;
+  fill('rc-on', c.enabled); fill('rc-dry', s.dryRun);
+  fill('fmt', c.QualFormat); fill('laps', c.QualLaps); fill('release', c.QualRelease); fill('relval', c.QualReleaseValue);
+  fill('dnq', c.QualDnq); fill('order', c.QualOrder); fill('rounds', c.QualRounds); fill('brk', c.QualBreak);
+  fill('qpace', c.QualPace); fill('fuel', c.QualFuel); fill('match', c.QualMatchPace); fill('showbox', c.ShowQualBox);
+  const fmt = c.QualFormat || 'off', singleLike = fmt === 'single' || fmt === 'indyoval';
+  $('single-opts').classList.toggle('hide', !singleLike);
+  $('laps-row').classList.toggle('hide', fmt !== 'single'); $('indylaps-row').classList.toggle('hide', fmt !== 'indyoval');
+  $('gap-note').classList.toggle('hide', c.QualRelease !== 'gap');
+  $('order-opts').classList.toggle('hide', !(singleLike || (fmt === 'indyroad' && c.QualIndySplit === 'list')));
+  $('ko-opts').classList.toggle('hide', fmt !== 'knockout');
+  $('indy-opts').classList.toggle('hide', fmt !== 'indyroad');
+  fill('indylaps', c.QualIndyLaps); fill('maxout', c.QualMaxOut); fill('isplit', c.QualIndySplit); fill('igmin', c.QualIndyGroupMin); fill('igadv', c.QualIndyGroupAdv);
+  fill('if12min', c.QualIndyF12Min); fill('if12adv', c.QualIndyF12Adv); fill('if6min', c.QualIndyF6Min); fill('ibrk', c.QualIndyBreak);
+  fill('qplayer', c.QualPlayer); fill('qready', c.QualReadyPause); fill('qcalls', c.ShowPlayerCalls); fill('pausekey', c.PauseKey); fill('climb', c.QualClimbOut);
+  fill('qstyle', c.QualStyle); fill('qunit', c.QualLapUnit);
+  $('requal-opts').classList.toggle('hide', fmt !== 'indyoval');
+  fill('requal', c.QualReQual); fill('requalmin', c.QualReQualMin); fill('requalruns', c.QualReQualRuns); fill('waveoffs', c.QualWaveOffs);
+  $('requalmin').disabled = $('requalruns').disabled = $('waveoffs').disabled = !c.QualReQual;
+  fill('starters', c.QualStarters); fill('startersunit', c.QualStartersUnit || 'cars'); fill('dnqscratch', c.QualDnqScratch !== false);
+  $('dnqscratch').disabled = !(c.QualStarters > 0);
+  const ln = q.lanes || {};
+  $('lane-row').classList.toggle('hide', !(fmt === 'indyoval' && c.QualReQual && (ln.open || ln.mine > 0)));
+  $('lane1').disabled = !(ln.open && ln.canPick && ln.mine !== 1);
+  $('lane2').disabled = !(ln.open && ln.canPick && ln.mine !== 2);
+  $('lane0').disabled = !(ln.open && (ln.canPick || ln.mine > 0));
+  $('lane-note').textContent = (ln.open ? `lanes open, ${Math.floor(ln.left / 60)}:${String(ln.left % 60).padStart(2, '0')} left` : '') + (ln.mine ? ` - you are in Lane ${ln.mine}` : '') + (laneMsg ? ' - ' + laneMsg : '');
+  $('indy-need').textContent = Math.round(2 * (c.QualIndyGroupMin || 10) + (c.QualIndyF12Min || 10) + (c.QualIndyF6Min || 6) + (c.QualIndyBreak || 0) / 60 * 3 + 3);
+  $('relval').disabled = c.QualRelease === 'pitroad';
+  $('ko-need').textContent = koNeed(c.QualRounds, c.QualBreak);
+  $('chip-rc').textContent = !c.enabled ? 'RaceControl: off' : (s.attached ? (s.dryRun ? 'RaceControl: test mode' : 'RaceControl: live') : 'RaceControl: waiting for NR2003');
+  $('chip-rc').className = 'chip ' + (!c.enabled ? 'warn' : (s.attached && !s.dryRun ? 'ok' : ''));
+  $('chip-fmt').textContent = { off: 'Qualifying off', single: 'Single car runs', knockout: 'Knockout rounds', indyoval: 'Indy oval', indyroad: 'Indy road / street' }[c.QualFormat] || 'Off';
+  $('status').textContent = !c.enabled ? 'RaceControl is off - switch "Run RaceControl" on (top) for qualifying to run.' : (q.status || '—');
+  $('start').disabled = !q.canStart; $('stop').disabled = !q.active;
+  $('board').textContent = (q.board || []).join('\n');
+  // QualControl
+  fill('porder', c.QualPracticeOrder); fill('pfast', c.QualFastestLast ? 'last' : 'first'); fill('qboost', c.QualBoost == null ? 100 : c.QualBoost);
+  fill('mcars', c.QualMergeCars || 43); fill('mplayer', c.QualMergePlayerIn !== false);
+  $('pfast').disabled = !c.QualPracticeOrder;
+  $('ptiming-row').classList.toggle('hide', !q.timing);
+  $('qsave').disabled = !q.hasResults;
+  const mg = q.merge || { sessions: [], lines: [] };
+  $('msessions').innerHTML = mg.sessions.map((x, i) => `<div class="row" style="gap:6px">S${i + 1}: ${String(x.name).replace(/[<>&]/g, '')} <span class="muted">${String(x.track).replace(/[<>&]/g, '')}, ${String(x.type).replace(/[<>&]/g, '')}, ${x.cars} cars</span>` +
+    `<button data-do="up" data-i="${i}"${i === 0 ? ' disabled' : ''}>Up</button><button data-do="down" data-i="${i}"${i === mg.sessions.length - 1 ? ' disabled' : ''}>Down</button><button data-do="x" data-i="${i}">Remove</button></div>`).join('') || '<span class="muted">No sessions added.</span>';
+  $('mlist').textContent = mg.lines.join('\n');
+  $('msave').disabled = $('mroster').disabled = !mg.lines.length;
+  if (mg.note && !$('mnote').textContent) $('mnote').textContent = mg.note;
+}
+function refresh() { return rc.get().then(paint); }
+refresh(); setInterval(refresh, 1000);
+</script>
+</body>
+</html>

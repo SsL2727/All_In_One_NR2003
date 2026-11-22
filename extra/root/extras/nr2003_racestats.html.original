@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PSF Race Stats</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0d0d; --surface: #141414; --row-alt: #181818;
+    --border: #2a2a2a; --text: #e8e8e8; --dim: #ccc;
+    --green: #00d26a; --red: #ff3040; --amber: #f5a623; --blue: #4aa8ff;
+    --mono: 'Courier New', monospace; --ui: 'Inter', system-ui, sans-serif;
+  }
+  body { background: var(--bg); color: var(--text); font-family: var(--ui); font-size: 13px; }
+
+  /* Header - Static layout block so it safely sits above the table */
+  #header { 
+    background: var(--surface); 
+    border-bottom: 1px solid var(--border); 
+    padding: 12px 20px;
+  }
+  #header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  #series-logo { height: 36px; width: auto; object-fit: contain; display: none; }
+  #session-title { font-size: 18px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+  #session-badge { font-size: 11px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase;
+    color: #fff; padding: 3px 8px; border: 1px solid var(--border); border-radius: 3px; }
+  #conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red);
+    display: inline-block; margin-right: 6px; transition: background 0.3s; }
+  #conn-dot.live { background: var(--green); }
+  #last-update { font-size: 11px; color: var(--dim); }
+  #flag-indicator { padding: 4px 12px; border-radius: 2px; font-size: 11px;
+    font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
+  #flag-indicator.green  { background: var(--green); color: #000; }
+  #flag-indicator.yellow { background: #f5c518; color: #000; }
+  #flag-indicator.red    { background: var(--red); color: #fff; }
+
+  /* Stats bar */
+  #stats-bar { display: flex; gap: 24px; flex-wrap: wrap; align-items: center; }
+  .stat { display: flex; flex-direction: column; }
+  .stat-label { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim); }
+  .stat-value { font-family: var(--mono); font-size: 15px; font-weight: 700; }
+  .stat-value.amber { color: var(--amber); }
+  .stat-value.blue  { color: var(--blue); }
+  .stat-value.green { color: var(--green); }
+
+  /* Table Container */
+  #table-wrap { overflow-x: auto; padding-bottom: 40px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  
+  /* Table Header - Normal document flow block, eliminating overlap bugs */
+  thead th {
+    background: var(--surface); 
+    border-bottom: 2px solid var(--border);
+    padding: 10px; 
+    font-size: 9px; 
+    letter-spacing: 1.5px; 
+    text-transform: uppercase;
+    color: var(--dim); 
+    font-weight: 600; 
+    white-space: nowrap;
+    text-align: left;
+  }
+  thead th.right { text-align: right; }
+  thead th.center { text-align: center; }
+
+  /* Table Rows */
+  tbody tr { border-bottom: 1px solid var(--border); background: var(--bg); }
+  tbody tr:nth-child(even) { background: var(--row-alt); }
+  tbody tr:hover { background: #1f1f1f; }
+  
+  td { padding: 7px 10px; white-space: nowrap; vertical-align: middle; }
+  td.right { text-align: right; }
+  td.center { text-align: center; }
+  td.mono { font-family: var(--mono); }
+
+  /* Position */
+  td.pos { font-family: var(--mono); font-weight: 700; font-size: 14px;
+    width: 42px; text-align: right; border-left: 3px solid transparent; padding-right: 12px; }
+
+  /* Number */
+  td.num-cell { width: 60px; text-align: center; }
+  .num-inner { display: inline-flex; align-items: center; justify-content: center;
+    padding: 2px 6px; border-radius: 3px; font-family: var(--mono);
+    font-weight: 700; font-size: 13px; min-width: 32px; }
+
+  /* Manufacturer */
+  .manu-icon { height: 16px; width: auto; object-fit: contain;
+    vertical-align: middle; margin-right: 6px; }
+
+  /* Times */
+  td.mono-r { font-family: var(--mono); text-align: right; color: var(--dim); }
+  td.mono-r.best { color: var(--green); }
+  td.mono-r.fastest { color: #c970ff; }
+
+  /* Incidents */
+  td.inc { text-align: right; font-family: var(--mono); }
+  td.inc.warn { color: var(--amber); font-weight: 700; }
+
+  /* Status */
+  td.status-cell { text-align: center; }
+  .status-pill { display: inline-block; padding: 2px 8px; border-radius: 2px;
+    font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+  .status-pill.running   { color: var(--green); border: 1px solid var(--green); }
+  .status-pill.blackflag { background: #111; color: #fff; border: 1px solid #fff; }
+  .status-pill.dq        { background: var(--red); color: #fff; }
+  .status-pill.out       { background: #333; color: var(--dim); }
+
+  /* Empty */
+  #empty-state { text-align: center; padding: 80px 20px; color: var(--dim); display: none; }
+  #empty-state h2 { font-size: 20px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div id="header">
+  <div id="header-top">
+    <div style="display:flex;align-items:center;gap:14px">
+      <img id="series-logo" src="" alt="">
+      <div>
+        <div id="session-title">—</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:3px">
+          <span id="session-badge">Waiting</span>
+          <span id="flag-indicator" class="green" style="display:none">GREEN</span>
+        </div>
+      </div>
+    </div>
+    <div style="text-align:right">
+      <div><span id="conn-dot"></span><span id="conn-label" style="font-size:11px;color:var(--dim)">Connecting…</span></div>
+      <div id="last-update" style="margin-top:3px">—</div>
+    </div>
+  </div>
+  <div id="stats-bar">
+    <div class="stat"><span class="stat-label">Lap</span><span class="stat-value" id="stat-lap">—</span></div>
+    <div class="stat"><span class="stat-label">Remaining</span><span class="stat-value" id="stat-remain">—</span></div>
+    <div class="stat"><span class="stat-label">Cautions</span><span class="stat-value amber" id="stat-cautions">—</span></div>
+    <div class="stat"><span class="stat-label">Caution Laps</span><span class="stat-value amber" id="stat-claps">—</span></div>
+    <div class="stat"><span class="stat-label">Lead Changes</span><span class="stat-value blue" id="stat-leads">—</span></div>
+    <div class="stat"><span class="stat-label">Fastest Lap</span><span class="stat-value green" id="stat-fastest">—</span></div>
+    <div class="stat"><span class="stat-label">By</span><span class="stat-value" id="stat-fastest-by" style="font-size:13px">—</span></div>
+  </div>
+</div>
+
+<div id="table-wrap">
+  <table id="main-table">
+    <thead id="thead-main"><tr id="thead-row"></tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div id="empty-state"><h2>No Data</h2><p>Waiting for telemetry…</p></div>
+</div>
+
+<script>
+const WS_URL    = `ws://${location.hostname}:8765`;
+const HTTP_BASE = `http://${location.hostname}:8766`;
+const SERIES_ID = new URLSearchParams(location.search).get('series') || 'default';
+
+let _driverColors = {};
+let _carmakeByIdx  = {};  
+let _manuOverrides = new Set();  
+let _manuCacheBust = Date.now(); 
+
+function _buildManuMap(d) {
+  // Primary: d.drivers — populated at session start from kDriverEntry events
+  (d.drivers || []).forEach(e => {
+    if (e.carIdx == null) return;
+    const cm = e.carMakeFromFile;
+    if (cm != null && cm >= 0) _carmakeByIdx[e.carIdx] = cm + 1;
+  });
+  // Fallback: d.standings also carries carMakeFromFile — catches cars
+  // whose driver entry hasn't been read yet on page refresh
+  (d.standings || []).forEach(e => {
+    if (e.carIdx == null || _carmakeByIdx[e.carIdx]) return;
+    const cm = e.carMakeFromFile;
+    if (cm != null && cm >= 0) _carmakeByIdx[e.carIdx] = cm + 1;
+  });
+}
+
+function manuImgSrc(num, carIdx) {
+  const slot = _carmakeByIdx[carIdx] || 0;
+  const slotSrc = slot ? assetPath(`series/${SERIES_ID}/manufacturers/manu${slot}.png`) + `?v=${_manuCacheBust}` : null;
+  const overrideSrc = _manuOverrides.has(String(num).trim())
+    ? assetPath(`series/${SERIES_ID}/manufacturers/${num}.png`) + `?v=${_manuCacheBust}`
+    : null;
+  return { override: overrideSrc, slot: slotSrc };
+}
+let _startGrid           = {};
+let _gridLocked          = false;
+let _lastIsPQ            = null;
+let _ws                  = null;
+
+function assetPath(rel) { return `${HTTP_BASE}/assets/${rel}`; }
+
+window._numFailed  = new Set();
+window._manuFailed = new Set();
+
+function _onNumImgError(el) {
+  const n = el.getAttribute('data-num');
+  if (n) window._numFailed.add(n);
+  el.style.display = 'none';
+  const sib = el.nextSibling;
+  if (sib) sib.style.display = 'inline';
+}
+function numImgSrc(num) {
+  if (window._numFailed.has(String(num).trim())) return null;
+  return assetPath(`series/${SERIES_ID}/numbers/${String(num).trim()}.png`);
+}
+
+function numBgStyle(num) {
+  const c = _driverColors[String(num).trim()];
+  return c ? `background:${c};border-radius:3px;padding:2px 6px` : '';
+}
+
+function fmtTime(s) {
+  if (!s || s <= 0) return '—';
+  const m = Math.floor(s / 60);
+  const sec = (s % 60).toFixed(3).padStart(6, '0');
+  return m > 0 ? `${m}:${sec}` : `${parseFloat(s).toFixed(3)}`;
+}
+
+function fmtGap(s, isLeader, isPQ, leaderBest) {
+  if (isLeader) return '—';
+  if (isPQ) {
+    const bl = s.bestLap || 0;
+    return (bl > 0 && leaderBest > 0) ? `+${(bl - leaderBest).toFixed(3)}` : '—';
+  }
+  const lapsDown = s.lapsDown || s.lap || 0;
+  const t = s.time || 0;
+  if (lapsDown > 0) return `-${lapsDown}L`;
+  return t > 0 ? `-${t.toFixed(3)}` : '—';
+}
+
+function setTheadPQ(isPQ) {
+  if (_lastIsPQ === isPQ) return;
+  _lastIsPQ = isPQ;
+  const tr = document.getElementById('thead-row');
+  if (isPQ) {
+    tr.innerHTML = `
+      <th class="right" style="width:42px">POS</th>
+      <th class="center" style="width:60px">NO.</th>
+      <th>DRIVER</th>
+      <th class="right">LAST LAP</th>
+      <th class="right">BEST LAP</th>
+      <th class="right">GAP</th>
+      <th class="right">LAPS</th>`;
+  } else {
+    tr.innerHTML = `
+      <th class="right" style="width:42px">POS</th>
+      <th class="center" style="width:36px">ST</th>
+      <th class="center" style="width:60px">NO.</th>
+      <th>DRIVER</th>
+      <th class="right">INTERVAL</th>
+      <th class="right">LAST LAP</th>
+      <th class="right">BEST LAP</th>
+      <th class="right">PITS</th>
+      <th class="right">LAPS LED</th>
+      <th class="center">STATUS</th>`;
+  }
+}
+
+function maybeCapture(d) {
+  const state = (d.sessionState || '').toLowerCase();
+  const session = (d.session || '').toLowerCase();
+  if (session !== 'race') return;
+  if (!_gridLocked && ['get in car','warmup','parade laps'].includes(state)) {
+    (d.standings || []).forEach((s, i) => { if (!_startGrid[s.carIdx]) _startGrid[s.carIdx] = i + 1; });
+  }
+  if (state === 'racing' && !_gridLocked && Object.keys(_startGrid).length > 0) _gridLocked = true;
+}
+
+let _lastCookie = null;
+function checkSessionChange(d) {
+  const cookie = d.sessionCookie;
+  if (cookie != null && cookie !== _lastCookie) {
+    _lastCookie    = cookie;
+    _manuCacheBust = Date.now();
+    _startGrid     = {};
+    _gridLocked    = false;
+    _carmakeByIdx  = {};
+    _manuOverrides = new Set();
+    window._lapDataLogged = false;
+    window._manuFailed    = new Set();
+    window._numFailed     = new Set();
+  }
+}
+
+function render(d) {
+  const session = (d.session || '').toLowerCase();
+  const state   = (d.sessionState || '').toLowerCase();
+  const flag    = (d.sessionFlag  || '').toLowerCase();
+  const isPQ    = session === 'practice' || session === 'qualifying' || session === 'testing';
+
+  if (d.driverColors) _driverColors = d.driverColors;
+  if (d.driverManuOverrides) _manuOverrides = new Set(d.driverManuOverrides);
+  window._lastPayload = d;
+  _buildManuMap(d);
+  if (!Object.keys(_carmakeByIdx).length) {
+    clearTimeout(window._manuRetry);
+    window._manuRetry = setTimeout(() => {
+      if (window._lastPayload) { _buildManuMap(window._lastPayload); render(window._lastPayload); }
+    }, 1500);
+  }
+
+  document.getElementById('session-title').textContent = d.track || d.trackNameShort || '—';
+  document.getElementById('session-badge').textContent = (d.session || 'Waiting').toUpperCase();
+
+  const fi = document.getElementById('flag-indicator');
+  // Hide badge and session title when not in a session
+  const hasSession = !!(d.atTrack && d.session);
+  document.getElementById('session-title').style.opacity = hasSession ? '1' : '0';
+  document.getElementById('session-badge').style.opacity = hasSession ? '1' : '0';
+  if (!hasSession) { fi.style.display = 'none'; }
+  else {
+    fi.style.display = '';
+    if      (state === 'gridding' || state === 'get in car') { fi.className = 'green';  fi.textContent = 'GRIDDING'; }
+    else if (state === 'warmup' || state === 'parade laps')  { fi.className = 'green';  fi.textContent = 'PACING'; }
+    else if (flag === 'yellow')                              { fi.className = 'yellow'; fi.textContent = 'YELLOW'; }
+    else if (flag === 'red')                                 { fi.className = 'red';    fi.textContent = 'RED'; }
+    else if (state === 'checkered' || state === 'cool down') { fi.className = 'green';  fi.textContent = 'CHECKERED'; }
+    else                                                     { fi.className = 'green';  fi.textContent = 'GREEN'; }
+  }
+
+  const logoEl = document.getElementById('series-logo');
+  if (SERIES_ID && SERIES_ID !== 'default') {
+    const src = assetPath(`series/${SERIES_ID}/serieslogo.png`);
+    if (logoEl.getAttribute('data-src') !== src) {
+      logoEl.setAttribute('data-src', src);
+      logoEl.onerror = () => { logoEl.style.display = 'none'; };
+      logoEl.onload  = () => { logoEl.style.display = 'block'; };
+      logoEl.src = src;
+    }
+  }
+
+  const lc = d.lapsComplete   || 0;
+  const lt = d.lapsTotal      || 0;
+  const lr = d.lapsRemaining  != null ? d.lapsRemaining : (lt > 0 ? lt - lc : null);
+  const tr = d.timeRemaining;
+  if (isPQ) {
+    // Practice/Qualifying: show time remaining
+    document.getElementById('stat-lap').textContent    = '—';
+    if (tr != null && tr > 0) {
+      const m = Math.floor(tr / 60);
+      const s2 = Math.floor(tr % 60).toString().padStart(2, '0');
+      document.getElementById('stat-remain').textContent = `${m}:${s2} remaining`;
+    } else {
+      document.getElementById('stat-remain').textContent = '—';
+    }
+  } else {
+    document.getElementById('stat-lap').textContent    = lt > 0 ? `${lc + 1} / ${lt}` : (lc + 1 || '—');
+    document.getElementById('stat-remain').textContent = lr != null ? lr : '—';
+  }
+  document.getElementById('stat-cautions').textContent = d.cautionFlags   != null ? d.cautionFlags   : '—';
+  document.getElementById('stat-claps').textContent    = d.cautionLaps    != null ? d.cautionLaps    : '—';
+  document.getElementById('stat-leads').textContent    = d.numLeadChanges != null ? d.numLeadChanges : '—';
+
+  const fastestCarIdx = d.fastestCarIdx ?? -1;
+  const fastestTime   = d.fastestLap || 0;
+  const fastestEntry  = (d.standings || []).find(s => s.carIdx === fastestCarIdx);
+  const fastestName   = fastestEntry?.fullName || fastestEntry?.name || '—';
+  document.getElementById('stat-fastest').textContent    = fastestTime > 0 ? fmtTime(fastestTime) : '—';
+  document.getElementById('stat-fastest-by').textContent = fastestName;
+
+  const lapDataMap = {};
+  (d.lapData || []).forEach(ld => { lapDataMap[ld.carIdx] = ld; });
+  // Log if lapData is empty so we know to debug
+  if (!window._lapDataLogged) {
+    window._lapDataLogged = true;
+    const s0 = (d.standings||[])[0];
+    console.log('[LAPDATA] d.lapData length:', (d.lapData||[]).length, 'sample standings lastLap:', s0?.lastLap);
+    console.log('[MANU] standings[0] carMakeFromFile:', s0?.carMakeFromFile, 'drivers[0] carMakeFromFile:', (d.drivers||[])[0]?.carMakeFromFile);
+    console.log('[MANU] _carmakeByIdx after first render:', JSON.stringify(_carmakeByIdx));
+  }
+
+  setTheadPQ(isPQ);
+
+  const standings = d.standings || [];
+  if (!standings.length) {
+    document.getElementById('empty-state').style.display = 'block';
+    document.getElementById('tbody').innerHTML = '';
+    return;
+  }
+  document.getElementById('empty-state').style.display = 'none';
+
+  const leaderBest = (d.lapTracker && d.lapTracker[standings[0]?.carIdx]?.bestLap) || 0;
+
+  const rows = standings.map((s, i) => {
+    const isLeader = i === 0;
+    const num      = (s.number || '??').trim();
+    const numBg    = numBgStyle(num);
+    const numImg   = numImgSrc(num);
+    const { override: manuOverride, slot: manuSlot } = manuImgSrc(num, s.carIdx);
+    const manuSrc = manuOverride || manuSlot;
+    const manuKey = manuSrc ? manuSrc.split('?')[0] : null;
+    const manuHtml = (manuSrc && manuKey && !window._manuFailed.has(manuKey))
+      ? `<img class="manu-icon" src="${manuSrc}" onerror="window._manuFailed&&window._manuFailed.add('${manuKey}');this.style.display='none'">`
+      : '';
+    const lt2      = (d.lapTracker && d.lapTracker[s.carIdx]) || {};
+    const lastLap  = lt2.lastLap || 0;
+    const bestLap  = lt2.bestLap || 0;
+    const lapsLed = s.lapsLead  ?? s.leadLaps  ?? 0;
+    const pits    = s.pitStops  ?? 0;
+    const inc     = s.incidents ?? 0;
+
+    const displayName = s.fullName || s.name || '??';
+    const accent = _driverColors[num] || '';
+    const posStyle = accent ? `border-left-color:${accent}` : 'border-left-color:#333';
+
+    const status    = (s.status || 'running').toLowerCase();
+    const blackFlag = !!s.blackFlag;
+    let statusHtml  = '';
+    if      (blackFlag)                              statusHtml = `<span class="status-pill blackflag">⚑ Black</span>`;
+    else if (status === 'dq')                        statusHtml = `<span class="status-pill dq">DQ</span>`;
+    else if (status === 'running' || status === '')  statusHtml = `<span class="status-pill running">Running</span>`;
+    else                                             statusHtml = `<span class="status-pill out">${s.status || 'Out'}</span>`;
+
+    const numHtml = numImg
+      ? `<div class="num-inner" style="${numBg}"><img src="${numImg}" style="height:18px;width:auto;object-fit:contain;vertical-align:middle" onerror="_onNumImgError(this)" data-num="${num}"><span style="display:none">${num}</span></div>`
+      : `<div class="num-inner" style="${numBg}">${num}</div>`;
+
+    if (isPQ) {
+      const gap = isLeader
+        ? '—'
+        : (bestLap > 0 && leaderBest > 0 ? `+${(bestLap - leaderBest).toFixed(3)}` : '—');
+      return `<tr>
+        <td class="pos" style="${posStyle}">${i + 1}</td>
+        <td class="num-cell">${numHtml}</td>
+        <td>${manuHtml}${displayName}</td>
+        <td class="mono-r">${fmtTime(lastLap)}</td>
+        <td class="mono-r best">${fmtTime(bestLap)}</td>
+        <td class="mono right">${gap}</td>
+        <td class="mono right" style="color:var(--dim)">${s.lapNum || s.lap || '—'}</td>
+      </tr>`;
+    }
+
+    const startPos = _startGrid[s.carIdx] || '—';
+    const incClass = inc >= 4 ? 'inc warn' : 'inc';
+
+    return `<tr>
+      <td class="pos" style="${posStyle}">${i + 1}</td>
+      <td class="center" style="color:var(--dim);font-size:12px">${startPos}</td>
+      <td class="num-cell">${numHtml}</td>
+      <td>${manuHtml}${displayName}</td>
+      <td class="mono-r">${fmtGap(s, isLeader, false, 0)}</td>
+      <td class="mono-r">${fmtTime(lastLap)}</td>
+      <td class="mono-r best">${fmtTime(bestLap)}</td>
+      <td class="mono right" style="color:var(--dim)">${pits > 0 ? pits : '—'}</td>
+      <td class="mono right" style="color:var(--dim)">${lapsLed > 0 ? lapsLed : '—'}</td>
+      <td class="status-cell">${statusHtml}</td>
+    </tr>`;
+  });
+
+  document.getElementById('tbody').innerHTML = rows.join('');
+
+  const now = new Date();
+  document.getElementById('last-update').textContent =
+    `Updated ${now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}`;
+}
+
+function connect() {
+  const dot   = document.getElementById('conn-dot');
+  const label = document.getElementById('conn-label');
+  _ws = new WebSocket(WS_URL);
+  _ws.onopen = () => { dot.className = 'live'; label.textContent = 'Live'; };
+  _ws.onmessage = e => {
+    try {
+      const d = JSON.parse(e.data);
+      if (!d || typeof d !== 'object') return;
+      checkSessionChange(d);
+      maybeCapture(d);
+      render(d);
+    } catch(_) {}
+  };
+  _ws.onclose = () => {
+    dot.className = '';
+    label.textContent = 'Reconnecting…';
+    setTimeout(connect, 3000);
+  };
+  _ws.onerror = () => _ws.close();
+}
+
+connect();
+</script>
+</body>
+</html>

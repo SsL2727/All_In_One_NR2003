@@ -1,0 +1,5 @@
+{
+  "description": "Removes all the rubber buildup from the track - exactly what the Clean Track button next to Rubber Buildup on the Environment tab does, just without asking first.\n\nOnly the rubber is cleared: no setting, lap file or special mode changes, and Rubber Buildup stays on or off as it was. Loading it cleans the track right away (there is nothing to Apply). Used as a lap trigger it cleans the track when it fires, so it can put a fresh surface down at, say, the start of a new run. It is not repeated when other triggers are re-applied after a yellow, so the rubber laid since is kept.",
+  "clean_track_rubber": true,
+  "auto_keywords": []
+}

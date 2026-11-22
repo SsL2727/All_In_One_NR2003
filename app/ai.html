@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>AI Tweaks &amp; AIMOD</title>
+<style>
+:root { --bg:#0c0e12; --card:#141821; --card2:#181d28; --border:#222834; --border2:#2c3443; --text:#e8ebf2; --dim:#8b94a7; --accent:#e8c84a; --green:#2ecc71; --red:#e74c3c; --blue:#5dade2; --orange:#f39c12; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.45 'Segoe UI', Arial, sans-serif; }
+button, select, input { font: inherit; color: var(--text); }
+button { background: #1b212d; border: 1px solid var(--border2); border-radius: 6px; font-weight: 600; padding: 6px 12px; cursor: pointer; }
+button:hover:not(:disabled) { border-color: #3a4457; background: #232b3a; }
+button:disabled { opacity: .45; cursor: default; }
+input[type=number], input[type=text], select { background: #0b0d12; border: 1px solid var(--border2); border-radius: 6px; padding: 5px 8px; }
+input[type=number] { width: 90px; }
+input[type=checkbox], input[type=radio] { accent-color: var(--green); width: 15px; height: 15px; vertical-align: -2px; }
+#app { height: 100%; display: grid; grid-template-rows: auto 1fr; }
+header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #10131a; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+header h1 { margin: 0; font-size: 16px; letter-spacing: .08em; text-transform: uppercase; }
+.chip { display: inline-flex; gap: 6px; align-items: center; padding: 3px 10px; border-radius: 12px; background: #1a1e26; border: 1px solid var(--border2); font-size: 12px; color: var(--dim); }
+.chip.ok { color: var(--green); border-color: #1e4630; } .chip.warn { color: var(--orange); border-color: #5a4010; } .chip.bad { color: #ff7d72; border-color: #5a2320; } .chip.live { color: #ff6b61; border-color: #5a2320; }
+.spacer { flex: 1; }
+main { overflow: auto; padding: 14px 18px 28px; }
+.master { display: flex; align-items: center; gap: 12px; background: #1a1708; border: 1px solid #4d4220; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; }
+.master.on { background: #0f2218; border-color: #1e4630; }
+.switch { position: relative; width: 44px; height: 24px; flex: none; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch span { position: absolute; inset: 0; background: #2a2d35; border-radius: 24px; transition: .15s; cursor: pointer; }
+.switch span:before { content: ''; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: #aab; border-radius: 50%; transition: .15s; }
+.switch input:checked + span { background: #1d6b3d; } .switch input:checked + span:before { transform: translateX(20px); background: #fff; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.box { background: var(--card); border: 1px solid var(--border); border-radius: 9px; padding: 12px 14px; }
+.box h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); display: flex; justify-content: space-between; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 7px 0; }
+.muted { color: var(--dim); } .small { font-size: 12px; }
+.readout { font: 13px Consolas, monospace; background: #0b0d11; border: 1px solid var(--border2); border-radius: 4px; padding: 8px 10px; }
+.big { font-size: 16px; font-weight: 700; }
+#toast { position: fixed; right: 16px; bottom: 16px; background: #1d3a2a; border: 1px solid #2c6b46; padding: 10px 14px; border-radius: 6px; max-width: 420px; display: none; z-index: 5; }
+#toast.err { background: #3a1d1d; border-color: #6b2c2c; }
+.warnline { color: var(--orange); font-size: 12px; margin-top: 6px; }
+.errline { color: #ff7d72; font-size: 12px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>🧠 AI Tweaks &amp; AIMOD</h1>
+    <span class="chip" id="chip-game">NR2003: —</span>
+    <span class="spacer"></span>
+    <span class="muted small">AIMOD pit strategy is built in · the switches below are the AI EDITING trainer's</span>
+  </header>
+  <main>
+
+    <div class="box" style="margin-bottom:12px">
+      <h3><span>AIMOD v2.1 — AI strategy and driver plans (built into All In One NR2003)</span><span class="chip" id="am-chip">checking…</span></h3>
+      <div class="muted small" style="margin-bottom:8px">
+        AIMOD decides when each AI car pits and what it takes (fuel, tires, repairs), learns tire fall-off per track, and runs the beta driver-plan engine. Launch the standalone AIMOD 2.1 beta from its page for scanner radio and full native controls.
+        It plans to the stage ends you set once in <b>Stage Racing</b>, and it reads the built-in RaceControl's free passes and wave-arounds.
+      </div>
+      <div class="row">
+        <button id="am-open" style="border-color:#3b5a8a;background:#22304a">Open AIMOD pit strategy…</button>
+        <label><input type="checkbox" id="am-on"> AIMOD on</label>
+        <span class="muted small" id="am-sub"></span>
+      </div>
+      <div class="errline" id="am-err" style="display:none"></div>
+    </div>
+
+    <div class="master" id="master">
+      <label class="switch"><input type="checkbox" id="enabled"><span></span></label>
+      <div><div class="big" id="master-title">AI tweaks are OFF</div>
+      <div class="muted small">Crashing mode · pit in the second yellow lap · damage. Close the standalone <b>AI EDITING</b> trainer first — it patches the same memory.</div></div>
+    </div>
+
+    <div class="master" id="dry-box" style="background:#101722;border-color:#26405e">
+      <label class="switch"><input type="checkbox" id="dryRun"><span></span></label>
+      <div><div class="big" id="dry-title">Read-only test mode</div><div class="muted small" id="dry-sub"></div></div>
+    </div>
+
+    <div class="grid">
+      <div class="box">
+        <h3><span>Tweaks</span></h3>
+        <div class="row"><label><input type="checkbox" id="crashing"> Crashing mode</label><span class="muted small">AI cars can crash</span></div>
+        <div class="row"><label><input type="checkbox" id="pitYellow"> AI pit in the second yellow lap</label></div>
+        <div class="warnline">AIMOD makes the AI's caution pit calls (and RaceControl holds pit road closed at first). Leave this off while AIMOD is on.</div>
+        <div class="row"><label><input type="checkbox" id="damageOn"> Damage multiplier</label>
+          <input type="number" id="damage" min="0" max="5" step="0.05" value="1"><span class="muted small">1 = the game's own</span></div>
+      </div>
+      <div class="box">
+        <h3><span>Status</span></h3>
+        <div class="readout" id="readout">—</div>
+        <div class="errline" id="err" style="display:none"></div>
+        <div class="warnline" id="build-warn" style="display:none"></div>
+        <div class="muted small" style="margin-top:8px" id="pending"></div>
+      </div>
+    </div>
+  </main>
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const cfg = (patch) => window.shl.ai.setConfig(patch).then(r => { if (r && r.ok === false) toast(r.error || 'failed', true); return r; });
+function toast(msg, err) { const t = $('toast'); t.textContent = msg; t.className = err ? 'err' : ''; t.style.display = 'block'; clearTimeout(toast._t); toast._t = setTimeout(() => { t.style.display = 'none'; }, 4500); }
+
+$('enabled').onchange = e => cfg({ enabled: e.target.checked });
+$('dryRun').onchange = e => {
+  if (!e.target.checked && !confirm('Turn read-only test mode OFF?\n\nThe AI tweaks will then really change NR2003. Everything is restored when you switch them off or close All In One NR2003.')) { e.target.checked = true; return; }
+  cfg({ dryRun: e.target.checked });
+};
+$('crashing').onchange = e => cfg({ crashing: e.target.checked });
+$('pitYellow').onchange = e => cfg({ pitYellow: e.target.checked });
+const sendDamage = () => cfg({ damage: $('damageOn').checked ? (parseFloat($('damage').value) || 1) : null });
+$('damageOn').onchange = sendDamage; $('damage').onchange = sendDamage;
+
+$('am-open').onclick = () => window.shl.openAimodWindow();
+$('am-on').onchange = e => window.shl.aimod.setConfig({ enabled: e.target.checked }).then(paintAimod);
+function paintAimod(s) {
+  if (!s) return;
+  const chip = $('am-chip');
+  chip.textContent = !s.enabled ? 'off' : (s.note ? 'paused' : (s.status && s.status.attached ? (s.dryRun ? 'test mode' : 'controlling') : 'waiting for NR2003'));
+  chip.className = 'chip ' + (!s.enabled ? '' : (s.note ? 'warn' : (s.status && s.status.attached ? (s.dryRun ? 'warn' : 'live') : 'ok')));
+  $('am-on').checked = !!s.enabled;
+  $('am-sub').textContent = s.note || (s.enabled && s.dryRun ? 'read-only test mode — open the AIMOD window to turn it off' : '');
+  const e = $('am-err'); e.textContent = s.error ? 'Error: ' + s.error : ''; e.style.display = s.error ? '' : 'none';
+}
+
+function paint(s) {
+  if (!s || s.ok === false) return;
+  const c = s.config, on = !!c.enabled;
+  $('enabled').checked = on; $('dryRun').checked = s.dryRun;
+  $('master').classList.toggle('on', on);
+  $('master-title').textContent = !on ? 'AI tweaks are OFF'
+    : (s.attached ? (s.build.ok ? (s.dryRun ? 'AI tweaks are ON — read-only test (not changing the game)' : 'AI tweaks are ON — changing NR2003') : 'AI tweaks are ON — unsupported NR2003.exe build, hands off') : 'AI tweaks are ON — waiting for NR2003');
+  $('dry-title').textContent = s.dryRun ? 'Read-only test mode is ON — NR2003 is not modified' : 'LIVE — the AI tweaks are changing NR2003';
+  $('dry-sub').textContent = s.dryRun ? 'Shows what would be written; nothing is. Turn it off to apply the tweaks.' : 'Patches and writes are real. Switching the tweaks off (or closing All In One NR2003) restores the game.';
+  const chip = $('chip-game');
+  chip.textContent = 'NR2003: ' + (s.attached ? 'attached (pid ' + s.pid + ')' : 'not running');
+  chip.className = 'chip ' + (s.attached ? (s.dryRun ? 'warn' : 'live') : '');
+  if (document.activeElement !== $('crashing')) $('crashing').checked = !!c.crashing;
+  if (document.activeElement !== $('pitYellow')) $('pitYellow').checked = !!c.pitYellow;
+  if (document.activeElement !== $('damage')) { $('damageOn').checked = c.damage != null; if (c.damage != null) $('damage').value = c.damage; }
+  const e = s.edit || {};
+  const ro = $('readout'); ro.textContent = '';
+  for (const [k, v] of [['crashing mode', e.crashing], ['pit in 2nd yellow', e.pitYellow], ['damage', e.damage]]) {
+    const row = document.createElement('div'); row.textContent = k + ': ' + (v ? 'applied' : 'off'); ro.appendChild(row);
+  }
+  const msg = s.error || e.lastError || '';
+  const err = $('err'); err.textContent = msg; err.style.display = msg ? '' : 'none';
+  const bw = $('build-warn'); bw.textContent = s.build && s.build.ok === false ? s.build.notes.join('; ') : ''; bw.style.display = bw.textContent ? '' : 'none';
+  $('pending').textContent = s.dryRun && on ? 'Test mode: ' + s.pendingWrites.count + ' write(s) would have been made.' : '';
+}
+
+const poll = () => window.shl.ai.getState().then(paint).catch(() => {});
+const pollAimod = () => window.shl.aimod.getState().then(paintAimod).catch(() => {});
+poll(); pollAimod();
+setInterval(poll, 1000); setInterval(pollAimod, 1000);
+</script>
+</body>
+</html>

@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="stage_shim.js"></script>
+<script src="perf-shim.js"></script>
+<meta charset="UTF-8">
+<title>NR2003 Fox Personal</title>
+<style>
+/* Chase highlight — drivers in the chase get a yellow name background */
+.chase { background: #f5d100 !important; color: #111 !important; text-shadow: none !important;
+         box-shadow: -3px 0 0 #f5d100, 3px 0 0 #f5d100; }
+@font-face { font-family: 'AuthorityRounded';         src: local('AuthorityRounded'); }
+@font-face { font-family: 'AuthorityRoundedItalic';   src: local('AuthorityRoundedItalic'); }
+@font-face { font-family: 'StainlessCondBlack';       src: local('StainlessCondBlack'); }
+@font-face { font-family: 'GladiusRegular';           src: local('GladiusRegular'); }
+@font-face { font-family: 'ArgentumNovus-BlackItalic'; src: local('ArgentumNovus-BlackItalic'); }
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: transparent; overflow: hidden; width: 409px; height: 1080px; }
+
+#scale-root { position: relative; width: 409px; height: 1080px; transform-origin: top left; }
+
+#sponsor-layer, #header-data, #standings-data {
+  opacity: 1; visibility: hidden;
+}
+
+#sponsor-layer {
+  position: absolute; inset: 0; width: 409px; height: 1080px;
+  pointer-events: none; z-index: 1;
+}
+#sponsor-img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: none; object-position: top left; transition: opacity 0.8s ease-in-out;
+}
+#sponsor-img-next {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: none; object-position: top left; opacity: 0; transition: opacity 0.8s ease-in-out;
+}
+
+#overlay-layer {
+  position: absolute; inset: 0; width: 409px; height: 1080px;
+  pointer-events: none; z-index: 2;
+}
+#overlay-img {
+  position: absolute; inset: 0; width: 409px; height: 1080px;
+  opacity: 0; transition: opacity 0.2s ease;
+}
+
+#header-data, #standings-data {
+  position: absolute; inset: 0; width: 409px; height: 1080px; z-index: 3;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+#race-name-row {
+  position: absolute; left: 56px; right: 60px; top: 107px; height: 30px;
+  display: flex; align-items: center; gap: 8px;
+}
+#race-name-text {
+  flex: 1; min-width: 0;
+  font-family: 'StainlessCondBlack', Impact, sans-serif;
+  font-size: 27px; font-weight: normal; color: #ffffff;
+  white-space: nowrap; overflow: hidden; text-transform: uppercase; letter-spacing: 0.01em;
+}
+#flag-dot { width: 21px; height: 21px; flex-shrink: 0; object-fit: contain; }
+#lap-row {
+  position: absolute; left: 56px; right: 62px; top: 154px; height: 34px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+#lap-label {
+  font-family: 'AuthorityRoundedItalic', Impact, sans-serif;
+  font-size: 26px; font-weight: normal; color: #aaaaaa; letter-spacing: 0.04em;
+}
+#lap-value {
+  font-family: 'AuthorityRoundedItalic', Impact, sans-serif;
+  font-size: 28px; font-weight: normal; color: #ffffff; letter-spacing: 0.02em;
+}
+
+/* ── Standings rows ──────────────────────────────────────────────────────── */
+.s-row { position: absolute; left: 0; right: 0; overflow: hidden; }
+.s-pos {
+  position: absolute; left: 45px; width: 23px; text-align: right;
+  font-family: 'AuthorityRounded', Impact, sans-serif;
+  font-size: 20px; font-weight: 400; color: #ffffff;
+  text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
+  top: 50%; transform: translateY(-50%); line-height: 1;
+}
+.s-num-wrap {
+  position: absolute; left: 70px; width: 58px; top: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+/* Background pill — sized to the number PNG, not the full row */
+.s-num-bg {
+  display: flex; align-items: center; justify-content: center;
+  padding: 3px 5px; border-radius: 4px;
+  line-height: 0;
+}
+.s-num-img { max-width: 54px; max-height: 26px; width: auto; height: auto; object-fit: contain; display: block; }
+.s-num-text {
+  font-family: Verdana, sans-serif; font-size: 22px; font-weight: 700;
+  font-style: italic; color: #ffffff; text-align: center; line-height: 1; display: none;
+}
+.s-name {
+  position: absolute; left: 139px; right: 130px;
+  font-family: 'GladiusRegular', Impact, sans-serif;
+  font-size: 22px; font-weight: 700; font-style: italic;
+  color: #ffffff; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden;
+  top: 50%; transform: translateY(-50%); line-height: 1;
+}
+.s-gap {
+  position: absolute; right: 8px; width: 118px; text-align: left;
+  font-family: 'GladiusRegular', Impact, sans-serif;
+  font-size: 19px; font-weight: 900; font-style: italic;
+  color: #ffffff; letter-spacing: 0.02em;
+  top: 50%; transform: translateY(-50%); line-height: 1; white-space: nowrap;
+}
+.s-arrow { font-size: 14px; margin-left: 4px; vertical-align: middle; opacity: 1; transition: opacity 2.5s ease-out; }
+.s-name .s-arrow         { color: #ffffff; }
+.s-name .s-arrow.gained  { color: #2ecc40 !important; }
+.s-name .s-arrow.lost    { color: #e84444 !important; }
+.s-arrow.fade            { opacity: 0; }
+.is-player .s-pos, .is-player .s-name, .is-player .s-gap { color: #f5d100; }
+
+/* ── Personal panel v2 — x:45-363, y:623-1042 (318×419px) ────────────────── */
+/* Layout (top to bottom):
+     1. Headshot (200w max, 170h max cropped from bottom) + number badge overlaid top-left
+     2. blackbar.png + driver name on top
+     3. Gear / RPM row
+     4. Throttle arc (throttlebar.png, green fill) with Speed/MPH inside the bowl
+     5. Brake label + brakebar.png (red fill)
+   These pixel values are a first pass off the overlaynew.png mockup — expect to
+   tune after seeing it rendered against real telemetry. */
+
+#personal-panel-outer { left: 0; top: 0; }
+
+/* Zone 1: headshot + number badge — y:623-793 (170px tall) */
+#p-photo-wrap {
+  position: absolute;
+  left: 50%; top: 623px;
+  transform: translateX(-50%);
+  width: 200px; height: 170px;
+  overflow: hidden;
+  display: flex; align-items: flex-start; justify-content: center;
+}
+#p-photo-img {
+  max-width: 200px; /* never upscale past 200; browser scales down proportionally if wider */
+  height: auto;
+  display: block;
+}
+#p-num-wrap {
+  position: absolute;
+  left: 45px; top: 630px;
+  width: 78px; height: 60px;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 4; /* sits on top of the headshot */
+}
+#p-num-img {
+  max-width: 78px; max-height: 60px;
+  width: auto; height: auto; object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.8));
+}
+#p-num-text {
+  display: none;
+  font-family: 'ArgentumNovus-BlackItalic', Impact, sans-serif;
+  font-size: 40px; font-weight: 700; color: #ffffff; line-height: 1;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+}
+/* Manufacturer logo — upper right of headshot zone, mirrors number badge position */
+#p-manu-wrap {
+  position: absolute;
+  right: 45px; top: 630px;
+  width: 78px; height: 60px;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 4;
+}
+#p-manu-img {
+  max-width: 78px; max-height: 60px;
+  width: auto; height: auto; object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.8));
+  opacity: 0; transition: opacity 0.2s;
+}
+
+/* Zone 2: blackbar + name — y:793-822 */
+#p-name-wrap {
+  position: absolute;
+  left: 46px; top: 793px;
+  width: 317px; height: 29px;
+}
+#p-name-bar-img { width: 317px; height: 29px; display: block; }
+#p-name-text {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'ArgentumNovus-BlackItalic', Impact, sans-serif;
+  font-size: 20px; color: #ffffff; letter-spacing: 0.04em; text-transform: uppercase;
+  white-space: nowrap; overflow: hidden;
+}
+
+/* Zone 3: gear / rpm row — straddles the top of the throttle arc, so it must
+   paint above #p-throttle-wrap (higher z-index) — y:822-877 */
+#p-gearrpm-row {
+  position: absolute;
+  left: 60px; right: 60px; top: 827px; height: 55px;
+  z-index: 5;
+  display: flex; align-items: flex-end; justify-content: space-between;
+}
+#p-gear-stack, #p-rpm-stack {
+  display: flex; flex-direction: column; align-items: center;
+}
+#p-gear, #p-rpm-val {
+  font-family: 'ArgentumNovus-BlackItalic', Impact, sans-serif;
+  font-size: 40px; font-weight: 700; color: #ffffff; line-height: 1;
+}
+#p-gear-label, #p-rpm-tag {
+  font-family: 'ArgentumNovus-BlackItalic', Impact, sans-serif;
+  font-size: 14px; color: #aaaaaa; letter-spacing: 0.08em; line-height: 1.3;
+}
+
+/* Zone 4: throttle arc bowl — shifted 30px below the gear/rpm row's top so
+   gear/rpm stay fixed while the arc/speed/mph sit lower — y:852-955 */
+#p-throttle-wrap {
+  position: absolute;
+  left: 50%; top: 852px;
+  transform: translateX(-50%);
+  width: 194px; height: 103px;
+  z-index: 4;
+}
+#p-throttle-base, #p-throttle-fill {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+}
+#p-throttle-fill {
+  /* background is set dynamically via JS as a conic-gradient wedge that
+     sweeps from bottom-left, over the top of the arc, to bottom-right —
+     the mask then restricts that wedge to the throttlebar.png shape. */
+  -webkit-mask-mode: alpha; mask-mode: alpha;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;   mask-size: 100% 100%;
+}
+#p-speed-stack {
+  position: absolute; left: 0; right: 0; top: 58px;
+  display: flex; flex-direction: column; align-items: center;
+}
+#p-speed-val {
+  font-family: 'ArgentumNovus-BlackItalic', Impact, sans-serif;
+  font-size: 34px; font-weight: 700; color: #ffffff; line-height: 1;
+}
+#p-speed-label {
+  font-family: 'ArgentumNovus-BlackItalic', Impact, sans-serif;
+  font-size: 13px; color: #aaaaaa; letter-spacing: 0.1em; line-height: 1.4;
+}
+
+/* Zone 5: brake row — shifted down 30px with the throttle bar; still ends
+   above y≈1022, where overlay.png's bottom-right corner cuts in — y:970-994 */
+#p-brake-row {
+  position: absolute;
+  left: 46px; right: 60px; top: 970px; height: 24px;
+  padding-left: 8px;
+  display: flex; align-items: center; gap: 10px;
+}
+#p-brake-label {
+  font-family: 'ArgentumNovus-BlackItalic', Impact, sans-serif;
+  font-size: 13px; color: #ffffff; letter-spacing: 0.1em; flex-shrink: 0;
+}
+#p-brake-wrap {
+  position: relative; flex: 1; height: 19px;
+}
+#p-brake-base, #p-brake-fill {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+}
+#p-brake-fill {
+  background: #e84444;
+  -webkit-mask-mode: alpha; mask-mode: alpha;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;   mask-size: 100% 100%;
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 0.05s linear;
+}
+</style>
+</head>
+<body>
+<div id="scale-root">
+
+  <!-- Layer 1: Sponsors -->
+  <div id="sponsor-layer">
+    <img id="sponsor-img"      src="" alt="">
+    <img id="sponsor-img-next" src="" alt="">
+  </div>
+
+  <!-- Layer 2: Overlay chrome — single image, no split -->
+  <div id="overlay-layer">
+    <img id="overlay-img" src="" alt="">
+  </div>
+
+  <!-- Layer 3: Header data -->
+  <div id="header-data">
+    <div id="race-name-row">
+      <span id="race-name-text"></span>
+      <span id="stage-to-go" style="display:none;font-family:'StainlessCondBlack',Impact,sans-serif;font-size:22px;color:#ffffff;white-space:nowrap;flex-shrink:0;padding-right:6px;"></span>
+      <img id="flag-dot" src="" alt="">
+    </div>
+    <div id="lap-row">
+      <span id="lap-label">LAP</span>
+      <span id="lap-value">—</span>
+    </div>
+  </div>
+
+  <!-- Layer 3: Standings + personal panel -->
+  <div id="standings-data">
+    <!-- Top 10 — player-centered window -->
+    <div class="s-row" id="row-1"  style="top:206px; height:47px;"></div>
+    <div class="s-row" id="row-2"  style="top:253px; height:41px;"></div>
+    <div class="s-row" id="row-3"  style="top:294px; height:41px;"></div>
+    <div class="s-row" id="row-4"  style="top:335px; height:41px;"></div>
+    <div class="s-row" id="row-5"  style="top:376px; height:41px;"></div>
+    <div class="s-row" id="row-6"  style="top:417px; height:41px;"></div>
+    <div class="s-row" id="row-7"  style="top:458px; height:41px;"></div>
+    <div class="s-row" id="row-8"  style="top:499px; height:41px;"></div>
+    <div class="s-row" id="row-9"  style="top:540px; height:41px;"></div>
+    <div class="s-row" id="row-10" style="top:581px; height:41px;"></div>
+  </div>
+
+  <!-- Personal panel — separate from standings-data, always visible when widget is visible -->
+  <div id="personal-panel-outer" style="position:absolute;inset:0;width:409px;height:1080px;z-index:3;visibility:hidden;">
+
+      <!-- Headshot (cropped from bottom, capped 200x170) + number badge on top -->
+      <div id="p-photo-wrap">
+        <img id="p-photo-img" src="" alt="" onerror="this.style.opacity='0'" onload="this.style.opacity='1'">
+      </div>
+      <div id="p-num-wrap">
+        <img id="p-num-img" src="" alt="" onerror="this.style.display='none';document.getElementById('p-num-text').style.display='block'">
+        <span id="p-num-text"></span>
+      </div>
+      <div id="p-manu-wrap">
+        <img id="p-manu-img" src="" alt="">
+      </div>
+
+      <!-- blackbar.png + driver name -->
+      <div id="p-name-wrap">
+        <img id="p-name-bar-img" src="" alt="">
+        <span id="p-name-text"></span>
+      </div>
+
+      <!-- Gear / RPM -->
+      <div id="p-gearrpm-row">
+        <div id="p-gear-stack">
+          <span id="p-gear">—</span>
+          <span id="p-gear-label">GEAR</span>
+        </div>
+        <div id="p-rpm-stack">
+          <span id="p-rpm-val">0</span>
+          <span id="p-rpm-tag">RPM</span>
+        </div>
+      </div>
+
+      <!-- Throttle arc bowl (throttlebar.png, green fill) + Speed/MPH -->
+      <div id="p-throttle-wrap">
+        <img id="p-throttle-base" src="" alt="">
+        <div id="p-throttle-fill"></div>
+        <div id="p-speed-stack">
+          <span id="p-speed-val">0</span>
+          <span id="p-speed-label">MPH</span>
+        </div>
+      </div>
+
+      <!-- Brake label + brakebar.png (red fill) -->
+      <div id="p-brake-row">
+        <span id="p-brake-label">BRAKE</span>
+        <div id="p-brake-wrap">
+          <img id="p-brake-base" src="" alt="">
+          <div id="p-brake-fill"></div>
+        </div>
+      </div>
+
+  </div><!-- end personal-panel-outer -->
+
+</div><!-- end scale-root -->
+<script>
+// ── Chase highlight ─────────────────────────────────────────────────────────
+// The main process tells every overlay which car numbers are in the chase
+// (empty list = feature off). Name elements carry data-chase-num; the class
+// is toggled here so it updates instantly, without waiting for a re-render.
+let _CHASE = new Set();
+const chaseKey = n => String(n == null ? '' : n).trim().replace(/"/g, '');
+const chaseCls = n => (_CHASE.size && _CHASE.has(chaseKey(n))) ? ' chase' : '';
+function chaseMark(el, n) {
+  if (!el) return;
+  const k = chaseKey(n);
+  el.dataset.chaseNum = k;
+  el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(k));
+}
+function _chasePass() {
+  document.querySelectorAll('[data-chase-num]').forEach(el =>
+    el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(el.dataset.chaseNum)));
+}
+function _setChase(list) {
+  _CHASE = new Set((Array.isArray(list) ? list : []).map(chaseKey));
+  _chasePass();
+}
+if (window.shl && window.shl.onChaseSet) {
+  window.shl.onChaseSet(_setChase);
+  if (window.shl.getChaseSet) window.shl.getChaseSet().then(_setChase).catch(() => {});
+}
+window.addEventListener('message', e => {      // layout-editor preview
+  if (typeof e.data !== 'string' || e.data.indexOf('"_chase"') < 0) return;
+  try { const m = JSON.parse(e.data); if (Array.isArray(m._chase)) _setChase(m._chase); } catch (x) {}
+});
+// ── PSF bootstrap ─────────────────────────────────────────────────────────
+const psf         = window.__PSF || {};
+const params      = new URLSearchParams(location.search);
+const INSTALL_DIR = psf.installDir || params.get('installdir') || '';
+const SERIES_ID   = psf.series || params.get('series') || 'default';
+const IS_DEFAULT  = !SERIES_ID || SERIES_ID === 'default';
+const SCALE       = Math.max(0.1, Math.min(4.0, parseFloat(psf.scale   || params.get('scale')   || '1.0')));
+const OPACITY     = Math.max(0.0, Math.min(1.0, parseFloat(psf.opacity || params.get('opacity') || '1.0')));
+const WS_URL      = psf.wsUrl || `ws://${location.hostname || 'localhost'}:8765`;
+const HTTP_BASE   = psf.assetBase ? psf.assetBase.replace(/\/assets$/, '') : `http://${location.hostname || 'localhost'}:8766`;
+
+let _driverColors = {};
+let DNF_DISPLAY     = (window.__PSF?.dnfdisplay || params.get('dnfdisplay') || 'reason');
+let VISIBILITY_MODE = psf.visibilitymode || params.get('visibilitymode') || 'at_track';
+let SPONSOR_ROTATION_MS = (parseInt(psf.sponsorrotationtime || params.get('sponsorrotationtime') || '10') * 1000) || 10000;
+let customName = psf.customname ? decodeURIComponent(psf.customname) : (params.get('customname') ? decodeURIComponent(params.get('customname')) : '');
+let SHOW_MANU = (psf.showmanu || params.get('showmanu') || '1') !== '0';
+
+// Manufacturer: carIdx → slot int (1-4) from d.drivers
+// Per-car override: series/[id]/manufacturers/[num].png takes priority
+let _carmakeByIdx  = {};  // carIdx → carmake slot int 1-4
+let _manuOverrides = new Set();  // car numbers with per-car override PNGs
+let _manuCacheBust = Date.now(); // changes on session change to bust browser cache
+
+function _buildManuMap(d) {
+  (d.drivers || []).forEach(e => {
+    if (e.carIdx == null) return;
+    const cm = e.carMakeFromFile;
+    if (cm != null && cm >= 0) _carmakeByIdx[e.carIdx] = cm + 1;
+  });
+  // Fallback: standings also carries carMakeFromFile from bridge
+  (d.standings || []).forEach(e => {
+    if (e.carIdx == null || _carmakeByIdx[e.carIdx]) return;
+    const cm = e.carMakeFromFile;
+    if (cm != null && cm >= 0) _carmakeByIdx[e.carIdx] = cm + 1;
+  });
+}
+
+function manuImgSrc(num, carIdx) {
+  const slot = _carmakeByIdx[carIdx] || 0;
+  const slotSrc = slot ? assetPath(`series/${SERIES_ID}/manufacturers/manu${slot}.png`) + `?v=${_manuCacheBust}` : null;
+  const overrideSrc = _manuOverrides.has(String(num).trim())
+    ? assetPath(`series/${SERIES_ID}/manufacturers/${num}.png`) + `?v=${_manuCacheBust}`
+    : null;
+  return { override: overrideSrc, slot: slotSrc };
+}
+
+function assetPath(rel) {
+  if (psf.assetBase) return psf.assetBase + '/' + rel;
+  if (INSTALL_DIR) {
+    const enc = INSTALL_DIR.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+    return 'file:///' + enc + '/' + rel;
+  }
+  return rel;
+}
+
+const FP_BASE = assetPath('images/foxpersonal');
+
+// ── Font injection ────────────────────────────────────────────────────────
+(function injectFonts() {
+  const fonts = [
+    { family: 'AuthorityRounded',         file: 'authority-rounded.ttf',        fmt: 'truetype' },
+    { family: 'AuthorityRoundedItalic',   file: 'authority-rounded-italic.ttf',  fmt: 'truetype' },
+    { family: 'StainlessCondBlack',       file: 'STAINLESSCOND-BLACK.OTF',        fmt: 'opentype' },
+    { family: 'GladiusRegular',           file: 'Gladius-Regular.otf',            fmt: 'opentype' },
+    { family: 'ArgentumNovus-BlackItalic', file: 'ArgentumNovus-BlackItalic.ttf', fmt: 'truetype' },
+  ];
+  const css = fonts.map(f =>
+    `@font-face { font-family: '${f.family}'; src: url('${assetPath('fonts/' + f.file)}') format('${f.fmt}'); font-weight: normal; font-style: normal; font-display: swap; }`
+  ).join('\n');
+  const el = document.createElement('style');
+  el.textContent = css;
+  document.head.appendChild(el);
+})();
+
+// ── Scale ─────────────────────────────────────────────────────────────────
+const root = document.getElementById('scale-root');
+root.style.transform = `scale(${SCALE})`;
+document.body.style.width  = Math.round(409 * SCALE) + 'px';
+document.body.style.height = Math.round(1080 * SCALE) + 'px';
+
+// ── Overlay chrome ────────────────────────────────────────────────────────
+document.getElementById('overlay-img').src = FP_BASE + '/overlay.png';
+
+// ── Static bar assets (blackbar / throttle arc / brake bar) ───────────────
+document.getElementById('p-name-bar-img').src   = FP_BASE + '/blackbar.png';
+document.getElementById('p-throttle-base').src  = FP_BASE + '/throttlebar.png';
+document.getElementById('p-brake-base').src     = FP_BASE + '/brakebar.png';
+
+(function wireMasks() {
+  const throttleUrl = `url(${FP_BASE}/throttlebar.png)`;
+  const brakeUrl    = `url(${FP_BASE}/brakebar.png)`;
+  const tFill = document.getElementById('p-throttle-fill');
+  const bFill = document.getElementById('p-brake-fill');
+  tFill.style.webkitMaskImage = throttleUrl; tFill.style.maskImage = throttleUrl;
+  bFill.style.webkitMaskImage = brakeUrl;    bFill.style.maskImage = brakeUrl;
+})();
+
+// ── Visibility ────────────────────────────────────────────────────────────
+let _preview = false;
+
+function checkVisibility(d) {
+  if (_preview) return true;
+  switch (VISIBILITY_MODE) {
+    case 'always':   return true;
+    case 'in_car':   return !!(d.atTrack && d.player?.inCar);
+    case 'at_track':
+    default:         return !!d.atTrack;
+  }
+}
+
+function setVisible(v) {
+  document.getElementById('sponsor-layer').style.visibility       = v ? 'visible' : 'hidden';
+  document.getElementById('overlay-img').style.opacity            = v ? OPACITY   : '0';
+  document.getElementById('header-data').style.visibility         = v ? 'visible' : 'hidden';
+  document.getElementById('standings-data').style.visibility      = v ? 'visible' : 'hidden';
+  document.getElementById('personal-panel-outer').style.visibility = v ? 'visible' : 'hidden';
+}
+
+// ── Race name auto-fit ────────────────────────────────────────────────────
+const _rnCanvas = document.createElement('canvas');
+const _rnCtx    = _rnCanvas.getContext('2d');
+function measureText(text, sizePx) {
+  _rnCtx.font = `normal ${sizePx}px 'StainlessCondBlack', Impact, sans-serif`;
+  return _rnCtx.measureText(text.toUpperCase()).width;
+}
+function updateRaceName(name) {
+  const el = document.getElementById('race-name-text');
+  el.textContent = name;
+  const available = el.offsetWidth - 8;
+  if (available <= 0) return;
+  const MAX_SIZE = 27, MIN_SIZE = 10;
+  let size = MAX_SIZE;
+  while (size > MIN_SIZE && measureText(name, size) > available) size -= 0.5;
+  el.style.fontSize = size + 'px';
+}
+
+// ── Flag dot ──────────────────────────────────────────────────────────────
+let _lastFlag = '';
+function updateFlag(d) {
+  const state       = (d.sessionState || '').toLowerCase();
+  const session     = (d.session      || '').toLowerCase();
+  const flag        = (d.sessionFlag  || '').toLowerCase();
+  const lapsRem     = d.lapsRemaining || 0;
+  const stageActive = !!d.stageRacingActive;
+  const stageComplete = !!d.stageCompleteActive;
+  const stageFinal  = !!d.stageFinalStage;
+  let name;
+  if (state === 'checkered' || state === 'cool down') name = 'checkered';
+  else if (stageActive && !stageFinal && stageComplete) name = 'stage';
+  else if (lapsRem === 1 && session === 'race' && state === 'racing') name = 'white';
+  else { switch (flag) { case 'yellow': name='yellow'; break; case 'red': name='red'; break; default: name='green'; } }
+  if (name === _lastFlag) return;
+  _lastFlag = name;
+  document.getElementById('flag-dot').src = `${FP_BASE}/flags/${name}.png`;
+}
+
+// ── Lap display ───────────────────────────────────────────────────────────
+function updateLap(d) {
+  const session     = (d.session      || '').toLowerCase();
+  const state       = (d.sessionState || '').toLowerCase();
+  const flag        = (d.sessionFlag  || '').toLowerCase();
+  const lapsComp    = d.lapsComplete  || 0;
+  const lapsRem     = d.lapsRemaining || 0;
+  const lapsTotal   = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  const lapNum      = lapsComp + 1;
+  const isYellow    = flag === 'yellow';
+  const isRace      = session === 'race';
+  const stageActive = !!d.stageRacingActive;
+  const stageFinal  = !!d.stageFinalStage;
+  const stageComplete = !!d.stageCompleteActive;
+  const stageNum    = d.stageNum       || 0;
+  const stageCompNum = d.stageCompleteNum || 0;
+  const stageLap    = d.stageLap       || 0;
+  const stageTotalLaps = d.stageTotalLaps || 0;
+  const stageRem    = Math.max(0, stageTotalLaps - stageLap);
+
+  const rnEl     = document.getElementById('race-name-text');
+  const labelEl  = document.getElementById('lap-label');
+  const valueEl  = document.getElementById('lap-value');
+  const toGoEl   = document.getElementById('stage-to-go');
+
+  labelEl.style.color = '#aaaaaa';
+  valueEl.style.color = '#ffffff';
+  rnEl.style.display  = '';
+  if (toGoEl) toGoEl.style.display = 'none';
+
+  if (!isRace) {
+    const timeRem = d.timeRemaining || -1;
+    if (session === 'practice' && timeRem >= 0) {
+      const mins = Math.floor(timeRem / 60);
+      const secs = Math.floor(timeRem % 60);
+      labelEl.textContent = 'PRACTICE';
+      valueEl.textContent = `${mins}:${String(secs).padStart(2, '0')}`;
+    } else {
+      labelEl.textContent = session === 'qualifying' ? 'QUALIFYING' : session === 'testing' ? 'TESTING' : 'PRACTICE';
+      valueEl.textContent = '';
+    }
+    return;
+  }
+
+  if (state === 'get in car')                        { labelEl.textContent = 'GRIDDING';  valueEl.textContent = ''; return; }
+  if (state === 'warmup' || state === 'parade laps') { labelEl.textContent = 'PACING';    valueEl.textContent = ''; return; }
+  if (state === 'cool down')                         { labelEl.textContent = 'RESULTS';   valueEl.textContent = ''; return; }
+  if (state === 'checkered')                         { labelEl.textContent = 'CHECKERED'; valueEl.textContent = ''; return; }
+
+  if (stageActive && !stageFinal) {
+    rnEl.style.display = '';
+    if (stageComplete) {
+      requestAnimationFrame(() => updateRaceName(`STAGE ${stageCompNum} COMPLETE`));
+      if (isYellow) {
+        labelEl.style.color = valueEl.style.color = '#ffdc00';
+        labelEl.textContent = 'CAUTION';
+        valueEl.textContent = lapsTotal > 0 ? `LAP ${lapNum} | ${lapsTotal}` : `LAP ${lapNum}`;
+      } else { labelEl.textContent = ''; valueEl.textContent = ''; }
+      return;
+    }
+    if (isYellow) {
+      rnEl.style.fontSize = '22px'; rnEl.textContent = `STAGE ${stageNum}`;
+      if (toGoEl) { toGoEl.textContent = `${stageRem} TO GO`; toGoEl.style.display = ''; }
+      labelEl.style.color = valueEl.style.color = '#ffdc00';
+      labelEl.textContent = 'CAUTION';
+      valueEl.textContent = lapsTotal > 0 ? `LAP ${lapNum} | ${lapsTotal}` : `LAP ${lapNum}`;
+      return;
+    }
+    rnEl.style.fontSize = '22px'; rnEl.textContent = `STAGE ${stageNum}`;
+    if (toGoEl) { toGoEl.textContent = `${stageRem} TO GO`; toGoEl.style.display = ''; }
+    labelEl.textContent = 'LAP';
+    valueEl.textContent = lapsTotal > 0 ? `${lapNum} | ${lapsTotal}` : `${lapNum}`;
+    return;
+  }
+
+  if (isYellow) {
+    const lapStr = lapsTotal > 0 && lapsComp >= Math.floor(lapsTotal / 2) ? `${lapsRem} TO GO` : (lapsTotal > 0 ? `LAP ${lapNum} OF ${lapsTotal}` : `LAP ${lapNum}`);
+    labelEl.style.color = valueEl.style.color = '#ffdc00';
+    labelEl.textContent = 'CAUTION'; valueEl.textContent = lapStr; return;
+  }
+  if (lapsTotal <= 0) { labelEl.textContent = 'LAP'; valueEl.textContent = lapNum > 0 ? `${lapNum}` : '—'; return; }
+  if (lapsRem <= 1 && lapsComp > 0) { labelEl.textContent = 'FINAL LAP'; valueEl.textContent = ''; return; }
+  const halfway = Math.floor(lapsTotal / 2);
+  if (lapsComp >= halfway) { labelEl.textContent = ''; valueEl.textContent = `${lapsRem} TO GO`; }
+  else { labelEl.textContent = 'LAP'; valueEl.textContent = `${lapNum} | ${lapsTotal}`; }
+}
+
+// ── Number image ──────────────────────────────────────────────────────────
+function numImgSrc(num) {
+  const n = (num || '').trim();
+  if (!n || n === '??' || IS_DEFAULT) return '';
+  return assetPath(`series/${SERIES_ID}/numbers/${n}.png`);
+}
+
+// ── Gap formatting ────────────────────────────────────────────────────────
+function displayName(entry) {
+  const raw = entry.name || '?';
+  return raw.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+
+function fmtGap(entry, isLeader, session) {
+  const lapsDown = entry.lapsDown || 0;
+  const status   = (entry.status || '').toLowerCase();
+  const t        = entry.time || 0;
+  const isPQ     = session === 'practice' || session === 'qualifying' || session === 'testing';
+  if (status && status !== 'running') return DNF_DISPLAY === 'out' ? 'OUT' : status.toUpperCase().slice(0, 8);
+  if (isPQ) return t > 0 ? t.toFixed(3) : '';
+  if (lapsDown > 0) return `-${lapsDown}L`;
+  if (isLeader) return '';
+  return t > 0 ? `-${t.toFixed(2)}` : '';
+}
+
+// ── Build a standings row ─────────────────────────────────────────────────
+function buildRow(el, entry, displayPos, session, playerCarIdx) {
+  if (!entry) { el.innerHTML = ''; el.className = 's-row'; return; }
+  const isPlayer = entry.carIdx === playerCarIdx;
+  el.className   = 's-row' + (isPlayer ? ' is-player' : '');
+  const isLeader = displayPos === 1;
+  const gap      = fmtGap(entry, isLeader, session);
+  const numSrc   = numImgSrc(entry.number);
+  const name     = displayName(entry);
+  const numColor = _driverColors[(entry.number || '').trim()] || '';
+  const numBg    = numColor ? `background:${numColor}` : '';
+  const numHtml  = numSrc
+    ? `<div class="s-num-wrap"><div class="s-num-bg" style="${numBg}"><img class="s-num-img" src="${numSrc}" onerror="this.style.display='none';this.nextElementSibling.style.display='block';" alt="${entry.number}"><span class="s-num-text">${entry.number || ''}</span></div></div>`
+    : `<div class="s-num-wrap"><div class="s-num-bg" style="${numBg}"><span class="s-num-text" style="display:block">${entry.number || ''}</span></div></div>`;
+  el.innerHTML = `
+    <span class="s-pos">${displayPos}</span>
+    ${numHtml}
+    <span class="s-name${chaseCls(entry.number)}" data-chase-num="${chaseKey(entry.number)}">${name}</span>
+    ${gap ? `<span class="s-gap">${gap}</span>` : ''}
+  `;
+  const nameEl = el.querySelector('.s-name');
+  if (nameEl) {
+    let size = 22; nameEl.style.fontSize = '';
+    while (nameEl.scrollWidth > nameEl.offsetWidth && size > 12) { size -= 0.5; nameEl.style.fontSize = size + 'px'; }
+  }
+}
+
+// ── Player-centered standings window ─────────────────────────────────────
+// Rows 1-5: always P1-P5
+// Rows 6-10: 2 ahead of player + player + 2 behind (5-car window)
+// If player P1-P8: just show P1-P10
+// If player last: top 5 + 4 positions ahead of player
+function buildWindow(standings, playerCarIdx) {
+  const total     = standings.length;
+  const playerIdx = standings.findIndex(s => s.carIdx === playerCarIdx);
+
+  const top5 = standings.slice(0, 5);
+
+  // Player in top 8 or not found — show P1-P10 straight
+  if (playerIdx < 0 || playerIdx <= 7) {
+    return { top5, window5: standings.slice(5, 10), windowStart: 5 };
+  }
+
+  // Player P9+ — 2 ahead, player, 2 behind
+  let windowStart = playerIdx - 2;
+  // Clamp — never overlap top 5
+  windowStart = Math.max(5, windowStart);
+  // Clamp at end of field
+  const clampedEnd = Math.min(total - 1, windowStart + 4);
+  if (clampedEnd - windowStart < 4) {
+    windowStart = Math.max(5, clampedEnd - 4);
+  }
+
+  const window5 = [];
+  for (let i = 0; i < 5; i++) {
+    window5.push(standings[windowStart + i] || null);
+  }
+
+  return { top5, window5, windowStart };
+}
+
+// ── FLIP position change tracking ─────────────────────────────────────────
+let _prevOrder    = [];
+let _prevStandingPos = new Map(); // carIdx → actual standings position (1-based)
+
+function renderStandings(standings, session, playerCarIdx) {
+  const { top5, window5, windowStart } = buildWindow(standings, playerCarIdx);
+
+  const newOrder = [...top5, ...window5.filter(Boolean)].map(s => s.carIdx);
+  const oldOrder = _prevOrder.slice();
+
+  // Snapshot Y positions for FLIP
+  const firstPos = new Map();
+  for (let i = 0; i < 10; i++) {
+    const el = document.getElementById(`row-${i + 1}`);
+    const ci = el ? parseInt(el.dataset.caridx || '-1') : -1;
+    if (ci >= 0) firstPos.set(ci, el.offsetTop);
+  }
+
+  // Rows 1-5: always top 5
+  top5.forEach((entry, i) => {
+    const el = document.getElementById(`row-${i + 1}`);
+    buildRow(el, entry, i + 1, session, playerCarIdx);
+    if (el) el.dataset.caridx = entry ? entry.carIdx : '';
+  });
+
+  // Rows 6-10: 5-car player window
+  window5.forEach((entry, i) => {
+    const el = document.getElementById(`row-${i + 6}`);
+    const displayPos = entry ? (windowStart + i + 1) : null;
+    buildRow(el, entry, displayPos, session, playerCarIdx);
+    if (el) el.dataset.caridx = entry ? entry.carIdx : '';
+  });
+
+  // Build actual standings position map for arrow direction
+  const newStandingPos = new Map();
+  standings.forEach((s, i) => newStandingPos.set(s.carIdx, i + 1));
+
+  // FLIP animation
+  if (oldOrder.length > 0) {
+    requestAnimationFrame(() => {
+      const pending = [];
+      for (let i = 0; i < 10; i++) {
+        const el  = document.getElementById(`row-${i + 1}`);
+        const ci  = parseInt(el?.dataset.caridx || '-1');
+        if (ci < 0) continue;
+        const oldTop = firstPos.get(ci);
+        if (oldTop === undefined) continue;
+        const dy = oldTop - el.offsetTop;
+        if (Math.abs(dy) < 1) continue;
+
+        // Arrow based on actual standings position change, not DOM row movement
+        const oldPos = _prevStandingPos.get(ci);
+        const newPos = newStandingPos.get(ci);
+        const actuallyGained = oldPos !== undefined && newPos !== undefined && newPos < oldPos;
+        const actuallyLost   = oldPos !== undefined && newPos !== undefined && newPos > oldPos;
+
+        el.style.transition = 'none';
+        el.style.transform  = `translateY(${dy}px)`;
+        void el.offsetWidth;
+        pending.push({ el });
+
+        if (actuallyGained || actuallyLost) {
+          const nameEl = el.querySelector('.s-name');
+          if (nameEl) {
+            const ex = nameEl.querySelector('.s-arrow'); if (ex) ex.remove();
+            const arrow = document.createElement('span');
+            arrow.className = `s-arrow ${actuallyGained ? 'gained' : 'lost'}`;
+            arrow.textContent = actuallyGained ? ' ▲' : ' ▼';
+            nameEl.appendChild(arrow);
+            setTimeout(() => arrow.classList.add('fade'), 500);
+            setTimeout(() => arrow.remove(), 3000);
+          }
+        }
+      }
+      requestAnimationFrame(() => {
+        pending.forEach(({ el }) => {
+          el.style.transition = 'transform 0.75s cubic-bezier(0.65, 0, 0.35, 1)';
+          el.style.transform  = '';
+        });
+        setTimeout(() => pending.forEach(({ el }) => { el.style.transition = ''; el.style.transform = ''; }), 800);
+      });
+    });
+  }
+  _prevOrder = newOrder;
+  _prevStandingPos = newStandingPos;
+}
+
+function updateGaps(standings, session, playerCarIdx) {
+  const { top5, window5, windowStart } = buildWindow(standings, playerCarIdx);
+  top5.forEach((entry, i) => {
+    const el  = document.getElementById(`row-${i + 1}`);
+    const gap = el?.querySelector('.s-gap');
+    if (gap && entry) gap.textContent = fmtGap(entry, i === 0, session);
+  });
+  window5.forEach((entry, i) => {
+    const el  = document.getElementById(`row-${i + 6}`);
+    const gap = el?.querySelector('.s-gap');
+    if (gap && entry) gap.textContent = fmtGap(entry, false, session);
+  });
+}
+
+// ── Personal panel — player card ──────────────────────────────────────────
+let _playerNumLoaded   = false;
+let _playerPhotoLoaded = false;
+let _playerManuLoaded  = false;
+let _lastPlayerNum     = '';
+
+function headshotSrc(num) {
+  if (!num) return null;
+  const n = num.trim();
+  return assetPath(`series/${SERIES_ID}/headshots/${n}.png`);
+}
+
+function updatePlayerCard(d) {
+  const playerCarIdx = d.playerCarIdx ?? -1;
+  const drivers      = d.drivers || [];
+  const playerDriver = drivers.find(dr => dr.carIdx === playerCarIdx);
+  const num          = (playerDriver?.number  || '').trim();
+  const carmake      = (playerDriver?.carmake || '').trim();
+
+  if (num && num !== _lastPlayerNum) {
+    _playerNumLoaded   = false;
+    _playerPhotoLoaded = false;
+    _playerManuLoaded  = false;
+    _lastPlayerNum     = num;
+    // Reset this carIdx's manu slot — car file may differ
+    delete _carmakeByIdx[playerCarIdx];
+    window._manuPlayerLogged = false;
+    const numImg_r  = document.getElementById('p-num-img');
+    const photoImg_r = document.getElementById('p-photo-img');
+    const manuImg_r  = document.getElementById('p-manu-img');
+    if (numImg_r)   numImg_r.src = '';
+    if (photoImg_r) { photoImg_r.style.opacity = '0'; photoImg_r.src = ''; }
+    if (manuImg_r)  { manuImg_r.dataset.src = ''; manuImg_r.style.opacity = '0'; manuImg_r.src = ''; }
+  }
+
+  if (!num) return;
+
+  const playerName = (d.playerName || '').toUpperCase();
+  document.getElementById('p-name-text').textContent = playerName;
+
+  // Number PNG (top-left badge)
+  if (!_playerNumLoaded) {
+    const numSrc = numImgSrc(num);
+    const numImg = document.getElementById('p-num-img');
+    const numTxt = document.getElementById('p-num-text');
+    if (numSrc) {
+      _playerNumLoaded = true;
+      numImg.src = numSrc; numImg.style.display = 'block';
+      numTxt.style.display = 'none'; numTxt.textContent = num;
+    } else {
+      numImg.style.display = 'none';
+      numTxt.style.display = 'block'; numTxt.textContent = num;
+      _playerNumLoaded = true;
+    }
+  }
+
+  // Headshot — playerheadshot.png overrides series headshot
+  if (!_playerPhotoLoaded) {
+    _playerPhotoLoaded = true;
+    const photoImg  = document.getElementById('p-photo-img');
+    const playerSrc = assetPath('images/playerheadshot.png');
+    const seriesSrc = headshotSrc(num);
+    const tryLoad = (src, fallback) => {
+      photoImg.onerror = fallback
+        ? () => { photoImg.onerror = null; photoImg.src = fallback; }
+        : () => { photoImg.onerror = null; photoImg.style.opacity = '0'; };
+      photoImg.src = src;
+    };
+    tryLoad(playerSrc, seriesSrc || null);
+  }
+
+  // Manufacturer logo (top-right badge)
+  const manuWrap = document.getElementById('p-manu-wrap');
+  if (manuWrap) manuWrap.style.display = SHOW_MANU ? '' : 'none';
+  if (SHOW_MANU) {
+    const manuImg = document.getElementById('p-manu-img');
+    const { override, slot: slotSrc } = manuImgSrc(num, playerCarIdx);
+    const primarySrc  = override || slotSrc;
+    if (!window._manuPlayerLogged && primarySrc) {
+      window._manuPlayerLogged = true;
+      console.log(`[MANU] player carIdx=${playerCarIdx} num=${num} slot=${_carmakeByIdx[playerCarIdx]} primarySrc=${primarySrc}`);
+    }
+    if (manuImg && primarySrc && (manuImg.dataset.src !== primarySrc)) {
+      manuImg.dataset.src = primarySrc;
+      manuImg.onload  = () => { manuImg.style.opacity = '1'; };
+      manuImg.onerror = () => { manuImg.style.opacity = '0'; };
+      manuImg.src = primarySrc;
+    }
+  }
+}
+
+// ── Update personal panel from player data ────────────────────────────────
+let _lastGear = -1, _lastRpm = -1, _lastBrake = -1, _lastThrottle = -1, _lastSpeed = -1;
+
+function setBarFill(fillEl, pct) {
+  // Straight/slanted bars (brake) — reveal left-to-right by clipping in from the right.
+  fillEl.style.clipPath = `inset(0 ${(100 - pct * 100).toFixed(2)}% 0 0)`;
+}
+
+function setThrottleFill(fillEl, pct) {
+  // Curved arc bar — reveal by ANGLE, sweeping from bottom-left, over the
+  // top, to bottom-right (same sweep direction as the old canvas RPM gauge).
+  // Pivot is bottom-center of the #p-throttle-wrap box; the mask then clips
+  // this wedge down to the actual throttlebar.png shape.
+  const sweep = (pct * 180).toFixed(2);
+  fillEl.style.background =
+    `conic-gradient(from 270deg at 50% 97%, #2ecc40 0deg, #2ecc40 ${sweep}deg, transparent ${sweep}deg, transparent 180deg)`;
+}
+
+function updatePersonal(d) {
+  const p = d.player || {};
+  const inCar = p.inCar ?? true;
+
+  // Reset telemetry when out of car
+  if (!inCar) {
+    if (_lastGear !== 0)     { _lastGear = 0;     document.getElementById('p-gear').textContent = '—'; }
+    if (_lastRpm  !== 0)     { _lastRpm  = 0;      const rv = document.getElementById('p-rpm-val'); rv.textContent = '0'; rv.style.color = ''; }
+    if (_lastThrottle !== 0) { _lastThrottle = 0;  setThrottleFill(document.getElementById('p-throttle-fill'), 0); }
+    if (_lastBrake !== 0)    { _lastBrake = 0;     setBarFill(document.getElementById('p-brake-fill'), 0); }
+    if (_lastSpeed !== 0)    { _lastSpeed = 0;     document.getElementById('p-speed-val').textContent = '0'; }
+    return;
+  }
+
+  const rpm      = p.rpm      || 0;
+  const gear     = p.gear     ?? 0;
+  const throttle = Math.min(1, Math.max(0, p.throttle || 0));
+  const brake    = Math.min(1, Math.max(0, p.brake    || 0));
+  const speedMph = Math.round(p.speedMph || 0);
+
+  // Gear
+  if (gear !== _lastGear) {
+    _lastGear = gear;
+    const gearStr = gear === 0 ? 'N' : gear === -1 ? 'R' : String(gear);
+    document.getElementById('p-gear').textContent = gearStr;
+  }
+
+  // RPM value (plain text, no gauge)
+  if (Math.abs(rpm - _lastRpm) > 25 || (rpm === 0 && _lastRpm !== 0)) {
+    _lastRpm = rpm;
+    document.getElementById('p-rpm-val').textContent = Math.round(rpm).toString();
+    document.getElementById('p-rpm-val').style.color = p.rpmWarning ? '#ff2200' : '';
+  }
+
+  // Throttle arc fill
+  const throttlePct = Math.round(throttle * 1000);
+  if (throttlePct !== _lastThrottle) {
+    _lastThrottle = throttlePct;
+    setThrottleFill(document.getElementById('p-throttle-fill'), throttle);
+  }
+
+  // Brake bar fill
+  const brakePct = Math.round(brake * 1000);
+  if (brakePct !== _lastBrake) {
+    _lastBrake = brakePct;
+    setBarFill(document.getElementById('p-brake-fill'), brake);
+  }
+
+  // Speed
+  if (speedMph !== _lastSpeed) {
+    _lastSpeed = speedMph;
+    document.getElementById('p-speed-val').textContent = String(speedMph);
+  }
+}
+
+// ── Sponsor rotation ──────────────────────────────────────────────────────
+let sponsorFiles = [], sponsorIndex = 0, _sponsorTimer = null;
+
+async function loadSponsors() {
+  let count = 0;
+  try {
+    const r = await fetch(`${HTTP_BASE}/fox-sponsor-count?base=foxpersonal`);
+    if (r.ok) { const j = await r.json(); count = j.count || 0; }
+  } catch(_) {}
+
+  if (count > 0) {
+    sponsorFiles = [];
+    for (let i = 1; i <= count; i++)
+      sponsorFiles.push(`${FP_BASE}/sponsors/sponsor${String(i).padStart(2,'0')}.png`);
+  } else {
+    const probes = [];
+    for (let i = 1; i <= 20; i++) {
+      probes.push(new Promise(res => {
+        const img = new Image();
+        const src = `${FP_BASE}/sponsors/sponsor${String(i).padStart(2,'0')}.png`;
+        img.onload = () => res(src); img.onerror = () => res(null); img.src = src;
+      }));
+    }
+    sponsorFiles = (await Promise.all(probes)).filter(Boolean);
+  }
+
+  if (sponsorFiles.length > 0) {
+    document.getElementById('sponsor-img').src = sponsorFiles[0];
+    if (sponsorFiles.length > 1) startSponsorRotation();
+  }
+}
+
+function startSponsorRotation() {
+  if (_sponsorTimer) clearInterval(_sponsorTimer);
+  let curr = document.getElementById('sponsor-img');
+  let next = document.getElementById('sponsor-img-next');
+  _sponsorTimer = setInterval(() => {
+    if (sponsorFiles.length < 2) return;
+    sponsorIndex = (sponsorIndex + 1) % sponsorFiles.length;
+    next.src = sponsorFiles[sponsorIndex];
+    next.onload = () => {
+      next.style.transition = curr.style.transition = 'opacity 0.8s ease-in-out';
+      next.style.opacity = '1'; curr.style.opacity = '0';
+      setTimeout(() => { [curr, next] = [next, curr]; next.style.transition = 'none'; }, 850);
+    };
+  }, SPONSOR_ROTATION_MS);
+}
+
+// ── Standings source ──────────────────────────────────────────────────────
+function getStandings(d) {
+  const state       = (d.sessionState || '').toLowerCase();
+  const liveEnabled = d.liveStandingsEnabled !== false;
+  const live        = d.liveStandings || d.standings || [];
+  const preRace     = state === 'get in car' || state === 'warmup' || state === 'parade laps';
+  if (preRace || state === 'cool down') return d.standings || [];
+  if (state === 'checkered' && liveEnabled && Array.isArray(d.computedStandings) && d.computedStandings.length)
+    return d.computedStandings;
+  return liveEnabled && live.length ? live : (d.standings || []);
+}
+
+// ── Main data handler ─────────────────────────────────────────────────────
+let _latestData = null;
+let _lastStandingsKey  = '';
+let _lastSessionNum    = null;
+let _lastSessionCookie = null;
+let _lastTrack         = null;
+
+function clearStandingRows() {
+  for (let i = 1; i <= 10; i++) {
+    const el = document.getElementById(`row-${i}`);
+    if (el) { el.innerHTML = ''; el.className = 's-row'; el.dataset.caridx = ''; }
+  }
+  _lastStandingsKey = '';
+  _prevOrder = [];
+  _prevStandingPos = new Map();
+  _manuCacheBust = Date.now();
+  _playerManuLoaded = false;
+  // Clear cached manu src so it reloads with fresh slot data
+  const manuImg = document.getElementById('p-manu-img');
+  if (manuImg) { manuImg.dataset.src = ''; manuImg.style.opacity = '0'; }
+
+  // Reset player number + headshot so they reload with the new car number
+  _playerNumLoaded   = false;
+  _playerPhotoLoaded = false;
+  const numImg   = document.getElementById('p-num-img');
+  const numTxt   = document.getElementById('p-num-text');
+  const photoImg = document.getElementById('p-photo-img');
+  if (numImg)   { numImg.src = ''; numImg.style.display = 'block'; }
+  if (numTxt)   { numTxt.textContent = ''; numTxt.style.display = 'none'; }
+  if (photoImg) { photoImg.style.opacity = '0'; photoImg.src = ''; }
+}
+
+function handleData(d) {
+  _latestData = d;
+  if (!checkVisibility(d)) { setVisible(false); return; }
+  setVisible(true);
+
+  const session      = (d.session || '').toLowerCase();
+  const playerCarIdx = d.playerCarIdx ?? -1;
+
+  // Session change detection — cookie, sessionNum, OR track change
+  const hadPrior       = _lastSessionNum !== null && _lastSessionCookie !== null;
+  const track          = d.track || d.trackNameShort || '';
+  const sessionChanged = hadPrior && (
+    d.sessionNum    !== _lastSessionNum   ||
+    d.sessionCookie !== _lastSessionCookie ||
+    (track && track !== _lastTrack)
+  );
+  _lastSessionNum    = d.sessionNum;
+  _lastSessionCookie = d.sessionCookie;
+  if (track) _lastTrack = track;
+  if (sessionChanged) clearStandingRows();
+
+  // Race name
+  const stageActive = !!d.stageRacingActive;
+  const stageFinal  = !!d.stageFinalStage;
+  if (!stageActive || stageFinal) {
+    const rnEl = document.getElementById('race-name-text');
+    if (rnEl.innerHTML !== rnEl.textContent) rnEl.innerHTML = '';
+    rnEl.style.fontSize = '';
+    requestAnimationFrame(() => updateRaceName(customName || d.trackNameShort || d.track || '—'));
+  }
+
+  updateFlag(d);
+  updateLap(d);
+  // Build manu map BEFORE updatePlayerCard so slot is available when it runs
+  if (d.driverColors) _driverColors = d.driverColors;
+  if (d.driverManuOverrides) _manuOverrides = new Set(d.driverManuOverrides);
+  _buildManuMap(d);
+  updatePlayerCard(d);
+  updatePersonal(d);
+
+  // Standings
+  const standingsData = getStandings(d);
+  if (standingsData.length) {
+    const playerStandingIdx = standingsData.findIndex(s => s.carIdx === playerCarIdx);
+    const playerPos = playerStandingIdx >= 0 ? playerStandingIdx + 1 : -1;
+
+    const key = standingsData.map(s => s.carIdx).join(',');
+    if (key !== _lastStandingsKey) {
+      _lastStandingsKey = key;
+      renderStandings(standingsData, session, playerCarIdx);
+    } else {
+      updateGaps(standingsData, session, playerCarIdx);
+    }
+  }
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────
+let _ws = null;
+function connect() {
+  _ws = new WebSocket(WS_URL);
+  _ws.onmessage = e => { try { handleData(JSON.parse(e.data)); } catch(_) {} };
+  _ws.onclose   = () => { if (!_preview) setTimeout(connect, 2000); };
+  _ws.onerror   = () => _ws.close();
+}
+
+// ── Layout editor preview ─────────────────────────────────────────────────
+window.addEventListener('message', e => {
+  if (typeof e.data !== 'string') return;
+  try {
+    const m = JSON.parse(e.data);
+    if (m.reset) return;
+    _preview = true;
+    if (m._visibilityMode !== undefined) VISIBILITY_MODE = m._visibilityMode;
+    if (m._dnfDisplay     !== undefined) { DNF_DISPLAY = m._dnfDisplay; _lastStandingsKey = ''; }
+    if (m._showManu       !== undefined) {
+      SHOW_MANU = m._showManu;
+      _playerManuLoaded = false; // reload on toggle
+      const manuWrap = document.getElementById('p-manu-wrap');
+      if (manuWrap) manuWrap.style.display = SHOW_MANU ? '' : 'none';
+    }
+    if (m._customName     !== undefined) {
+      customName = m._customName;
+      if (_latestData) requestAnimationFrame(() => updateRaceName(customName || _latestData.trackNameShort || _latestData.track || '—'));
+    }
+    if (m._sponsorRotationTime !== undefined) SPONSOR_ROTATION_MS = parseInt(m._sponsorRotationTime) * 1000;
+    handleData(m);
+  } catch(_) {}
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+loadSponsors();
+connect();
+</script>
+</body>
+</html>

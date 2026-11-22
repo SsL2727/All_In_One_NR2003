@@ -1,0 +1,3622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="stage_shim.js"></script>
+<script src="perf-shim.js"></script>
+<script src="pp-view.js"></script>
+<meta charset="UTF-8">
+<title>NR2003 Prime</title>
+<style>
+/* Chase — drivers in the chase get the blue divider (divider_chase.png) on their
+   row; the name is left untouched. Image is 798x81 (@2x) = 399x40.5 css px. */
+.s-chase-div { display: none; position: absolute; left: 0; top: -1.75px;
+               width: 399px; height: 40.5px; pointer-events: none; }
+.s-row.chase .s-chase-div { display: block; }
+@font-face {
+  font-family: 'HalyardTextMedium';
+  src: local('HalyardTextMedium'); /* overridden by JS injection */
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  background: transparent;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  font-family: sans-serif;
+}
+
+/* ── Layout: 399x1080 overlay canvas ─────────────────────────────────── */
+#app {
+  position: relative;
+  width: 399px;
+  height: 1080px;
+}
+
+#canvas-frame {
+  position: relative;
+  width: 399px;
+  height: 1080px;
+}
+
+#scale-root {
+  position: relative;
+  width: 399px;
+  height: 1080px;
+  transform-origin: top left;
+}
+
+/* ── Layer 1: Sponsors ───────────────────────────────────────────── */
+#sponsor-layer {
+  position: absolute;
+  inset: 0;
+  width: 399px;
+  height: 1080px;
+  pointer-events: none;
+  z-index: 1;
+}
+/* sponsor01.png etc. are @2x (798x2160) — scale down to the 399x1080
+   canvas the same way overlay.png / dividers.png do, not object-fit:none
+   (which would render them at native/unscaled pixel size). */
+#sponsor-img, #sponsor-img-next {
+  position: absolute;
+  inset: 0;
+  width: 399px; height: 1080px;
+}
+#sponsor-img-next { opacity: 0; }
+
+/* ── Layer 2: Overlay chrome (overlay.png + dividers.png) ──────────── */
+#overlay-layer {
+  position: absolute;
+  inset: 0;
+  width: 399px;
+  height: 1080px;
+  pointer-events: none;
+  z-index: 2;
+}
+/* overlay-header / overlay-body are the same overlay.png, each clipped to
+   show only its half — this lets us fade the body (panel + dividers +
+   standings) independently of the header (sponsor/track-name chrome) when
+   there's no data yet, e.g. right after a session-cookie reset. Cut line
+   sits in overlay.png's own transparent gap between the black header block
+   and the rounded body panel (~y176 in the 399x1080 canvas). */
+#overlay-header, #overlay-body {
+  position: absolute;
+  inset: 0;
+  width: 399px;
+  height: 1080px;
+  pointer-events: none;
+}
+#overlay-header { clip-path: inset(0 0 904px 0); }   /* show only 0-176px */
+#overlay-body   { clip-path: inset(176px 0 0 0); }   /* show only 176px-1080px */
+#overlay-body, #dividers-img, #standings-data {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+#dividers-img {
+  position: absolute;
+  inset: 0;
+  width: 399px;
+  height: 1080px;
+}
+
+/* ── Header data: track-name row (top half of overlay's black header) ── */
+#header-data {
+  position: absolute;
+  inset: 0;
+  width: 399px;
+  height: 1080px;
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* ── Flag-state tint (caution/white/checkered) ─────────────────────────
+   A solid rect sits over overlay.png's black header box; one of three
+   state classes on #header-data drives tint color (set dynamically in JS
+   per state, since it differs), text color, stripe filter, and — for
+   white/checkered — extra letter-spacing on the lap-info text. Checkered
+   deliberately gets NO black-silhouette filter: checkered.png is its own
+   correctly-colored asset, not a shape that needs blacking out the way
+   nascarlines.png's colored stripes do for caution/white. */
+#header-flag-tint {
+  position: absolute;
+  left: var(--flagtint-left);
+  top: var(--flagtint-top);
+  width: var(--flagtint-w);
+  height: var(--flagtint-h);
+  background: var(--flagtint-color);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+#header-data.flag-caution #header-flag-tint,
+#header-data.flag-white #header-flag-tint,
+#header-data.flag-checkered #header-flag-tint,
+#header-data.flag-stagefinal #header-flag-tint,
+#header-data.flag-stagecomplete #header-flag-tint,
+#header-data.flag-stageresults #header-flag-tint { opacity: 1; }
+
+#header-data.flag-caution #track-stripe,
+#header-data.flag-white #track-stripe { filter: brightness(0); }
+
+/* Final-lap takeover: the header switches to FINAL LAP in a single frame
+   (no fade), same as the reference animation. */
+#header-data.flag-white #header-flag-tint { transition: none; }
+
+/* ── Final-lap sponsor panel ───────────────────────────────────────────
+   Light panel that covers the standings on the last lap and shows
+   images/Prime/finallapsponsor.png. Drawn on a canvas by the
+   "Final-lap sponsor panel" script block (search for FL_PANEL to tune
+   its position/size). Sits above the standings, below nothing else that
+   matters: its top edge starts under the header block. */
+#finallap-layer {
+  position: absolute;
+  inset: 0;
+  width: 399px;
+  height: 1080px;
+  pointer-events: none;
+  z-index: 4;
+  display: none;
+}
+#finallap-canvas { position: absolute; display: block; }
+
+/* Stage final-lap / stage-complete (waiting for results) / stage-results
+   all share the same gray+green treatment — tint the stripe to an exact
+   #037a02 green via an SVG feColorMatrix filter (forces solid output
+   color while preserving the source alpha shape) rather than CSS
+   mask-image — this project has already run into mask-mode:alpha
+   behaving inconsistently (image appears to vanish/go black), so an SVG
+   filter is the more reliable way to hit an arbitrary exact hex color.
+   Same technique generalizes the brightness(0) trick above to any color. */
+#header-data.flag-stagefinal #track-stripe,
+#header-data.flag-stagecomplete #track-stripe,
+#header-data.flag-stageresults #track-stripe { filter: url(#flag-green-tint); }
+
+#header-data.flag-caution #track-name-text,
+#header-data.flag-white #track-name-text,
+#header-data.flag-checkered #track-name-text { color: #000000; }
+#header-data.flag-stagefinal #track-name-text,
+#header-data.flag-stagecomplete #track-name-text,
+#header-data.flag-stageresults #track-name-text { color: #037a02; }
+
+#header-data.flag-caution #lapstage-text .ls-green,
+#header-data.flag-caution #lapstage-text .ls-white,
+#header-data.flag-white #lapstage-text .ls-green,
+#header-data.flag-white #lapstage-text .ls-white,
+#header-data.flag-checkered #lapstage-text .ls-green,
+#header-data.flag-checkered #lapstage-text .ls-white { color: #000000; }
+#header-data.flag-stagefinal #lapstage-text .ls-green,
+#header-data.flag-stagefinal #lapstage-text .ls-white,
+#header-data.flag-stagecomplete #lapstage-text .ls-green,
+#header-data.flag-stagecomplete #lapstage-text .ls-white,
+#header-data.flag-stageresults #lapstage-text .ls-green,
+#header-data.flag-stageresults #lapstage-text .ls-white { color: #037a02; }
+
+#header-data.flag-white #lapstage-text,
+#header-data.flag-checkered #lapstage-text { letter-spacing: var(--lapstage-flag-tracking, 0.15em); }
+/* Deliberately NOT applying the wide tracking to stagefinal/stagecomplete/
+   stageresults — reference image shows normal spacing for "STAGE 1 - FINAL LAP", matching
+   the existing stage-active row's plain spacing, not the FINAL LAP/CHECKERED
+   wide-tracked treatment. */
+
+#track-name-row {
+  position: absolute;
+  left: var(--track-left);
+  top: var(--track-top);
+  height: var(--track-row-h);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+#track-stripe {
+  display: block;
+  width: auto;
+  height: var(--stripe-h);
+  flex-shrink: 0;
+  transform: translateY(var(--stripe-y-offset));
+}
+#track-name-text {
+  margin-left: var(--track-gap);
+  padding-right: var(--italic-pad);
+  font-family: 'RacerItalic', Impact, sans-serif;
+  font-style: italic;
+  font-size: var(--track-font);
+  color: #ffffff;
+  text-transform: uppercase;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+/* ── Lap / Stage info row (bottom half of the black header block) ────── */
+#lapstage-row {
+  position: absolute;
+  left: var(--lapstage-left);
+  top: var(--lapstage-top);
+  height: var(--lapstage-row-h);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+#lapstage-text {
+  font-family: 'HalyardTextMedium', Verdana, sans-serif;
+  font-weight: 500;
+  font-size: var(--lapstage-font);
+  white-space: nowrap;
+  line-height: 1;
+}
+#lapstage-text .ls-green { color: #09e716; }
+#lapstage-text .ls-white { color: #ffffff; }
+
+/* ── Layer 3: Data ───────────────────────────────────────────────── */
+#standings-data {
+  position: absolute;
+  inset: 0;
+  width: 399px;
+  height: var(--panel-bottom, 1080px);
+  overflow: hidden;
+  z-index: 3;
+}
+
+/* Fastest-lap badge — sits to the right of whichever row currently holds
+   the session's fastest lap, repositioned to that row's Y each tick.
+   Only shows during normal running-order display, never during the
+   race-finish cascade or stage-results reveal. */
+#fastestlap-badge {
+  position: absolute;
+  left: var(--fl-x, 355px);
+  width: var(--fl-size, 28px);
+  height: var(--fl-size, 28px);
+  display: none;
+  pointer-events: none;
+}
+
+/* ── Finisher cards (checkered flag cascade) ────────────────────────────
+   Each of the 10 slots pairs a clipped copy of top10.png (fades in) with a
+   clipped copy of dividers.png covering that same pair's y-range (fades
+   out) — same clip-path technique as overlay-header/overlay-body, just
+   applied 10x. Grid position derives from the same --top/--pitch used by
+   the normal single rows (doubled), so both stay in sync automatically. */
+#finish-layer {
+  position: absolute;
+  inset: 0;
+  width: 399px;
+  height: 1080px;
+  z-index: 2;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.fc-slot {
+  position: absolute;
+  left: 0;
+  width: 399px;
+  height: var(--fc-height);
+  /* top is set per-slot via inline style in JS (each of the 10 slots
+     needs a different y-position, so a shared class rule won't do) */
+  overflow: hidden;
+}
+.fc-divider, .fc-card {
+  position: absolute;
+  left: 0;
+  top: calc(-1 * var(--fc-slot-offset));
+  width: 399px;
+  height: 1080px;
+  transition: opacity 0.4s ease;
+}
+.fc-divider { opacity: 1; }
+.fc-card    { opacity: 0; }
+.fc-slot.revealed .fc-divider { opacity: 0; }
+.fc-slot.revealed .fc-card    { opacity: 1; }
+
+.fc-content {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.fc-slot.revealed .fc-content { opacity: 1; }
+
+.fc-gradient {
+  position: absolute;
+  left: var(--fc-grad-left);
+  top: 0;
+  width: var(--fc-grad-w);
+  height: 100%;
+  background: var(--fc-grad-bg, linear-gradient(to right, #333, #999));
+  opacity: var(--fc-grad-opacity);
+}
+.fc-badge {
+  position: absolute;
+  left: var(--fc-badge-x);
+  top: var(--fc-badge-y);
+  width: var(--fc-badge-w);
+  height: var(--fc-badge-h);
+  background: #6b6b6b;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'HalyardTextMedium', Verdana, sans-serif;
+  font-weight: 500;
+  font-size: var(--fc-badge-font);
+  border-radius: 2px;
+}
+.fc-num-wrap {
+  position: absolute;
+  left: var(--fc-num-x);
+  top: 0;
+  width: var(--fc-num-w);
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fc-num-img { max-width: 100%; max-height: var(--fc-num-h); object-fit: contain; }
+.fc-num-text {
+  font-family: 'ArgentumNovus-BlackItalic', Impact, sans-serif;
+  font-size: 28px; font-weight: 700; color: #ffffff;
+  text-align: center; line-height: 1; display: none;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+}
+.fc-headshot-wrap {
+  position: absolute;
+  left: var(--fc-hs-x);
+  top: 50%;
+  transform: translateY(calc(-50% + var(--fc-hs-yoff, 0px)));
+  width: var(--fc-hs-w);
+  height: var(--fc-hs-h);
+  border-radius: 50%;
+  overflow: hidden;
+}
+.fc-headshot-img { width: 100%; height: 100%; object-fit: cover; }
+.fc-name {
+  position: absolute;
+  left: var(--fc-name-x);
+  top: var(--fc-name-y);
+  font-family: 'HalyardTextMedium', Verdana, sans-serif;
+  font-weight: 500;
+  font-size: var(--fc-name-font);
+  color: #ffffff;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.fc-gap {
+  position: absolute;
+  left: var(--fc-manu-x);
+  top: var(--fc-manu-y);
+  font-family: 'HalyardTextMedium', Verdana, sans-serif;
+  font-weight: 500;
+  font-size: var(--fc-gap-font);
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+
+/* ── Starting grid (pre-race: gridding / pacing) ───────────────────────────
+   Covers the body panel (same rect as the final-lap panel). Header "STARTING GRID  INSIDE | OUTSIDE" and rows of two cards;
+   odd positions are on the inside (left), even positions on the outside (right). Each row drops in from above, one after
+   another. Driver photo is an oval so it never covers the number / make box. Tune the sizes in the GR_* constants (script). */
+#grid-layer { position: absolute; left: 30px; top: 176px; width: 321.5px; height: 790px; z-index: 4; display: none;
+              overflow: hidden; border-radius: 0 0 19px 19px; background: #0d0e11; pointer-events: none;
+              opacity: 0; transition: opacity .4s ease; }
+#grid-layer.show { opacity: 1; }
+#gr-head { position: absolute; left: 0; top: 0; width: 100%; height: 78px; background: #050506;
+           opacity: 0; transform: translateY(-34px); transition: opacity .3s ease, transform .4s ease; }
+#grid-layer.show #gr-head { opacity: 1; transform: none;
+           transition: opacity .35s ease .05s, transform .5s cubic-bezier(.22, 1, .36, 1) .05s; }
+#gr-title { position: absolute; left: 0; right: 0; top: 21px; text-align: center; white-space: nowrap;
+            font-family: 'HalyardTextMedium', Verdana, sans-serif; font-weight: 700; font-size: 25px; line-height: 1;
+            letter-spacing: .02em; text-transform: uppercase; color: #dcdcdc; }
+.gr-side { position: absolute; top: 55px; width: 50%; text-align: center; white-space: nowrap;
+           font-family: 'HalyardTextMedium', Verdana, sans-serif; font-weight: 700; font-size: 13px; line-height: 1;
+           letter-spacing: .2em; text-transform: uppercase; color: #b9b9b9; }
+#gr-in  { left: 0; }
+#gr-out { left: 50%; }
+#gr-rows { position: absolute; left: 6px; top: 82px; width: 309.5px; }
+.gr-row { display: flex; gap: 6px; height: 134px; margin-bottom: 6px;
+          opacity: 0; transform: translateY(-48px); transition: none; }
+#gr-rows.on .gr-row { opacity: 1; transform: none;
+          transition: opacity .35s ease calc(.3s + var(--i) * .14s),
+                      transform .5s cubic-bezier(.22, 1, .36, 1) calc(.3s + var(--i) * .14s); }
+#gr-rows.out .gr-row { opacity: 0; transform: translateY(-48px);
+          transition: opacity .28s ease calc(var(--o) * .06s), transform .3s ease-in calc(var(--o) * .06s); }
+.gr-slot { flex: 0 0 151.75px; height: 134px; }
+.gr-card { position: relative; flex: 0 0 151.75px; height: 134px; overflow: hidden; background: #26262b;
+           box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06); }
+.gr-rowlbl { position: absolute; left: 8px; top: 7px; z-index: 2; line-height: 1; color: #fff;
+             font-family: 'HalyardTextMedium', Verdana, sans-serif; font-weight: 500; text-shadow: 0 1px 3px rgba(0, 0, 0, .55); }
+.gr-rowlbl b { display: block; font-weight: 500; font-size: 10px; letter-spacing: .08em; opacity: .9; }
+.gr-rowlbl i { display: block; font-style: normal; font-weight: 500; font-size: 22px; margin-top: 1px; }
+.gr-photo { position: absolute; left: 36px; top: 11px; width: 70px; height: 90px; border-radius: 50%; overflow: hidden;
+            background: rgba(255, 255, 255, .14); box-shadow: 0 0 0 2px rgba(255, 255, 255, .88), 0 2px 8px rgba(0, 0, 0, .45); }
+.gr-photo img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 16%; display: block; }
+.gr-numbox { position: absolute; right: 6px; top: 6px; width: 38px; height: 58px; background: #0a0a0e; z-index: 2;
+             display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; overflow: hidden;
+             box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
+.gr-numbox::after { content: ''; position: absolute; right: 0; bottom: 0; width: 8px; height: 8px;
+                    background: linear-gradient(135deg, rgba(0, 0, 0, 0) 50%, #e4202f 50%); }
+.gr-num { display: flex; align-items: center; justify-content: center; height: 26px; max-width: 34px; }
+.gr-num img { max-height: 26px; max-width: 34px; object-fit: contain; display: block; }
+.gr-num span { font-family: 'RacerItalic', 'HalyardTextMedium', Impact, sans-serif; font-style: italic; font-size: 23px; line-height: 1; color: #fff; }
+.gr-manu { display: flex; align-items: center; justify-content: center; height: 15px; }
+.gr-manu img { max-height: 15px; max-width: 28px; object-fit: contain; display: block; }
+.gr-name { position: absolute; left: 0; right: 0; bottom: 0; height: 27px; display: flex; align-items: center; justify-content: center;
+           background: rgba(7, 7, 9, .94); border-bottom: 2px solid #2e6cbe; z-index: 2; overflow: hidden; }
+.gr-name span { display: inline-block; white-space: nowrap; text-transform: uppercase; color: #fff; line-height: 1;
+                font-family: 'HalyardTextMedium', Verdana, sans-serif; font-weight: 700; font-size: 17px; letter-spacing: .02em; }
+
+.s-row {
+  position: absolute;
+  left: 0; right: 0;
+  overflow: hidden;
+}
+
+.s-pos {
+  position: absolute;
+  width: var(--pos-w);
+  left: var(--pos-x);
+  text-align: right;
+  white-space: nowrap;
+  font-family: 'HalyardTextMedium', Verdana, sans-serif;
+  font-size: var(--font-size);
+  font-weight: 500;
+  color: #ffffff;
+  top: 50%; transform: translateY(-50%);
+  line-height: 1;
+}
+
+.s-num-wrap {
+  position: absolute;
+  left: var(--num-x);
+  width: var(--num-w);
+  top: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.s-num-bg {
+  display: flex; align-items: center; justify-content: center;
+  padding: 2px 4px; border-radius: 3px;
+  line-height: 0;
+}
+.s-num-img {
+  max-width: 100%;
+  max-height: var(--num-h);
+  width: auto; height: auto;
+  object-fit: contain;
+  display: block;
+}
+.s-num-text {
+  font-family: Verdana, sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  font-style: italic;
+  color: #ffffff;
+  text-align: center;
+  line-height: 1;
+  display: none;
+}
+
+.s-name {
+  position: absolute;
+  left: var(--name-x);
+  right: var(--name-right);
+  font-family: 'HalyardTextMedium', Verdana, sans-serif;
+  font-size: var(--font-size);
+  font-weight: 500;
+  color: #ffffff;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  top: 50%; transform: translateY(-50%);
+  line-height: 1;
+}
+
+.s-gap {
+  position: absolute;
+  right: var(--gap-right);
+  width: var(--gap-w);
+  text-align: right;
+  font-family: 'HalyardTextMedium', Verdana, sans-serif;
+  font-size: var(--font-size);
+  font-weight: 500;
+  color: #ffffff;
+  letter-spacing: 0.01em;
+  top: 50%; transform: translateY(-50%);
+  line-height: 1;
+  white-space: nowrap;
+}
+/* PQ leader's own best-lap cell — green, same as the lap/stage row's accent */
+.s-gap.pq-leader { color: #09e716; }
+
+#rows-bottom {
+  position: absolute;
+  inset: 0;
+}
+/* Timing/transform driven entirely from JS inline styles below so the
+   fade-out and slide-in durations can be tuned live via the sliders. */
+
+/* Position-change arrow — prepended inside the gap block */
+.s-arrow {
+  display: inline;
+  opacity: 1;
+  transition: opacity 2.5s ease-out;
+}
+.s-arrow.gained { color: #2ecc40; }
+.s-arrow.lost   { color: #e84444; }
+.s-arrow.fade   { opacity: 0; }
+
+/* Player row — kept identical to others for now.
+   FUTURE: distinguish the player's row here (e.g. color, weight, bg tint)
+   once Johnathon decides on the treatment. */
+.is-player {
+}
+
+/* ── Points panel (Points Table hotkey): "Points as they run" — compact card under the top 10 ── */
+#points-panel { position: absolute; inset: 0; z-index: 5; display: none; pointer-events: none; }
+#pp-bg { position: absolute; left: 34px; top: 774px; width: 313.5px; height: 256px;
+         border-radius: 14px; overflow: hidden;
+         background: linear-gradient(165deg, #121b2b 0%, #0c1320 55%, #0a0e17 100%);
+         box-shadow: inset 0 0 0 2px rgba(46, 108, 190, 0.85);
+         opacity: 0; transition: opacity 0.35s ease; }
+#pp-bg::after { content: ''; position: absolute; right: 0; bottom: 0; width: 70px; height: 70px;
+                background: radial-gradient(circle at 100% 100%, rgba(70, 160, 255, 0.95) 0, rgba(70, 160, 255, 0) 62%); }
+#pp-title { position: absolute; left: 34px; top: 780px; width: 313.5px; height: 46px;
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'HalyardTextMedium', Verdana, sans-serif; font-weight: 700; font-size: 28px;
+            letter-spacing: 0.005em; text-transform: uppercase; color: #fff; white-space: nowrap;
+            opacity: 0; transform: translateY(-10px); transition: opacity 0.3s ease, transform 0.4s ease; }
+#points-panel .s-row { --font-size: 22px; --num-x: 44px; --num-w: 48px; --num-h: 30px;
+                       --name-x: 104px; --name-right: 150px; --gap-right: 66px; --gap-w: 90px;
+                       opacity: 0; transform: translateY(-16px);
+                       transition: opacity 0.3s ease, transform 0.35s ease; }
+#points-panel .s-name { font-weight: 700; }
+#points-panel .s-gap { font-weight: 700; }
+#points-panel .s-gap.pp-leader { font-size: 18px; }
+#points-panel.show #pp-bg { opacity: 1; }
+#points-panel.show #pp-title { opacity: 1; transform: none; transition: opacity 0.4s ease 0.1s, transform 0.45s ease 0.1s; }
+#points-panel.show .s-row { opacity: 1; transform: none;
+                            transition: opacity 0.45s ease calc(0.18s + var(--i) * 0.07s), transform 0.5s cubic-bezier(0.22, 1, 0.36, 1) calc(0.18s + var(--i) * 0.07s); }
+
+/* ── Driver Info banner (Prime look): [oval headshot | number + make | NAME | Info 1 / Info 2] ─────────────────────
+   Lives outside #app / #scale-root so the tower's scale + opacity do not touch it; placed in screen pixels by diPlace(). */
+#di-wrap { position: absolute; left: 0; top: 0; width: max-content; transform-origin: 0 0; z-index: 60; pointer-events: none;
+           display: none; opacity: 0; transition: opacity .6s ease; color: #fff;
+           font-family: 'HalyardTextMedium', 'Segoe UI', Arial, sans-serif; filter: drop-shadow(0 4px 10px rgba(0,0,0,.5)); }
+#di-tab { position: absolute; right: 10px; top: -30px; height: 30px; padding: 0 24px; display: none; align-items: center; border-radius: 5px 5px 0 0;
+          background: linear-gradient(180deg, #2b57d8 0%, #1a3cae 100%); box-shadow: inset 0 0 0 2px rgba(255,255,255,.88);
+          font-size: 19px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; color: #fff; }
+#di-box { position: relative; display: flex; align-items: stretch; width: 860px; height: 102px; overflow: hidden; border-radius: 8px;
+          background: var(--di-bg, linear-gradient(90deg, #1d44b8 0%, #1a3aa4 38%, #142f8c 100%)); }
+#di-box::before { content: ''; position: absolute; inset: 0; pointer-events: none;
+          background: linear-gradient(112deg, rgba(255,255,255,.17) 0 20%, rgba(255,255,255,0) 20% 100%), linear-gradient(180deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 45%, rgba(0,0,0,.2) 100%); }
+#di-box::after { content: ''; position: absolute; right: 0; bottom: 0; width: 30px; height: 30px; pointer-events: none; background: linear-gradient(135deg, rgba(0,0,0,0) 50%, #e4202f 50%); }
+#di-box > div { position: relative; z-index: 1; }
+#di-box.tight { width: max-content; min-width: 520px; }
+/* oval headshot in its own cell: it never covers the number, the name or the info */
+#di-photo { flex: 0 0 112px; display: none; align-items: center; justify-content: center; }
+#di-photo.on { display: flex; }
+#di-photo img { width: 82px; height: 94px; border-radius: 50%; object-fit: cover; object-position: 50% 20%; background: rgba(255,255,255,.2);
+                box-shadow: 0 0 0 3px rgba(255,255,255,.92), 0 2px 8px rgba(0,0,0,.5); }
+#di-num { flex: 0 0 auto; align-self: center; width: 78px; height: 84px; margin: 0 8px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; overflow: hidden;
+          background: var(--di-nbg, #0a0a0e); box-shadow: inset 0 0 0 1px rgba(255,255,255,.14); }
+#di-num::after { content: ''; position: absolute; right: 0; bottom: 0; width: 15px; height: 15px; background: linear-gradient(135deg, rgba(0,0,0,0) 50%, #e4202f 50%); }
+#di-num .nn { display: flex; align-items: center; justify-content: center; height: 48px; max-width: 70px; }
+#di-num .nn img { max-height: 48px; max-width: 70px; object-fit: contain; display: block; }
+#di-num .nn span { font-family: 'RacerItalic', 'HalyardTextMedium', Impact, sans-serif; font-style: italic; font-size: 50px; line-height: 1; color: var(--di-nfg, #fff); }
+#di-manu { display: flex; align-items: center; justify-content: center; height: 24px; }
+#di-manu img { max-height: 24px; max-width: 56px; object-fit: contain; display: block; }
+#di-name { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 0 16px 0 10px;
+           line-height: 1; text-transform: uppercase; white-space: nowrap; font-family: 'RacerItalic', 'HalyardTextMedium', Impact, sans-serif; font-style: italic; overflow: hidden; }
+#di-name .f { font-size: 28px; color: var(--di-f, #fff); text-shadow: var(--di-fs, 0 1px 3px rgba(0,0,0,.45)); }
+#di-name .l { font-size: 36px; margin-top: 3px; color: var(--di-l, #ff2d3b); text-shadow: var(--di-ls, 0 1px 3px rgba(0,0,0,.5)); }
+#di-r { flex: 0 0 410px; margin: 0 16px 0 0; display: flex; flex-direction: column; justify-content: center; gap: 7px; min-width: 0; }
+#di-r .a { height: 56px; display: flex; align-items: center; justify-content: center; padding: 0 16px; border-radius: 7px; white-space: nowrap; overflow: hidden;
+           font-size: 32px; font-weight: 600; background: rgba(6,10,44,.88); box-shadow: inset 0 0 0 2px rgba(255,255,255,.14); }
+#di-r .b { display: flex; align-items: center; justify-content: center; gap: 9px; white-space: nowrap; overflow: hidden; font-size: 22px; font-weight: 600; }
+#di-r .b .ic { flex: none; width: 17px; height: 17px; border-radius: 50%; background: #e4202f; display: flex; align-items: center; justify-content: center; }
+#di-r .b .ic::after { content: ''; margin-left: 2px; border-left: 6px solid #fff; border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
+#di-box.tight #di-name { flex: 0 0 auto; padding-right: 44px; }
+</style>
+</head>
+<body>
+<!-- Hidden SVG filter — forces the stripe to an exact solid #037a02 while
+     preserving nascarlines.png's own alpha shape, for stage final-lap /
+     stage-results. Generalizes the existing filter:brightness(0) trick
+     (which only ever hits pure black) to an arbitrary target color; more
+     reliable across browsers than CSS mask-mode:alpha, which this project
+     has already found inconsistent (image appearing to vanish/go black). -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="flag-green-tint" color-interpolation-filters="sRGB">
+    <feColorMatrix type="matrix" values="
+      0 0 0 0 0.011765
+      0 0 0 0 0.478431
+      0 0 0 0 0.007843
+      0 0 0 1 0" />
+  </filter>
+</svg>
+<!-- Driver Info banner (hotkey) — Prime look. Outside #app so tower scale/opacity do not apply; see diPlace() -->
+<div id="di-wrap">
+  <div id="di-tab"></div>
+  <div id="di-box">
+    <div id="di-photo"></div>
+    <div id="di-num"></div>
+    <div id="di-name"></div>
+    <div id="di-r" style="display:none"></div>
+  </div>
+</div>
+
+<div id="app">
+
+  <div id="canvas-frame">
+    <div id="scale-root">
+
+      <div id="sponsor-layer">
+        <img id="sponsor-img"      src="" alt="">
+        <img id="sponsor-img-next" src="" alt="">
+      </div>
+
+      <div id="overlay-layer">
+        <img id="overlay-header" src="" alt="">
+        <img id="overlay-body"   src="" alt="">
+        <img id="dividers-img" src="" alt="">
+      </div>
+
+      <!-- Header data — track name row (top half of overlay's black header
+           block). Bottom half (lap/stage info) is a future addition. -->
+      <div id="header-data">
+        <div id="header-flag-tint"></div>
+        <div id="track-name-row">
+          <img id="track-stripe" src="" alt="">
+          <span id="track-name-text"></span>
+        </div>
+        <div id="lapstage-row">
+          <span id="lapstage-text"></span>
+        </div>
+      </div>
+
+      <!-- Finisher cards (checkered flag cascade) — 10 slots, each pairing
+           a clipped top10.png card with a clipped dividers.png slice that
+           cross-fades out as the card fades in. Sits above overlay, below
+           the currently-racing rows aren't affected since they occupy
+           different vertical space once the cascade shifts them down. -->
+      <div id="finish-layer">
+        <div class="fc-slot" id="fc-1">
+          <img class="fc-divider" src="" alt="">
+          <img class="fc-card" src="" alt="">
+          <div class="fc-content">
+            <div class="fc-gradient"></div>
+            <div class="fc-badge"></div>
+            <div class="fc-num-wrap"><img class="fc-num-img" src="" alt=""><span class="fc-num-text"></span></div>
+            <div class="fc-headshot-wrap"><img class="fc-headshot-img" src="" alt=""></div>
+            <span class="fc-name"></span>
+            <span class="fc-gap"></span>
+          </div>
+        </div>
+        <div class="fc-slot" id="fc-2">
+          <img class="fc-divider" src="" alt="">
+          <img class="fc-card" src="" alt="">
+          <div class="fc-content">
+            <div class="fc-gradient"></div>
+            <div class="fc-badge"></div>
+            <div class="fc-num-wrap"><img class="fc-num-img" src="" alt=""><span class="fc-num-text"></span></div>
+            <div class="fc-headshot-wrap"><img class="fc-headshot-img" src="" alt=""></div>
+            <span class="fc-name"></span>
+            <span class="fc-gap"></span>
+          </div>
+        </div>
+        <div class="fc-slot" id="fc-3">
+          <img class="fc-divider" src="" alt="">
+          <img class="fc-card" src="" alt="">
+          <div class="fc-content">
+            <div class="fc-gradient"></div>
+            <div class="fc-badge"></div>
+            <div class="fc-num-wrap"><img class="fc-num-img" src="" alt=""><span class="fc-num-text"></span></div>
+            <div class="fc-headshot-wrap"><img class="fc-headshot-img" src="" alt=""></div>
+            <span class="fc-name"></span>
+            <span class="fc-gap"></span>
+          </div>
+        </div>
+        <div class="fc-slot" id="fc-4">
+          <img class="fc-divider" src="" alt="">
+          <img class="fc-card" src="" alt="">
+          <div class="fc-content">
+            <div class="fc-gradient"></div>
+            <div class="fc-badge"></div>
+            <div class="fc-num-wrap"><img class="fc-num-img" src="" alt=""><span class="fc-num-text"></span></div>
+            <div class="fc-headshot-wrap"><img class="fc-headshot-img" src="" alt=""></div>
+            <span class="fc-name"></span>
+            <span class="fc-gap"></span>
+          </div>
+        </div>
+        <div class="fc-slot" id="fc-5">
+          <img class="fc-divider" src="" alt="">
+          <img class="fc-card" src="" alt="">
+          <div class="fc-content">
+            <div class="fc-gradient"></div>
+            <div class="fc-badge"></div>
+            <div class="fc-num-wrap"><img class="fc-num-img" src="" alt=""><span class="fc-num-text"></span></div>
+            <div class="fc-headshot-wrap"><img class="fc-headshot-img" src="" alt=""></div>
+            <span class="fc-name"></span>
+            <span class="fc-gap"></span>
+          </div>
+        </div>
+        <div class="fc-slot" id="fc-6">
+          <img class="fc-divider" src="" alt="">
+          <img class="fc-card" src="" alt="">
+          <div class="fc-content">
+            <div class="fc-gradient"></div>
+            <div class="fc-badge"></div>
+            <div class="fc-num-wrap"><img class="fc-num-img" src="" alt=""><span class="fc-num-text"></span></div>
+            <div class="fc-headshot-wrap"><img class="fc-headshot-img" src="" alt=""></div>
+            <span class="fc-name"></span>
+            <span class="fc-gap"></span>
+          </div>
+        </div>
+        <div class="fc-slot" id="fc-7">
+          <img class="fc-divider" src="" alt="">
+          <img class="fc-card" src="" alt="">
+          <div class="fc-content">
+            <div class="fc-gradient"></div>
+            <div class="fc-badge"></div>
+            <div class="fc-num-wrap"><img class="fc-num-img" src="" alt=""><span class="fc-num-text"></span></div>
+            <div class="fc-headshot-wrap"><img class="fc-headshot-img" src="" alt=""></div>
+            <span class="fc-name"></span>
+            <span class="fc-gap"></span>
+          </div>
+        </div>
+        <div class="fc-slot" id="fc-8">
+          <img class="fc-divider" src="" alt="">
+          <img class="fc-card" src="" alt="">
+          <div class="fc-content">
+            <div class="fc-gradient"></div>
+            <div class="fc-badge"></div>
+            <div class="fc-num-wrap"><img class="fc-num-img" src="" alt=""><span class="fc-num-text"></span></div>
+            <div class="fc-headshot-wrap"><img class="fc-headshot-img" src="" alt=""></div>
+            <span class="fc-name"></span>
+            <span class="fc-gap"></span>
+          </div>
+        </div>
+        <div class="fc-slot" id="fc-9">
+          <img class="fc-divider" src="" alt="">
+          <img class="fc-card" src="" alt="">
+          <div class="fc-content">
+            <div class="fc-gradient"></div>
+            <div class="fc-badge"></div>
+            <div class="fc-num-wrap"><img class="fc-num-img" src="" alt=""><span class="fc-num-text"></span></div>
+            <div class="fc-headshot-wrap"><img class="fc-headshot-img" src="" alt=""></div>
+            <span class="fc-name"></span>
+            <span class="fc-gap"></span>
+          </div>
+        </div>
+        <div class="fc-slot" id="fc-10">
+          <img class="fc-divider" src="" alt="">
+          <img class="fc-card" src="" alt="">
+          <div class="fc-content">
+            <div class="fc-gradient"></div>
+            <div class="fc-badge"></div>
+            <div class="fc-num-wrap"><img class="fc-num-img" src="" alt=""><span class="fc-num-text"></span></div>
+            <div class="fc-headshot-wrap"><img class="fc-headshot-img" src="" alt=""></div>
+            <span class="fc-name"></span>
+            <span class="fc-gap"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Final-lap sponsor panel (canvas, see FL_PANEL in the script) -->
+      <div id="finallap-layer"><canvas id="finallap-canvas"></canvas></div>
+
+      <!-- Starting grid (pre-race) — see the "Starting grid" script block -->
+      <div id="grid-layer">
+        <div id="gr-head">
+          <div id="gr-title">Starting Grid</div>
+          <div class="gr-side" id="gr-in">Inside</div>
+          <div class="gr-side" id="gr-out">Outside</div>
+        </div>
+        <div id="gr-rows"></div>
+      </div>
+
+      <div id="standings-data">
+        <img id="fastestlap-badge" src="" alt="">
+        <!-- Top 10 — fixed slots -->
+        <div class="s-row" id="row-1"></div>
+        <div class="s-row" id="row-2"></div>
+        <div class="s-row" id="row-3"></div>
+        <div class="s-row" id="row-4"></div>
+        <div class="s-row" id="row-5"></div>
+        <div class="s-row" id="row-6"></div>
+        <div class="s-row" id="row-7"></div>
+        <div class="s-row" id="row-8"></div>
+        <div class="s-row" id="row-9"></div>
+        <div class="s-row" id="row-10"></div>
+
+        <!-- Bottom 10 — rotating group (11-20, 21-30, ...) -->
+        <div id="rows-bottom">
+          <div class="s-row" id="row-11"></div>
+          <div class="s-row" id="row-12"></div>
+          <div class="s-row" id="row-13"></div>
+          <div class="s-row" id="row-14"></div>
+          <div class="s-row" id="row-15"></div>
+          <div class="s-row" id="row-16"></div>
+          <div class="s-row" id="row-17"></div>
+          <div class="s-row" id="row-18"></div>
+          <div class="s-row" id="row-19"></div>
+          <div class="s-row" id="row-20"></div>
+        </div>
+
+        <!-- Points as they run (hotkey) — card under row 15, covers rows 16-20 while on -->
+        <div id="points-panel">
+          <div id="pp-bg"></div>
+          <div id="pp-title">As they run</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+</div>
+
+<script>
+// ── Chase highlight ─────────────────────────────────────────────────────────
+// The main process tells every overlay which car numbers are in the chase
+// (empty list = feature off). Name elements carry data-chase-num; the class
+// is toggled here so it updates instantly, without waiting for a re-render.
+let _CHASE = new Set();
+const chaseKey = n => String(n == null ? '' : n).trim().replace(/"/g, '');
+const chaseCls = n => (_CHASE.size && _CHASE.has(chaseKey(n))) ? ' chase' : '';
+function chaseMark(el, n) {
+  if (!el) return;
+  const k = chaseKey(n);
+  el.dataset.chaseNum = k;
+  el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(k));
+}
+function _chasePass() {
+  document.querySelectorAll('[data-chase-num]').forEach(el =>
+    el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(el.dataset.chaseNum)));
+}
+function _setChase(list) {
+  _CHASE = new Set((Array.isArray(list) ? list : []).map(chaseKey));
+  _chasePass();
+}
+if (window.shl && window.shl.onChaseSet) {
+  window.shl.onChaseSet(_setChase);
+  if (window.shl.getChaseSet) window.shl.getChaseSet().then(_setChase).catch(() => {});
+}
+window.addEventListener('message', e => {      // layout-editor preview
+  if (typeof e.data !== 'string' || e.data.indexOf('"_chase"') < 0) return;
+  try { const m = JSON.parse(e.data); if (Array.isArray(m._chase)) _setChase(m._chase); } catch (x) {}
+});
+// ── PSF bootstrap ─────────────────────────────────────────────────────────
+const psf         = window.__PSF || {};
+const params      = new URLSearchParams(location.search);
+const INSTALL_DIR = psf.installDir || params.get('installdir') || '';
+let SERIES_ID    = psf.series || params.get('series') || 'default';
+let IS_DEFAULT   = !SERIES_ID || SERIES_ID === 'default';
+const WS_URL      = psf.wsUrl || `ws://${location.hostname || 'localhost'}:8765`;
+const HTTP_BASE   = psf.assetBase ? psf.assetBase.replace(/\/assets$/, '') : `http://${location.hostname || 'localhost'}:8766`;
+
+const SCALE   = Math.max(0.1, Math.min(4.0, parseFloat(psf.scale   || params.get('scale')   || '1.0')));
+const OPACITY = Math.max(0.0, Math.min(1.0, parseFloat(psf.opacity || params.get('opacity') || '1.0')));
+let VISIBILITY_MODE     = psf.visibilitymode || params.get('visibilitymode') || 'at_track';
+let SPONSOR_ROTATION_MS = (parseInt(psf.sponsorrotationtime || params.get('sponsorrotationtime') || '10') * 1000) || 10000;
+let customName          = psf.customname ? decodeURIComponent(psf.customname) : (params.get('customname') ? decodeURIComponent(params.get('customname')) : '');
+
+(function applyScaleOpacity() {
+  const root = document.getElementById('scale-root');
+  if (root) { root.style.transform = `scale(${SCALE})`; root.style.opacity = OPACITY; }
+})();
+
+function encodeRelPath(rel) {
+  // Encode each path segment (handles spaces, etc. — e.g. "Racer Italic.ttf")
+  // without touching the '/' separators themselves.
+  return rel.split('/').map(encodeURIComponent).join('/');
+}
+
+function assetPath(rel) {
+  if (psf.assetBase) return psf.assetBase + '/' + encodeRelPath(rel);
+  if (INSTALL_DIR) {
+    const enc = INSTALL_DIR.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+    return 'file:///' + enc + '/' + encodeRelPath(rel);
+  }
+  return encodeRelPath(rel); // opened directly from base directory — relative paths resolve naturally
+}
+
+const PRIME_BASE = assetPath('images/Prime');
+let NUM_SOURCE_MODE = 'auto';
+
+// ── Font injection ───────────────────────────────────────────────────────
+(function injectFonts() {
+  const fonts = [
+    { family: 'HalyardTextMedium', file: 'halyard-text-medium.otf', fmt: 'opentype', weight: 500, style: 'normal' },
+    { family: 'RacerItalic',       file: 'Racer Pro Italic.otf',    fmt: 'opentype', weight: 400, style: 'italic' },
+  ];
+  const css = fonts.map(f =>
+    `@font-face { font-family: '${f.family}'; src: url('${assetPath('fonts/' + f.file)}') format('${f.fmt}'); font-weight: ${f.weight}; font-style: ${f.style}; font-display: swap; }`
+  ).join('\n');
+  const el = document.createElement('style');
+  el.textContent = css;
+  document.head.appendChild(el);
+})();
+
+// ── Overlay chrome ────────────────────────────────────────────────────────
+document.getElementById('overlay-header').src = PRIME_BASE + '/overlay.png';
+document.getElementById('overlay-body').src   = PRIME_BASE + '/overlay.png';
+document.getElementById('dividers-img').src   = PRIME_BASE + '/dividers.png';
+document.getElementById('track-stripe').src = PRIME_BASE + '/nascarlines.png';
+document.getElementById('fastestlap-badge').src = PRIME_BASE + '/fastestlap.png';
+
+// Finisher card slots — each .fc-divider/.fc-card is the SAME full-canvas
+// dividers.png/top10.png image; per-slot windowing (clipped via overflow +
+// negative top offset) is handled by CSS + layoutFinisherGrid(), not by
+// loading 10 different files.
+for (let i = 1; i <= 10; i++) {
+  const slot = document.getElementById(`fc-${i}`);
+  if (!slot) continue;
+  slot.querySelector('.fc-divider').src = PRIME_BASE + '/dividers.png';
+  slot.querySelector('.fc-card').src    = PRIME_BASE + '/top10.png';
+}
+
+// ── Sponsor rotation (same probe/count logic as Fox2022) ─────────────────
+let sponsorFiles  = [];
+let sponsorIndex  = 0;
+let _sponsorTimer = null;
+// SPONSOR_ROTATION_MS set from params above
+
+async function loadSponsors() {
+  let count = 0;
+  try {
+    const r = await fetch(`${HTTP_BASE}/fox-sponsor-count?base=Prime`);
+    if (r.ok) { const j = await r.json(); count = j.count || 0; }
+  } catch (_) {}
+
+  if (count > 0) {
+    sponsorFiles = [];
+    for (let i = 1; i <= count; i++) {
+      sponsorFiles.push(`${PRIME_BASE}/sponsors/sponsor${String(i).padStart(2, '0')}.png`);
+    }
+  } else {
+    const probes = [];
+    for (let i = 1; i <= 20; i++) {
+      probes.push(new Promise(res => {
+        const img = new Image();
+        const src = `${PRIME_BASE}/sponsors/sponsor${String(i).padStart(2, '0')}.png`;
+        img.onload  = () => res(src);
+        img.onerror = () => res(null);
+        img.src = src;
+      }));
+    }
+    sponsorFiles = (await Promise.all(probes)).filter(Boolean);
+  }
+
+  if (sponsorFiles.length > 0) {
+    document.getElementById('sponsor-img').src = sponsorFiles[0];
+    if (sponsorFiles.length > 1) startSponsorRotation();
+  }
+}
+
+function startSponsorRotation() {
+  if (_sponsorTimer) clearInterval(_sponsorTimer);
+  let curr = document.getElementById('sponsor-img');
+  let next = document.getElementById('sponsor-img-next');
+
+  _sponsorTimer = setInterval(() => {
+    if (sponsorFiles.length < 2) return;
+    sponsorIndex = (sponsorIndex + 1) % sponsorFiles.length;
+    next.src = sponsorFiles[sponsorIndex];
+    next.onload = () => {
+      next.style.transition = 'opacity 0.8s ease-in-out';
+      curr.style.transition = 'opacity 0.8s ease-in-out';
+      next.style.opacity = '1';
+      curr.style.opacity = '0';
+      setTimeout(() => {
+        [curr, next] = [next, curr];
+        next.style.transition = 'none';
+      }, 850);
+    };
+  }, SPONSOR_ROTATION_MS);
+}
+
+// ── Live layout controls ───────────────────────────────────────────────────
+// ── Finisher cards (checkered flag cascade) ────────────────────────────────
+const FC_TOTAL = 10;
+// Ordered array (not a Set) — carIdx of the winner (once known live), then
+// everyone else appended in official finish order once cooldown fills them in.
+let _lockedFinishers = [];
+
+// Cooldown safety net — once cooldown hits, snap any still-unlocked slots
+// straight to final official results rather than continuing to wait on
+// computedStandings for stragglers (covers the case where an individual
+// freeze event got missed for some reason during the checkered window).
+function useFinalOfficial(standings) {
+  if (!Array.isArray(standings) || !standings.length) return;
+  const cap = Math.min(FC_TOTAL, standings.length);
+  // The bridge's checkered-merge logic stops running once sessionState hits
+  // 'cool down' (it branches to plain official standings), so any car that
+  // hadn't individually crossed/frozen yet never gets its own _frozen_pos.
+  // Catch those up here from final official results — but staggered with
+  // the same rhythm as a live crossing, not dumped in all at once, so it
+  // doesn't look jarringly different from the cards that arrived naturally.
+  const staggerMs = parseFloat(350) || 350;
+  let delay = 0;
+  for (let i = _lockedFinishers.length; i < cap; i++) {
+    const entry = standings[i];
+    if (!entry || _lockedFinishers.includes(entry.carIdx)) continue;
+    // Reserve the slot immediately (synchronously) so a WS tick arriving
+    // before this timeout fires doesn't re-schedule the same car again.
+    _lockedFinishers.push(entry.carIdx);
+    const pos = _lockedFinishers.length;
+    setTimeout(() => onCarFinished(entry, pos), delay);
+    delay += staggerMs;
+  }
+}
+
+function checkFinishers(d) {
+  // Checkered/cooldown/finisher-card behavior is race-only — practice and
+  // qualifying have their own 'cool down'-ish states that aren't the race
+  // finish, and this was firing for them too.
+  if ((d.session || '').toLowerCase() !== 'race') return;
+
+  const state = (d.sessionState || '').toLowerCase();
+
+  if (state === 'cool down') {
+    useFinalOfficial(d.standings || []);
+    return;
+  }
+
+  // Only the winner reveals live, mid-race — everyone else fills in once
+  // results are official at cooldown (via useFinalOfficial above). This is
+  // simpler and more consistent than trying to individually cascade every
+  // position as they cross. The still-racing field's gap display is a
+  // separate concern handled in getStandings() — it prefers computedStandings
+  // during checkered rather than raw live gaps, which go erratic once cars
+  // are just cruising a cooldown lap instead of actually racing.
+  if (_lockedFinishers.length >= 1) return;
+
+  const cs = d.computedStandings || [];
+  const winner = cs.find(e => e && e._frozen_pos === 1);
+  if (!winner) return;
+
+  _lockedFinishers.push(winner.carIdx);
+  onCarFinished(winner, 1);
+}
+
+function resetFinishers() {
+  _lockedFinishers = [];
+  positionRows(); // snap still-racing rows back to their un-shifted positions
+}
+
+// ── Stage results (mid-race, non-final stages) ────────────────────────────
+// The bridge does real per-car crossing detection for stage finishers too,
+// same "leader crosses -> caution fires -> track everyone else" pattern as
+// the race finish — d.stageCrossings grows in real time as each car
+// crosses (used for the live reveal below), d.stageWinners only finalizes
+// once all top 10 have crossed (reserved for a future points display).
+// Both are leaner shapes with no name/number/gap data attached, so each
+// carIdx needs cross-referencing against standings for the rest.
+let _stageResultsActive   = false; // true only once stageWinners data is actually ready and being shown
+let _stageResultsForStage = -1;
+let _stageResultsShownAtLap = -1;  // lapsComplete snapshot from when results actually started SHOWING (not when the stage ended)
+let _stageResultsWinnersRevealed = false; // guards the one-shot stageWinners reveal per stage
+let _stageResultsHoldExpired     = false; // once true, never re-show results for this stage again
+
+function findEntryByCarIdx(d, carIdx) {
+  const liveEnabled = d.liveStandingsEnabled !== false;
+  const sources = liveEnabled ? [d.liveStandings, d.standings, d.drivers] : [d.standings, d.drivers];
+  for (const src of sources) {
+    if (!Array.isArray(src)) continue;
+    const found = src.find(e => e && e.carIdx === carIdx);
+    if (found) return found;
+  }
+  return null;
+}
+
+function checkStageResults(d) {
+  // Stages are a race-only concept — guard against stale/leftover state
+  // ever showing during practice or qualifying.
+  if ((d.session || '').toLowerCase() !== 'race') {
+    if (_stageResultsActive) {
+      _stageResultsActive = false;
+      document.querySelectorAll('.fc-slot').forEach(el => el.classList.remove('revealed'));
+      document.getElementById('standings-data').style.opacity = '1';
+    }
+    _stageResultsForStage   = -1;
+    _stageResultsShownAtLap = -1;
+    return;
+  }
+
+  const bridgeActive = !!d.stageCompleteActive;
+  const stageNum      = d.stageCompleteNum || 0;
+  const curLap         = d.lapsComplete || 0;
+
+  if (bridgeActive && stageNum !== _stageResultsForStage) {
+    // Bridge is reporting a (new) completed stage.
+    _stageResultsForStage        = stageNum;
+    _stageResultsWinnersRevealed = false;
+    _stageResultsShownAtLap      = -1;
+    _stageResultsHoldExpired     = false;
+  }
+  if (!bridgeActive) {
+    _stageResultsForStage = -1;
+    if (_stageResultsActive) {
+      _stageResultsActive = false;
+      document.querySelectorAll('.fc-slot').forEach(el => el.classList.remove('revealed'));
+      document.getElementById('standings-data').style.opacity = '1';
+    }
+    _stageResultsShownAtLap = -1;
+    return;
+  }
+
+  // Don't touch anything — keep showing normal running order, including
+  // natural caution display if the stage-ending caution has already come
+  // out — until the bridge's trkPct>=0.70 snapshot (d.stageWinners) has
+  // actually mapped the top 10. Real per-car crossing detection for
+  // 2nd-10th proved unreliable (everyone read as "already crossed" the
+  // instant the tracker armed), so this single accurate batch, arriving
+  // several seconds after the leader crosses, is the only trustworthy
+  // source — no point hiding the board on a guess/timer before it exists.
+  const winners = (d.stageWinners || [])
+    .filter(w => w && w.stage === _stageResultsForStage)
+    .sort((a, b) => a.pos - b.pos);
+
+  if (!winners.length) return;
+  // Once this stage's one-lap display window has already run its course,
+  // never re-enter the show block again for it — otherwise, since winners
+  // stays populated for the rest of the (possibly long) caution period,
+  // the very next tick after hold-expiry would see !_stageResultsActive
+  // again and immediately re-hide everything without ever re-populating
+  // the cards (already-revealed guard blocks that), landing in a stuck
+  // state where BOTH normal standings and the cards are invisible.
+  if (_stageResultsHoldExpired) return;
+
+  if (!_stageResultsActive) {
+    _stageResultsActive     = true;
+    _stageResultsShownAtLap = curLap;
+    document.querySelectorAll('.fc-slot').forEach(el => el.classList.remove('revealed'));
+    document.getElementById('standings-data').style.opacity = '0';
+  }
+
+  // Reveal once per stage, staggered the same as the race-finish cooldown
+  // catch-up (fcCatchupStaggerMs), rather than popping all 10 in at once.
+  if (!_stageResultsWinnersRevealed) {
+    _stageResultsWinnersRevealed = true;
+    const staggerMs = parseFloat(350) || 350;
+    let delay = 0;
+    for (const w of winners) {
+      if (w.pos < 1 || w.pos > FC_TOTAL) continue;
+      const entry = findEntryByCarIdx(d, w.carIdx);
+      if (!entry) continue;
+      setTimeout(() => populateFinisherCard(entry, w.pos, 'stage'), delay);
+      delay += staggerMs;
+    }
+  }
+
+  // Hold for one lap starting from when we actually started SHOWING
+  // results (not from when the stage ended) — guarantees the full
+  // staggered reveal has time to finish, then a whole lap of display,
+  // before deferring back to normal caution/racing treatment.
+  if (_stageResultsShownAtLap >= 0 && curLap > _stageResultsShownAtLap + 1) {
+    _stageResultsActive = false;
+    _stageResultsHoldExpired = true;
+    document.querySelectorAll('.fc-slot').forEach(el => el.classList.remove('revealed'));
+    document.getElementById('standings-data').style.opacity = '1';
+  }
+}
+
+// Finisher card gap text — leader shows "WINNER", 2nd-10th show their
+// finish-time gap to the leader ("-X.XXX"), replacing manufacturer.
+function fcGapText(entry, position) {
+  if (position === 1) return 'WINNER';
+  const t = entry.time || 0;
+  return t > 0 ? `-${t.toFixed(3)}` : '';
+}
+
+// Stage results show points instead of gap — standard 10/9/8.../1 scale,
+// all 10 positions (including 1st — no "WINNER" for stage cards, points
+// are the whole point of a stage finish).
+let SEASON_STAGE_POINTS = null;   // the tracked season's stage table (All In One NR2003 season tracker), else the Championship window's
+
+// ── Season feed (shared by overlays) ──────────────────────────────────────────
+// Live season standings from the Season Tracker's local server. Silent no-op when
+// the tracker isn't running, so overlays behave exactly as before without it.
+const __psfSeason = (() => {
+  const q = new URLSearchParams(location.search);
+  const host = location.protocol === 'http:' ? location.hostname : '127.0.0.1';
+  const base = q.get('seasonbase') || `http://${host}:${q.get('seasonport') || 8769}`;
+  const subs = []; let state = null;
+  try {
+    const es = new EventSource(base + '/season/events');
+    es.addEventListener('state', e => { try { state = JSON.parse(e.data); subs.forEach(f => { try { f(state); } catch (_) {} }); } catch (_) {} });
+  } catch (_) {}
+  return { get state() { return state; }, onState(f) { subs.push(f); if (state) f(state); } };
+})();
+// Use the active season's stage-point scale when a season is being tracked
+__psfSeason.onState(st => { if (st && st.rules && Array.isArray(st.rules.stage) && st.rules.stage.length) SEASON_STAGE_POINTS = st.rules.stage.slice(); });
+// Points come from the Stage points table in the Championship window (default 10 → 1)
+function stagePointsText(position) {
+  const t = SEASON_STAGE_POINTS || ((CFG && Array.isArray(CFG.stagePointsTable)) ? CFG.stagePointsTable : [10, 9, 8, 7, 6, 5, 4, 3, 2, 1]);
+  const pts = Number(t[position - 1]) || 0;
+  return `${pts} PT${pts === 1 ? '' : 'S'}`;
+}
+
+// Blends a hex color toward white by percent (0-100) for the gradient's
+// light end — e.g. a red driver color produces a lighter red, not a
+// generic gray, per Johnathon's "full gradient built from driver's color".
+function lightenHex(hex, percent) {
+  let h = (hex || '#666666').replace('#', '');
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  const num = parseInt(h, 16) || 0x666666;
+  let r = (num >> 16) & 255, g = (num >> 8) & 255, b = num & 255;
+  const p = Math.max(0, Math.min(100, percent)) / 100;
+  r = Math.round(r + (255 - r) * p);
+  g = Math.round(g + (255 - g) * p);
+  b = Math.round(b + (255 - b) * p);
+  return `rgb(${r},${g},${b})`;
+}
+
+// Fills a finisher-card slot's DOM (badge/number/headshot/name/gap/gradient)
+// and marks it revealed — no side effects on the still-racing rows. Shared
+// by the real race-finish flow (onCarFinished, which ALSO shifts/filters
+// the running-order rows) and stage results (which instead hides the whole
+// running-order block wholesale, since stage results don't remove anyone
+// from the actual race).
+function populateFinisherCard(entry, position, mode = 'race') {
+  if (position < 1 || position > FC_TOTAL) return;
+  const slotEl = document.getElementById(`fc-${position}`);
+  if (!slotEl) return;
+
+  const num      = (entry.number || '').trim();
+  const numSrc   = num ? assetPath(`series/${SERIES_ID}/numbers/${num}.png`)   : '';
+  const seriesHsSrc = num ? assetPath(`series/${SERIES_ID}/headshots/${num}.png`) : '';
+  const defaultHsSrc = assetPath('images/defaultheadshot.png');
+  const color    = _driverColors[num] || '';
+  const lightPct = parseFloat(25);
+  const lightClr = color ? lightenHex(color, lightPct) : '#444444';
+  const baseClr  = color || '#1a1a1a';
+  const gapText  = mode === 'stage' ? stagePointsText(position) : fcGapText(entry, position);
+
+  slotEl.querySelector('.fc-badge').textContent = position;
+
+  // Number — img with text fallback
+  const numImg  = slotEl.querySelector('.fc-num-img');
+  const numText = slotEl.querySelector('.fc-num-text');
+  if (numText) numText.textContent = num || '';
+  if (numSrc) {
+    numImg.style.display = '';
+    if (numText) numText.style.display = 'none';
+    numImg.onerror = () => {
+      numImg.style.display = 'none';
+      if (numText) numText.style.display = 'block';
+    };
+    numImg.src = numSrc;
+  } else {
+    numImg.style.display = 'none';
+    if (numText) numText.style.display = 'block';
+  }
+
+  // Headshot — always fall back to defaultheadshot.png
+  const hsImg = slotEl.querySelector('.fc-headshot-img');
+  const isPlayerCar = entry.carIdx === (_latestData?.playerCarIdx ?? -2);
+  hsImg.style.opacity = '';
+  if (isPlayerCar) {
+    const playerSrc = assetPath('images/playerheadshot.png');
+    hsImg.onerror = () => {
+      hsImg.onerror = () => { hsImg.onerror = null; hsImg.src = defaultHsSrc; };
+      hsImg.src = seriesHsSrc || defaultHsSrc;
+    };
+    hsImg.src = playerSrc;
+  } else {
+    hsImg.onerror = () => { hsImg.onerror = null; hsImg.src = defaultHsSrc; };
+    hsImg.src = seriesHsSrc || defaultHsSrc;
+  }
+
+  slotEl.querySelector('.fc-name').textContent       = displayName(entry);
+  slotEl.querySelector('.fc-gap').textContent        = gapText;
+  slotEl.querySelector('.fc-gradient').style.background = `linear-gradient(to right, ${lightClr}, ${baseClr})`;
+
+  slotEl.classList.add('revealed');
+}
+
+function onCarFinished(entry, position) {
+  populateFinisherCard(entry, position);
+  positionRows();       // shift still-racing rows down to make room
+  rebuildVisibleRows(); // re-render with this car now filtered out of the field
+}
+
+// Grid position derives from the SAME top/pitch sliders driving the normal
+// single rows (doubled) — so both stay in sync without a duplicate grid.
+function layoutFinisherGrid() {
+  const top      = parseFloat(185.5);
+  const pitch    = parseFloat(38.9) * 2;
+  const height   = parseFloat(59.5);
+  const gridYOff = parseFloat(3);
+
+  const root = document.documentElement.style;
+  root.setProperty('--fc-height', height + 'px');
+
+  for (let i = 0; i < FC_TOTAL; i++) {
+    // gridYOff nudges the whole card (window + its image crop) together as
+    // one rigid unit — applying it to only one of the two would desync the
+    // visible box from the content cropped inside it.
+    const slotTop = top + gridYOff + i * pitch;
+    const el = document.getElementById(`fc-${i + 1}`);
+    if (!el) continue;
+    el.style.top = slotTop + 'px';
+    el.style.setProperty('--fc-slot-offset', slotTop + 'px');
+  }
+
+  // Shared template positions (same for every slot's content)
+  root.setProperty('--fc-badge-x',        30 + 'px');
+  root.setProperty('--fc-badge-y',        22 + 'px');
+  root.setProperty('--fc-badge-w',        22 + 'px');
+  root.setProperty('--fc-badge-h',        17 + 'px');
+  root.setProperty('--fc-badge-font',     13 + 'px');
+  root.setProperty('--fc-num-x',          46.5 + 'px');
+  root.setProperty('--fc-num-w',          72 + 'px');
+  root.setProperty('--fc-num-h',          58 + 'px');
+  root.setProperty('--fc-hs-x',           98 + 'px');
+  root.setProperty('--fc-hs-w',           58 + 'px');
+  root.setProperty('--fc-hs-h',           86 + 'px');
+  root.setProperty('--fc-hs-yoff',        13.5 + 'px');
+  root.setProperty('--fc-name-x',         189 + 'px');
+  root.setProperty('--fc-name-y',         0 + 'px');
+  root.setProperty('--fc-name-font',      20 + 'px');
+  root.setProperty('--fc-manu-x',         192 + 'px');
+  root.setProperty('--fc-manu-y',         32 + 'px');
+  root.setProperty('--fc-gap-font',       16 + 'px');
+
+  // Gradient now anchored to the card's own left edge (not headshot-relative)
+  // and runs left(bright) -> right(driver color, behind the headshot).
+  root.setProperty('--fc-grad-left',    30 + 'px');
+  root.setProperty('--fc-grad-w',       105.5 + 'px');
+  root.setProperty('--fc-grad-opacity', 0.85);
+
+  // Mask — as still-racing rows cascade downward past the opaque bottom
+  // edge of overlay.png's body panel, they need to disappear rather than
+  // overflow past it onto empty canvas.
+  root.setProperty('--panel-bottom', 966 + 'px');
+}
+
+function applyLayout() {
+  const root = document.documentElement.style;
+  root.setProperty('--pos-x',      '34px');
+  root.setProperty('--pos-w',      '20px');
+  root.setProperty('--num-x',      '64px');
+  root.setProperty('--num-w',      '37px');
+  root.setProperty('--num-h',      '26px');
+  root.setProperty('--name-x',     '111.5px');
+  root.setProperty('--name-right', '110px');
+  root.setProperty('--gap-right',  '55.5px');
+  root.setProperty('--gap-w',      '89px');
+  root.setProperty('--font-size',  '18px');
+
+  positionRows();
+  layoutFinisherGrid();
+}
+
+function positionRows() {
+  const top   = 185.5;
+  const pitch = 38.9;
+  const rowh  = 37;
+  // Still-racing rows shift down as finisher cards consume space from the
+  // top — each finisher eats one card-height (2x single-row pitch) worth
+  // of room, so the whole remaining field slides down together.
+  const shift = _lockedFinishers.length * pitch * 2;
+  for (let i = 0; i < 20; i++) {
+    const el = document.getElementById(`row-${i + 1}`);
+    if (!el) continue;
+    el.style.top    = (top + shift + i * pitch) + 'px';
+    el.style.height = rowh + 'px';
+  }
+}
+
+// Fastest-lap badge — attaches to whichever normal running-order row
+// currently belongs to the session's fastest-lap holder. There's no
+// carIdx field for "who holds it" anywhere in the payload (d.fastestLap is
+// just a time value) — whoever currently has the lowest bestLap among
+// visible standings IS the holder, by definition, so no separate lookup
+// is needed. Only shows during normal display: never during the
+// race-finish cascade (_lockedFinishers) or a stage-results reveal
+// (_stageResultsActive), per Johnathon's request.
+function updateFastestLapBadge(d) {
+  const badge = document.getElementById('fastestlap-badge');
+  if (!badge) return;
+
+  if (_lockedFinishers.length > 0 || _stageResultsActive) {
+    badge.style.display = 'none';
+    return;
+  }
+
+  // Same pattern as nr2003_racestats.html — bestLap isn't reliable read
+  // directly off a standings entry (same issue we already hit once before
+  // with the PQ gap logic); d.lapTracker (per-carIdx authoritative lap
+  // data) takes priority, falling back to the entry's own bestLap only if
+  // lapTracker doesn't have it.
+  const lapTracker = d.lapTracker || {};
+  const liveEnabled = d.liveStandingsEnabled !== false;
+  const source = liveEnabled && d.liveStandings?.length ? d.liveStandings : (d.standings || []);
+  let bestCarIdx = -1, bestTime = Infinity;
+  for (const s of source) {
+    const bl = (lapTracker[s.carIdx]?.bestLap) || s.bestLap || 0;
+    if (bl > 0 && bl < bestTime) { bestTime = bl; bestCarIdx = s.carIdx; }
+  }
+  if (bestCarIdx < 0) { badge.style.display = 'none'; return; }
+
+  // Rows already carry their own carIdx via dataset (set in buildRow) —
+  // search whichever of the 20 slots currently shows the holder, if any.
+  let matchedRow = null;
+  for (let i = 1; i <= 20; i++) {
+    const el = document.getElementById(`row-${i}`);
+    if (el && el.dataset.caridx && parseInt(el.dataset.caridx, 10) === bestCarIdx) {
+      matchedRow = el;
+      break;
+    }
+  }
+  if (!matchedRow) { badge.style.display = 'none'; return; }
+
+  const rowTop = parseFloat(matchedRow.style.top)    || 0;
+  const rowH   = parseFloat(matchedRow.style.height) || 0;
+  const size   = parseFloat(35);
+  const xOff   = parseFloat(350);
+  const yOff   = parseFloat(0);
+
+  badge.style.width  = size + 'px';
+  badge.style.height = size + 'px';
+  badge.style.left   = xOff + 'px';
+  badge.style.top    = (rowTop + rowH / 2 - size / 2 + yOff) + 'px';
+  badge.style.display = 'block';
+}
+
+function rebuildVisibleRows() {
+  _lastStandingsKey = '';
+  if (_latestData) {
+    const session      = (_latestData.session || '').toLowerCase();
+    const playerCarIdx = _latestData.playerCarIdx ?? -1;
+    const standings    = getStandings(_latestData);
+    if (standings.length) renderStandings(standings, session, playerCarIdx, _latestData.lapTracker || {});
+  }
+}
+
+// ── Track name row — nascarlines.png stripe + Racer Italic track name ─────
+// The stripe graphic and the text scale together as one unit (not
+// independently) so the "blend" alignment between the stripe's slant and
+// the italic text holds at any size, rather than the text shrinking alone
+// and drifting out of sync with the stripe.
+const NATIVE_STRIPE_ASPECT = 103 / 61; // nascarlines.png native px
+
+const _trackCanvas = document.createElement('canvas');
+const _trackCtx    = _trackCanvas.getContext('2d');
+
+function measureTrackName(text, fontPx) {
+  _trackCtx.font = `italic ${fontPx}px 'RacerItalic', Impact, sans-serif`;
+  return _trackCtx.measureText(text).width;
+}
+
+let _lastTrackName = null;
+
+function layoutTrackName(forceName) {
+  const rowTop     = parseFloat(95);
+  const cellLeft   = parseFloat(30);
+  const rowH       = parseFloat(34);
+  const cellRightPad = parseFloat(44.5);
+  const stripeBase = parseFloat(27);
+  const fontBase   = parseFloat(34);
+  const gapPx      = parseFloat(-10);
+  const italicPad  = parseFloat(8);
+  const stripeYOff = parseFloat(-2);
+
+  const liveName = (_latestData && (_latestData.trackNameShort || _latestData.track)) || '';
+  const rawName  = forceName !== undefined ? forceName : (customName || liveName || 'TRACK');
+  const name     = rawName.toString().toUpperCase();
+
+  document.documentElement.style.setProperty('--track-top',    rowTop  + 'px');
+  document.documentElement.style.setProperty('--track-row-h',  rowH    + 'px');
+  document.documentElement.style.setProperty('--stripe-y-offset', stripeYOff + 'px');
+
+  // Height ceiling — never start larger than the row itself allows.
+  let stripeH  = Math.min(stripeBase, rowH);
+  let fontSize = Math.min(fontBase, rowH);
+
+  // The cell: from cellLeft to (399 - cellRightPad). The stripe+text combo
+  // shrinks to fit inside it, then gets centered within it — not pinned
+  // to the left edge — so a short name sits centered same as a long one.
+  const cellWidth = 399 - cellLeft - cellRightPad;
+
+  function comboWidthAt(scale) {
+    const sh = stripeH * scale;
+    const sw = sh * NATIVE_STRIPE_ASPECT;
+    const fpx = fontSize * scale;
+    return sw + gapPx + measureTrackName(name, fpx) + (italicPad * scale);
+  }
+
+  // Shrink stripe + font together until the combined width fits the cell.
+  let scale = 1.0;
+  while (scale > 0.15 && comboWidthAt(scale) > cellWidth) {
+    scale -= 0.02;
+  }
+
+  const finalStripeH = stripeH * scale;
+  const finalFont    = fontSize * scale;
+  const finalPad     = italicPad * scale;
+  const finalWidth   = comboWidthAt(scale);
+
+  // Center the combo within the cell (clamped so it never sits left of
+  // cellLeft even in edge cases where finalWidth slightly exceeds cellWidth
+  // at the scale floor).
+  const centeredLeft = cellLeft + Math.max(0, (cellWidth - finalWidth) / 2);
+
+  document.documentElement.style.setProperty('--track-left',  centeredLeft + 'px');
+  document.documentElement.style.setProperty('--stripe-h',    finalStripeH + 'px');
+  document.documentElement.style.setProperty('--track-font',  finalFont    + 'px');
+  document.documentElement.style.setProperty('--track-gap',   gapPx        + 'px');
+  document.documentElement.style.setProperty('--italic-pad',  finalPad     + 'px');
+
+  document.getElementById('track-name-text').textContent = name;
+}
+
+// ── Lap / Stage info row ────────────────────────────────────────────────
+// Same state machine and payload fields as Fox2022's updateLap(): stage
+// racing (mid-stage, not final) shows lap+stage info together; otherwise
+// falls back to plain lap count until halfway, then "LAPS TO GO".
+const _lapCanvas = document.createElement('canvas');
+const _lapCtx    = _lapCanvas.getContext('2d');
+
+function measureLapStageWidth(text, fontPx, trackingEm) {
+  _lapCtx.font = `500 ${fontPx}px 'HalyardTextMedium', Verdana, sans-serif`;
+  const trackingPx = trackingEm ? trackingEm * fontPx : 0;
+  // Use the canvas's own letterSpacing rather than manually approximating
+  // how many gaps CSS letter-spacing actually inserts (trailing behavior
+  // varies) — matches real rendering exactly instead of guessing.
+  if ('letterSpacing' in _lapCtx) {
+    _lapCtx.letterSpacing = trackingPx + 'px';
+    const width = _lapCtx.measureText(text).width;
+    _lapCtx.letterSpacing = '0px';
+    return width;
+  }
+  // Fallback for engines without ctx.letterSpacing support
+  const base = _lapCtx.measureText(text).width;
+  return trackingPx && text.length > 1 ? base + trackingPx * (text.length - 1) : base;
+}
+
+// ── Flag state (caution / white / checkered) ──────────────────────────────
+function ordinalSuffix(n) {
+  const j = n % 10, k = n % 100;
+  if (j === 1 && k !== 11) return n + 'ST';
+  if (j === 2 && k !== 12) return n + 'ND';
+  if (j === 3 && k !== 13) return n + 'RD';
+  return n + 'TH';
+}
+
+// Single source of truth for which flag state is active — used by both the
+// text builder and the visual applier, so they can never disagree.
+// Returns 'none' | 'caution' | 'white' | 'checkered'.
+function resolveFlagState(d) {
+  const session = (d.session || '').toLowerCase();
+  if (session !== 'race') return 'none'; // PQ never gets flag treatment here — this must come before the stage checks below, not after, or they bypass it entirely
+
+  // Stage results override caution/everything, but only while actually
+  // showing (data-ready-gated by checkStageResults, and only through its
+  // one-lap hold window). Before that data is ready, "stage complete,
+  // waiting for results" ALSO overrides caution — otherwise the widget
+  // flashes to normal caution display for however long the trkPct>=0.70
+  // snapshot takes to arrive, then jumps to results. Once the hold has
+  // expired for this stage (_stageResultsHoldExpired), fall through to
+  // normal caution/racing treatment instead of getting stuck on either.
+  if (_stageResultsActive) return 'stageResults';
+  if (d.stageCompleteActive && !_stageResultsHoldExpired) return 'stageComplete';
+
+  const state = (d.sessionState || '').toLowerCase();
+  const flag  = (d.sessionFlag  || '').toLowerCase();
+
+  // Cooldown gets the same visual treatment as checkered (tint, black
+  // stripe/text, checkered.png) — only the lap-info text differs (RESULTS
+  // vs CHECKERED), handled in buildLapStageSegments.
+  if (state === 'checkered' || state === 'cool down') return 'checkered';
+  if (flag === 'yellow')     return 'caution';
+
+  // Stage final lap — non-final stage, one lap remaining in the stage
+  // (mirrors the overall-race white-flag trigger, just scoped per-stage).
+  const stageActive    = !!d.stageRacingActive;
+  const stageFinalFlag = !!d.stageFinalStage;
+  const stageLap       = d.stageLap       || 0;
+  const stageTotalLaps = d.stageTotalLaps || 0;
+  if (stageActive && !stageFinalFlag && state === 'racing' && (stageTotalLaps - stageLap === 1)) {
+    return 'stageFinal';
+  }
+
+  const lapsComplete  = d.lapsComplete || 0;
+  const lapsTotal     = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  const lapsRemaining = (d.lapsRemaining !== undefined) ? d.lapsRemaining : Math.max(0, lapsTotal - lapsComplete);
+  // Same trigger as Fox2022's white-flag icon: final lap, green, racing.
+  if (lapsRemaining === 1 && state === 'racing') return 'white';
+
+  return 'none';
+}
+
+const FLAG_TINT_COLORS = {
+  caution: '#bcb211', white: '#dbdfe3', checkered: '#afb4b6',
+  stageFinal: '#afb4b6', stageComplete: '#afb4b6', stageResults: '#afb4b6',
+};
+const FLAG_STRIPE_SRC  = { checkered: 'checkered.png' }; // everything else uses nascarlines.png
+
+function layoutFlagTint() {
+  const top     = parseFloat(89);
+  const left    = parseFloat(30);
+  const w       = parseFloat(321.5);
+  const h       = parseFloat(85.5);
+  const tracking = parseFloat(0.5);
+  document.documentElement.style.setProperty('--flagtint-left', left + 'px');
+  document.documentElement.style.setProperty('--flagtint-top',  top  + 'px');
+  document.documentElement.style.setProperty('--flagtint-w',    w    + 'px');
+  document.documentElement.style.setProperty('--flagtint-h',    h    + 'px');
+  document.documentElement.style.setProperty('--lapstage-flag-tracking', tracking + 'em');
+}
+
+// Applies/removes the one active state class on #header-data — CSS handles
+// tint visibility, stripe black-out (caution/white only), and text color
+// from those classes. JS handles what CSS can't: the tint's actual color
+// (differs per state) and swapping the stripe image asset for checkered.
+function applyFlagState() {
+  const d = _latestData || {};
+  const state = resolveFlagState(d);
+  const el = document.getElementById('header-data');
+  el.classList.remove('flag-caution', 'flag-white', 'flag-checkered', 'flag-stagefinal', 'flag-stagecomplete', 'flag-stageresults');
+  if (state === 'stageFinal') el.classList.add('flag-stagefinal');
+  else if (state === 'stageComplete') el.classList.add('flag-stagecomplete');
+  else if (state === 'stageResults') el.classList.add('flag-stageresults');
+  else if (state !== 'none') el.classList.add('flag-' + state);
+
+  document.documentElement.style.setProperty('--flagtint-color', FLAG_TINT_COLORS[state] || '#bcb211');
+
+  const stripeEl = document.getElementById('track-stripe');
+  const stripeFile = FLAG_STRIPE_SRC[state] || 'nascarlines.png';
+  const wantSrc = PRIME_BASE + '/' + stripeFile;
+  if (stripeEl.dataset.currentSrc !== wantSrc) {
+    stripeEl.src = wantSrc;
+    stripeEl.dataset.currentSrc = wantSrc;
+  }
+
+  finalLapSync(state);
+}
+
+function buildLapStageSegments(d) {
+  const session = (d.session || '').toLowerCase();
+  const isPQ    = session === 'practice' || session === 'qualifying' || session === 'testing';
+
+  // PQ sessions — Fox2022 shows label + countdown for practice; extending
+  // the same timeRemaining field to qualifying too, per Johnathon's request.
+  if (isPQ) {
+    const label   = session === 'qualifying' ? 'QUALIFYING' : session === 'testing' ? 'TESTING' : 'PRACTICE';
+    const timeRem = (d.timeRemaining !== undefined) ? d.timeRemaining : -1;
+    if (timeRem >= 0) {
+      const mins = Math.floor(timeRem / 60);
+      const secs = Math.floor(timeRem % 60);
+      const timeStr = `${mins}:${String(secs).padStart(2, '0')}`;
+      return [
+        { text: label,        cls: 'g' },
+        { text: ` - ${timeStr}`, cls: 'w' },
+      ];
+    }
+    return [{ text: label, cls: 'g' }];
+  }
+
+  // Stage complete/results override absolutely everything else (matches
+  // resolveFlagState's own top-priority checks) — even gridding/pacing,
+  // though those shouldn't realistically co-occur with a mid-race stage.
+  if (_stageResultsActive) {
+    const stageNum = d.stageCompleteNum || d.stageNum || 0;
+    return [{ text: `STAGE ${stageNum} RESULTS`, cls: 'w' }];
+  }
+  if (d.stageCompleteActive && !_stageResultsHoldExpired) {
+    const stageNum = d.stageCompleteNum || d.stageNum || 0;
+    return [{ text: `STAGE ${stageNum} COMPLETE`, cls: 'w' }];
+  }
+
+  // Race-only state overrides — Fox2022 places these after the PQ branch
+  // (so they never fire during practice/qualifying) and before stage/lap
+  // logic, taking priority over both. Once sessionState moves past this
+  // (green flag), it falls through to the normal stage/lap display below.
+  const state = (d.sessionState || '').toLowerCase();
+  if (state === 'get in car') {
+    return [{ text: 'GRIDDING', cls: 'w' }];
+  }
+  if (state === 'warmup' || state === 'parade laps') {
+    return [{ text: 'PACING', cls: 'w' }];
+  }
+
+  // Flag-state overrides — checkered > caution > stageFinal > white(final
+  // lap), all take priority over stage/lap display. Text stays on the 'w'
+  // (white) class; the tint state on #header-data forces it black via CSS.
+  const flagState = resolveFlagState(d);
+  if (flagState === 'checkered') {
+    // Same visual treatment covers both raw states; only the label differs.
+    const rawState = (d.sessionState || '').toLowerCase();
+    const isCooldown = rawState === 'cool down';
+    return [{ text: isCooldown ? 'RESULTS' : 'CHECKERED', cls: 'w' }];
+  }
+  if (flagState === 'caution') {
+    const cautionNum = Math.max(1, d.cautionFlags || 1);
+    return [{ text: `${ordinalSuffix(cautionNum)} CAUTION`, cls: 'w' }];
+  }
+  if (flagState === 'stageFinal') {
+    const stageNum = d.stageNum || 0;
+    return [{ text: `STAGE ${stageNum} - FINAL LAP`, cls: 'w' }];
+  }
+  if (flagState === 'white') {
+    return [{ text: 'FINAL LAP', cls: 'w' }];
+  }
+
+  const lapsComplete   = d.lapsComplete || 0;
+  const lapsTotal      = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  const lapNum         = lapsComplete + 1;
+  const lapsRemaining  = (d.lapsRemaining !== undefined) ? d.lapsRemaining : Math.max(0, lapsTotal - lapsComplete);
+
+  const stageActive    = !!d.stageRacingActive;
+  const stageFinal     = !!d.stageFinalStage;
+  const stageNum       = d.stageNum       || 0;
+  const stageLap       = d.stageLap       || 0;
+  const stageTotalLaps = d.stageTotalLaps || 0;
+  const stageLapNum    = stageLap + 1;
+
+  if (stageActive && !stageFinal) {
+    return [
+      { text: String(lapNum),         cls: 'g' },
+      { text: ' | ',                  cls: 'w' },
+      { text: String(lapsTotal),      cls: 'g' },
+      { text: `  STAGE ${stageNum} - `, cls: 'w' },
+      { text: String(stageLapNum),    cls: 'g' },
+      { text: ' | ',                  cls: 'w' },
+      { text: String(stageTotalLaps), cls: 'g' },
+    ];
+  }
+
+  const halfway = Math.floor(lapsTotal / 2);
+  if (lapsTotal > 0 && lapsComplete >= halfway) {
+    return [
+      { text: String(lapsRemaining), cls: 'g' },
+      { text: ' LAPS TO GO',         cls: 'w' },
+    ];
+  }
+
+  return [
+    { text: String(lapNum),    cls: 'g' },
+    { text: ' | ',              cls: 'w' },
+    { text: String(lapsTotal), cls: 'g' },
+  ];
+}
+
+let _lastLapStageText = null;
+
+function layoutLapStageRow() {
+  const d = _latestData || {};
+
+  const segments = buildLapStageSegments(d);
+  const fullText = segments.map(s => s.text).join('');
+
+  const rowTop   = parseFloat(137);
+  const rowH     = parseFloat(34);
+  const fontBase = parseFloat(20.5);
+
+  // Same cell bounds as the track-name row — no separate width controls.
+  const cellLeft     = parseFloat(30);
+  const cellRightPad = parseFloat(44.5);
+  const cellWidth    = 399 - cellLeft - cellRightPad;
+
+  // Letter-spacing only applies to white/checkered (see CSS) — factor it
+  // into the width measurement so centering matches what actually renders.
+  const flagState  = resolveFlagState(d);
+  const trackingEm = (flagState === 'white' || flagState === 'checkered')
+    ? parseFloat(0.5)
+    : 0;
+
+  let fontSize = Math.min(fontBase, rowH);
+  let scale = 1.0;
+  while (scale > 0.15 && measureLapStageWidth(fullText, fontSize * scale, trackingEm) > cellWidth) {
+    scale -= 0.02;
+  }
+  const finalFont  = fontSize * scale;
+  const finalWidth = measureLapStageWidth(fullText, finalFont, trackingEm);
+  const centeredLeft = cellLeft + Math.max(0, (cellWidth - finalWidth) / 2);
+
+  document.documentElement.style.setProperty('--lapstage-top',    rowTop + 'px');
+  document.documentElement.style.setProperty('--lapstage-row-h',  rowH   + 'px');
+  document.documentElement.style.setProperty('--lapstage-left',   centeredLeft + 'px');
+  document.documentElement.style.setProperty('--lapstage-font',   finalFont    + 'px');
+
+  document.getElementById('lapstage-text').innerHTML =
+    segments.map(s => `<span class="${s.cls === 'g' ? 'ls-green' : 'ls-white'}">${s.text}</span>`).join('');
+
+  _lastLapStageText = fullText;
+}
+
+applyLayout();
+
+// ── Number image ────────────────────────────────────────────────────────
+// NUM_SOURCE_MODE: 'auto' (number.png, falls back to color chip if missing/
+// onerror), 'chip' (force the default color-chip fallback for every row,
+// ignoring number.png even if present), 'png' (force number.png only —
+// useful for spotting missing art without the chip masking the gap).
+function numImgSrc(num) {
+  if (NUM_SOURCE_MODE === 'chip') return '';
+  const n = (num || '').trim();
+  if (!n || n === '??') return '';
+  if (NUM_SOURCE_MODE === 'auto' && IS_DEFAULT) return '';
+  return assetPath(`series/${SERIES_ID}/numbers/${n}.png`);
+}
+
+// ── Name display ────────────────────────────────────────────────────────
+function displayName(entry) {
+  const raw = entry.name || '?';
+  return raw.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+
+// ── Gap formatting ──────────────────────────────────────────────────────
+let DNF_DISPLAY = 'reason';
+// PQ sessions: entry.time is gap-to-leader, but PQ display needs each
+// driver's own best lap vs. the leader's best lap — leader shows their raw
+// lap time, everyone else shows "+delta" off leaderBest (bestLap field).
+function fmtGap(entry, isLeader, session, leaderBest, entryBest) {
+  const lapsDown = entry.lapsDown || 0;
+  const status   = (entry.status || '').toLowerCase();
+  const t        = entry.time || 0;
+  const isPQ     = session === 'practice' || session === 'qualifying' || session === 'testing';
+
+  if (status && status !== 'running') return DNF_DISPLAY === 'out' ? 'OUT' : status.toUpperCase().slice(0, 8);
+  if (isPQ) {
+    // Every driver shows their own best lap, not a gap — leader gets a
+    // green treatment applied at the call site (buildRow/updateGaps).
+    const bl = entryBest || 0;
+    return bl > 0 ? bl.toFixed(3) : '';
+  }
+  if (lapsDown > 0) return `-${lapsDown}L`;
+  if (isLeader) return '—';
+  return t > 0 ? `-${t.toFixed(2)}` : '';
+}
+
+const CHASE_DIVIDER_SRC = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAx4AAABRCAMAAABrAoAoAAAAAXNSR0IB2cksfwAAAAlwSFlzAAAWJQAAFiUBSVIk8AAAAexQTFRFAAAAAJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/AJb/zepeBgAAAKR0Uk5TAAECAwQFBggKDA4SFxoeICMlJykrLC0uMDEyMzQ5PT9BQkVIS05PUVRYW1xeYWZpam1zdnqAg4eLjo+QlJibnaSqsLe7xAkRFjZTaHKTmqClrbG0ub2+wMHCwwcNEBsqR1BaY2x1fpWhpquvs7WJqGu6Nbanv3m4HS9kSpY+hJ8PFR8mOkBGSUxZX2J4e4KFipGXrrKpknwZCxMhVWdud32NnryextsfAAADxElEQVR4nO3XW4hMcRzA8fP7HyOXpXXZLUWK1q5rE3nggSjZN1Km1gNbUh5EFEntMw8uJSnhwSVhRXnljdalyEqLkoRcdjaNB7FKx5zLrFnmd3bPrv3vDN/Ptjv/mfmf8z8zc767e8QBoJDhPgCgfJEHoCIPQFWxefgH7kWj/FdJ4VM900vuxp+WZNny2yDxawi2SLxB8lfR14yBP34jyaEMRjnmkX8jvPyX9Bycn0Hx2ImeC8dGVtxaJm1ualHHiPrX0+WDMTX5D+dztUhuQm5CIZOs7ZeBIUMe+ZM/+H0hUQTFoyAPKWSTydZKtvb6mpvuyvCPRrtZ8HROMOooysMhkH/Gf50HEGMVeQAa8gBU5AGoyANQkQegIg9ARR6AijwAFXkAKvIAVOQBqMgDUJEHoCIPQEUegIo8ABV5ACryAFTkAajIA1CRB6AiD0BFHoCKPAAVeQAq8gBU5AGoyANQkQegIg9ARR6AijwAFXkAKvIAVOQBqMgDUJEHoCIPQEUegIo8ABV5ACryAFTkAajIA1CRB6DakCUPQNHURR6AgjwAFf9cASouzYHSVtd//EQeQCkya6pxyAMopXpTh39DHsAfRi0cG9ySB/A7s70z69/WXLC1InmgUkhz9ZNgUN1qbUlbCwGDtEseh4Ovt20tSR6oEBtr28NB+kynrTXJA5VhdLoqGn2549lalDxQEVI733SFo4VywNqq5IFK4DaOj+qYPPaUvWXJAxXAzG18FA2773XbW5c8UP7MnNm5aFg/br/FhckDZS/V0FCoI53ab+263CEPlD0Zs2J0oQ5nxpfzVte2uRiQ1IhRO6S7cN3hjL//xurq5IFy1iLy7XVX4d7kaYd+WF2ePP4CEdfdKwd3H5ZdR/L3XOPGv62ZiXIyfodbRE7Hr1m3/Ez8hGY518eHu/jDlIexE5rkecPFPmZckthVMjdXXSkxIf249/11r5zvjvNuiuM0+HefvXdd/9z0PEe6iqat3fc59nD+uoHkER55sKkX7STcjed5wWP9vniS/k8dtj32gzFNdeZl++bL855NcrP21/8n1IQfXPBTgu/f38m6qnEtlg9qIHmkws3WO60956IEUfh1JIij93HEbPYrxPIkpsWY1It518hjEGryH7IUft/m9Xoj6+a/nbbV/jENJA91m6E6hWVI9z5oYswxkZaRK9v2HFpyt3/bNOdmHk2wxOKlV98nOaRtcjzJ9MbcohMJzoRMa6bUf0yqzW1VD5Sn5j7tfT8d3ZwtemyY0vBx7QGoyANQkQeg+gki69hSwaIoqQAAAABJRU5ErkJggg==';
+
+let _driverColors = {};
+
+// ── Build a single row ────────────────────────────────────────────────────
+function buildRow(el, entry, displayPos, session, playerCarIdx, leaderBest, lapTracker) {
+  if (!entry) { el.innerHTML = ''; el.className = 's-row'; return; }
+
+  const isPlayer = entry.carIdx === playerCarIdx;
+  el.className   = 's-row' + (isPlayer ? ' is-player' : '') + chaseCls(entry.number);
+  el.dataset.chaseNum = chaseKey(entry.number);
+
+  const isLeader  = displayPos === 1;
+  const isPQ      = session === 'practice' || session === 'qualifying' || session === 'testing';
+  // bestLap/lastLap live in a separate lapTracker map keyed by carIdx,
+  // not directly on the standings entry — see nr2003_racestats.html.
+  const entryBest = (lapTracker && lapTracker[entry.carIdx]?.bestLap) || 0;
+  const gap       = fmtGap(entry, isLeader, session, leaderBest, entryBest);
+  const gapCls    = (isPQ && isLeader) ? 's-gap pq-leader' : 's-gap';
+  const numSrc    = numImgSrc(entry.number);
+  const name      = displayName(entry);
+
+  const numColor = _driverColors[(entry.number || '').trim()] || '';
+  const numBg    = numColor ? `background:${numColor}` : '';
+  const numHtml = numSrc
+    ? `<div class="s-num-wrap"><div class="s-num-bg" style="${numBg}">
+         <img class="s-num-img" src="${numSrc}"
+              onerror="this.style.display='none';this.nextElementSibling.style.display='block';" alt="${entry.number}">
+         <span class="s-num-text">${entry.number || ''}</span>
+       </div></div>`
+    : `<div class="s-num-wrap"><div class="s-num-bg" style="${numBg}"><span class="s-num-text" style="display:block">${entry.number || ''}</span></div></div>`;
+
+  el.innerHTML = `
+    <img class="s-chase-div" src="${CHASE_DIVIDER_SRC}" alt="">
+    <span class="s-pos">${displayPos}.</span>
+    ${numHtml}
+    <span class="s-name">${name}</span>
+    <span class="${gapCls}">${gap}</span>
+  `;
+  el.dataset.caridx = entry.carIdx;
+}
+
+// ── Bottom-half rotation (11-20, 21-30, ... same cadence as Fox2022) ─────
+let _rotGroupIdx = 0;
+let _rotTimer    = null;
+const BOTTOM_GROUP_SIZE = 10;
+
+function renderBottom(standings, session, playerCarIdx, lapTracker) {
+  const rest       = standings.slice(10);
+  const groupStart = _rotGroupIdx * BOTTOM_GROUP_SIZE;
+  const leaderBest = (lapTracker && lapTracker[standings[0]?.carIdx]?.bestLap) || 0;
+  // Once cars start finishing, the top N spots belong to finisher cards —
+  // the still-racing field's true position is offset by however many are
+  // already locked in, not just its own index within the filtered array.
+  const posOffset  = _lockedFinishers.length;
+  for (let i = 0; i < BOTTOM_GROUP_SIZE; i++) {
+    const rowEl  = document.getElementById(`row-${11 + i}`);
+    const entry  = rest[groupStart + i] || null;
+    const absPos = entry ? (posOffset + 11 + groupStart + i) : null;
+    buildRow(rowEl, entry, absPos, session, playerCarIdx, leaderBest, lapTracker);
+  }
+}
+
+function startRotation() {
+  if (_rotTimer) clearInterval(_rotTimer);
+  const rotMs = parseFloat(10) * 1000;
+  _rotTimer = setInterval(runRotation, rotMs);
+}
+
+function runRotation() {
+  if (!_latestData) return;
+  if (_ppOn) return;                       // points panel is covering the bottom group
+  const src  = getStandings(_latestData);
+  const rest = src.slice(10);
+  if (rest.length <= BOTTOM_GROUP_SIZE) return;
+
+  const sess     = (_latestData.session || '').toLowerCase();
+  const pid      = _latestData.playerCarIdx ?? -1;
+  const maxGroup = Math.ceil(rest.length / BOTTOM_GROUP_SIZE);
+
+  const fadeMs    = parseInt(350, 10);
+  const slideMs   = parseInt(550, 10);
+  const slidePx   = parseInt(16, 10);
+  const staggerMs = parseInt(30, 10);
+
+  const rows = [];
+  for (let i = 0; i < BOTTOM_GROUP_SIZE; i++) rows.push(document.getElementById(`row-${11 + i}`));
+
+  // Phase 1 — each row fades out individually, staggered top-to-bottom,
+  // rather than the whole group fading as one flat block.
+  rows.forEach((el, i) => {
+    if (!el) return;
+    el.style.transition = `opacity ${fadeMs}ms ease ${i * staggerMs}ms`;
+    el.style.opacity = '0';
+  });
+
+  const fadeTotal = fadeMs + (BOTTOM_GROUP_SIZE - 1) * staggerMs;
+
+  setTimeout(() => {
+    // Swap to the next group of 10 while every row is fully transparent
+    _rotGroupIdx = (_rotGroupIdx + 1) % maxGroup;
+    renderBottom(src, sess, pid, _latestData.lapTracker || {});
+
+    // Phase 2 — snap every row to its entrance pose (above final position,
+    // invisible) with no transition, then release into a staggered
+    // slide-down + fade-in, again top-to-bottom.
+    rows.forEach(el => {
+      if (!el) return;
+      el.style.transition = 'none';
+      el.style.opacity    = '0';
+      el.style.transform  = `translateY(-${slidePx}px)`;
+    });
+    if (rows[0]) void rows[0].offsetWidth; // force reflow so the snap isn't animated
+
+    requestAnimationFrame(() => {
+      rows.forEach((el, i) => {
+        if (!el) return;
+        const delay = i * staggerMs;
+        el.style.transition = `opacity ${slideMs}ms ease-out ${delay}ms, transform ${slideMs}ms cubic-bezier(0.22, 1, 0.36, 1) ${delay}ms`;
+        el.style.opacity    = '1';
+        el.style.transform  = 'translateY(0)';
+      });
+    });
+  }, fadeTotal);
+}
+
+
+// ── Standings source selection ────────────────────────────────────────────
+// Priority chain matches Fox2022's getStandings exactly (gridding/pacing/
+// cooldown -> plain standings; checkered + computedStandings available ->
+// that frozen/bridge-computed array, avoiding the live trkPct-based
+// reordering churn raw liveStandings has right at the finish; otherwise
+// liveStandings with a standings fallback). Layered on top: our own
+// finished-car filter, since Fox2022 has no finisher cards to feed.
+// During checkered, still-racing cars (2nd onward, before cooldown) use
+// computedStandings rather than raw liveStandings — once the leader has
+// taken the checkered, everyone else is just cruising their cooldown lap,
+// not actually racing, so trkPct-based live gap interpolation goes
+// erratic. computedStandings' unfrozen entries show a neutral placeholder
+// instead, which is preferable to an actively-wrong live number; the real
+// gap fills in once that car's own official result lands at cooldown.
+function getStandings(d) {
+  const isPQ  = ['practice', 'qualifying', 'testing'].includes((d.session || '').toLowerCase());
+  const state = (d.sessionState || '').toLowerCase();
+  const liveEnabled = d.liveStandingsEnabled !== false;
+
+  let raw;
+  if (isPQ) {
+    raw = d.standings || [];
+  } else if (state === 'cool down' || state === 'get in car' || state === 'warmup' || state === 'parade laps') {
+    raw = d.standings || [];
+  } else if (state === 'checkered' && liveEnabled && Array.isArray(d.computedStandings) && d.computedStandings.length) {
+    raw = d.computedStandings;
+  } else {
+    const live = d.liveStandings || d.standings || [];
+    raw = (liveEnabled && live.length) ? live : (d.standings || []);
+  }
+
+  // Once cars start finishing under the checkered flag, they move into
+  // finisher cards and drop out of the normal running-order rows entirely.
+  if (_lockedFinishers.length === 0) return raw;
+  return raw.filter(s => !_lockedFinishers.includes(s.carIdx));
+}
+
+// ── Position-change tracking + arrow injection ─────────────────────────────
+let _prevOrder = [];
+
+function applyArrow(el, gained) {
+  const gapEl = el.querySelector('.s-gap');
+  if (!gapEl) return;
+  const existing = gapEl.querySelector('.s-arrow');
+  if (existing) existing.remove();
+  const arrow = document.createElement('span');
+  arrow.className   = `s-arrow ${gained ? 'gained' : 'lost'}`;
+  arrow.textContent = gained ? '▲' : '▼';
+  gapEl.prepend(arrow);
+  setTimeout(() => arrow.classList.add('fade'), 500);
+  setTimeout(() => arrow.remove(), 3000);
+}
+
+function renderStandings(standings, session, playerCarIdx, lapTracker) {
+  const top10 = standings.slice(0, 10);
+  const oldOrder = _prevOrder.slice();
+  const newOrder = top10.map(s => s.carIdx);
+  const leaderBest = (lapTracker && lapTracker[standings[0]?.carIdx]?.bestLap) || 0;
+  // Same offset as renderBottom — the still-racing field's real position
+  // starts after however many finisher cards are already locked in.
+  const posOffset = _lockedFinishers.length;
+
+  top10.forEach((entry, i) => {
+    const el = document.getElementById(`row-${i + 1}`);
+    buildRow(el, entry, posOffset + i + 1, session, playerCarIdx, leaderBest, lapTracker);
+    if (oldOrder.length > 0) {
+      const oldIdx = oldOrder.indexOf(entry.carIdx);
+      const newIdx = newOrder.indexOf(entry.carIdx);
+      if (oldIdx !== -1 && oldIdx !== newIdx) applyArrow(el, newIdx < oldIdx);
+    }
+  });
+  for (let i = top10.length; i < 10; i++) {
+    const el = document.getElementById(`row-${i + 1}`);
+    el.innerHTML = ''; el.className = 's-row'; el.dataset.caridx = '';
+  }
+
+  _prevOrder = newOrder;
+
+  // Bottom group — same idea as top10: compare each slot's carIdx before
+  // and after rebuild. This only fires for shuffles *within* the currently
+  // displayed group (e.g. 11-20 reordering amongst themselves); a full
+  // group rotation (11-20 -> 21-30) is an entirely different car set, so
+  // there's no prior slot to compare against and no arrow fires there —
+  // that swap gets its own staggered fade/slide treatment in runRotation().
+  const prevBottomOrder = [];
+  for (let i = 0; i < BOTTOM_GROUP_SIZE; i++) {
+    const el = document.getElementById(`row-${11 + i}`);
+    prevBottomOrder.push(el ? parseInt(el.dataset.caridx || '-1') : -1);
+  }
+
+  renderBottom(standings, session, playerCarIdx, lapTracker);
+
+  for (let i = 0; i < BOTTOM_GROUP_SIZE; i++) {
+    const el = document.getElementById(`row-${11 + i}`);
+    if (!el) continue;
+    const ci = parseInt(el.dataset.caridx || '-1');
+    if (ci < 0) continue;
+    const oldIdx = prevBottomOrder.indexOf(ci);
+    if (oldIdx === -1 || oldIdx === i) continue;
+    applyArrow(el, i < oldIdx);
+  }
+}
+
+// ── Fast gap update — no DOM rebuild, runs every tick ─────────────────────
+function updateGaps(standings, session, lapTracker) {
+  const leaderBest = (lapTracker && lapTracker[standings[0]?.carIdx]?.bestLap) || 0;
+  const isPQ = session === 'practice' || session === 'qualifying' || session === 'testing';
+  // Once any finisher is locked in, the true leader isn't in this filtered
+  // array at all anymore — so array index 0 is just whoever's now leading
+  // the still-racing pack, never treat them as "the leader" for gap
+  // display purposes. Same offset renderStandings/buildRow already use for
+  // position numbering, just missing here on the fast per-tick path.
+  standings.slice(0, 10).forEach((entry, i) => {
+    const el  = document.getElementById(`row-${i + 1}`);
+    const gapEl = el?.querySelector('.s-gap');
+    if (!gapEl) return;
+    const isLeader = _lockedFinishers.length === 0 && i === 0;
+    const entryBest = (lapTracker && lapTracker[entry.carIdx]?.bestLap) || 0;
+    // Preserve any live arrow span, only touch the trailing text node
+    const arrow = gapEl.querySelector('.s-arrow');
+    gapEl.textContent = fmtGap(entry, isLeader, session, leaderBest, entryBest);
+    gapEl.classList.toggle('pq-leader', isPQ && isLeader);
+    if (arrow) gapEl.prepend(arrow);
+  });
+
+  const rest       = standings.slice(10);
+  const groupStart = _rotGroupIdx * BOTTOM_GROUP_SIZE;
+  for (let i = 0; i < BOTTOM_GROUP_SIZE; i++) {
+    const el    = document.getElementById(`row-${11 + i}`);
+    const entry = rest[groupStart + i];
+    const gapEl = el?.querySelector('.s-gap');
+    if (!gapEl || !entry) continue;
+    const entryBest = (lapTracker && lapTracker[entry.carIdx]?.bestLap) || 0;
+    const arrow = gapEl.querySelector('.s-arrow');
+    gapEl.textContent = fmtGap(entry, false, session, leaderBest, entryBest);
+    gapEl.classList.remove('pq-leader'); // bottom group is never the leader
+    if (arrow) gapEl.prepend(arrow);
+  }
+}
+
+// ── Main data handler ─────────────────────────────────────────────────────
+let _latestData = null;
+let _lastStandingsKey = '';
+
+// ── Session-change detection ────────────────────────────────────────────
+// papytelemapp.h: "sessionCookie will change whenever a session is
+// restarted... you must clear any cache." Same pattern as racestats.html —
+// otherwise stale rows/track name/rotation state can linger on screen
+// after a session transition until fresh data happens to overwrite them.
+let _lastSessionCookie = null;
+
+// Bottom portion (body panel + dividers + standings rows) fades out
+// whenever there's no standings data yet — leaves just the header
+// (sponsor/track-name/lap-stage chrome) visible instead of an empty panel.
+function setBottomVisible(v) {
+  const opacity = v ? '1' : '0';
+  document.getElementById('overlay-body').style.opacity     = opacity;
+  document.getElementById('dividers-img').style.opacity     = opacity;
+  // Stage results hide the running-order rows independently of the normal
+  // no-data visibility toggle (they're still real, live cars — just hidden
+  // behind the stage-results cards for the duration of that window). Don't
+  // let this unconditional call stomp that back to visible every tick.
+  if (!_stageResultsActive) {
+    document.getElementById('standings-data').style.opacity = opacity;
+  }
+  // The 10 individual .fc-divider slices inside #finish-layer are a
+  // separate set of elements from the main #dividers-img above — each
+  // windows the same dividers.png to its own finisher-card slot for the
+  // checkered cascade. They don't inherit the main dividers-img toggle,
+  // so without this they'd stay visible even when everything else fades.
+  document.getElementById('finish-layer').style.opacity     = opacity;
+}
+
+function checkSessionChange(d) {
+  const cookie = d.sessionCookie;
+  if (cookie == null || cookie === _lastSessionCookie) return;
+  _lastSessionCookie = cookie;
+  diReset();
+
+  // Reset comparison/cache state so nothing carries over from the old session
+  _prevOrder          = [];
+  _lastStandingsKey    = '';
+  _rotGroupIdx          = 0;
+  _lastTrackName        = null;
+  _lastLapStageText     = null;
+  _driverColors         = {};
+
+  // Blank every row immediately rather than waiting for fresh standings
+  for (let i = 1; i <= 20; i++) {
+    const el = document.getElementById(`row-${i}`);
+    if (el) { el.innerHTML = ''; el.className = 's-row'; el.dataset.caridx = ''; }
+  }
+  document.getElementById('track-name-text').textContent = '';
+  document.getElementById('lapstage-text').innerHTML = '';
+  document.getElementById('header-data').classList.remove('flag-caution', 'flag-white', 'flag-checkered', 'flag-stagefinal', 'flag-stagecomplete', 'flag-stageresults');
+  document.getElementById('fastestlap-badge').style.display = 'none';
+  flReset();
+  grHide(true);
+  setBottomVisible(false);
+  resetFinishers();
+  document.querySelectorAll('.fc-slot').forEach(el => el.classList.remove('revealed'));
+  _stageResultsActive   = false;
+  _stageResultsForStage = -1;
+  _stageResultsShownAtLap = -1;
+  _stageResultsWinnersRevealed = false;
+  _stageResultsHoldExpired = false;
+  document.getElementById('standings-data').style.opacity = ''; // let setBottomVisible's own value govern
+}
+
+// Every step of a frame runs on its own: if one of them throws (a tracker, the points panel, the driver banner...) the standings,
+// lap counter and flags still update. The first error of each kind is written to driverinfo-debug.json (next to config.json) so it can be diagnosed.
+const _errSeen = new Set();
+function _logErr(where, e) {
+  try {
+    const k = where + '|' + (e && e.message);
+    if (_errSeen.has(k) || _errSeen.size > 25) return;
+    _errSeen.add(k); console.error('[prime]', where, e);
+    if (window.shl && window.shl.writeDebugDump) window.shl.writeDebugDump({ time: new Date().toISOString(), overlay: 'prime', where, error: String(e && e.message), stack: String(e && e.stack || '').split('\n').slice(0, 6) });
+  } catch (_) {}
+}
+function _safe(where, fn) { try { return fn(); } catch (e) { _logErr(where, e); } }
+function handleData(d) {
+  _latestData = d;
+  _safe('sessionChange', () => checkSessionChange(d));
+
+  if (!_preview) {
+    if (!d.atTrack) { document.getElementById('app').style.display = 'none'; if (_diOn) diHide(); if (_gr.on) grHide(true); return; }
+    if (VISIBILITY_MODE === 'in_car' && !d.player?.inCar) { document.getElementById('app').style.display = 'none'; return; }
+    document.getElementById('app').style.display = '';
+  }
+
+  if (d.driverColors) _driverColors = d.driverColors;
+  _safe('trackLed', () => trackLed(d));
+  _safe('diFeed', () => diFeed(d));
+  _safe('startGrid', () => grSync(d));
+  if (_ppOn) _safe('points', () => ppRender(d, getStandings(d)));
+
+  // Must run before anything that reads _stageResultsActive this tick
+  // (buildLapStageSegments via the lap-text check, and applyFlagState) —
+  // otherwise both would be reading last tick's stale value.
+  _safe('stageResults', () => checkStageResults(d));
+
+  const trackName = d.trackNameShort || d.track || '';
+  if (trackName !== _lastTrackName) {
+    _lastTrackName = trackName;
+    _safe('trackName', () => layoutTrackName());
+  }
+
+  _safe('lapRow', () => {
+    const candidateText = buildLapStageSegments(d).map(s => s.text).join('');
+    if (candidateText !== _lastLapStageText) layoutLapStageRow();
+  });
+
+  _safe('flags', () => applyFlagState());
+  _safe('finishers', () => checkFinishers(d));
+
+  const session      = (d.session || '').toLowerCase();
+  const playerCarIdx = d.playerCarIdx ?? -1;
+  const standings    = getStandings(d);
+  if (!standings.length) {
+    setBottomVisible(false);
+    document.getElementById('fastestlap-badge').style.display = 'none';
+    return;
+  }
+  setBottomVisible(true);
+
+  const lapTracker = d.lapTracker || {};
+  const key = standings.map(s => s.carIdx).join(',');
+  if (key !== _lastStandingsKey) {
+    _lastStandingsKey = key;
+    _safe('renderStandings', () => renderStandings(standings, session, playerCarIdx, lapTracker));
+  } else {
+    _safe('updateGaps', () => updateGaps(standings, session, lapTracker));
+  }
+
+  _safe('fastestLap', () => updateFastestLapBadge(d));
+}
+
+// ── Final-lap sponsor panel ───────────────────────────────────────────────
+// When the flag state turns 'white' (one lap to go) the header flips to
+// FINAL LAP in a single frame, a light panel wipes down over the standings
+// and two/three slanted black bars sweep across it. The panel holds the
+// sponsor logo (images/Prime/finallapsponsor.png — edit/replace that file,
+// a transparent PNG works best) and then wipes away, black bars cutting it
+// into three offset bands, to reveal the standings again.
+// Timings were measured frame-by-frame (60 fps) from the reference capture.
+const FL_STATES  = ['white'];   // flag states that trigger it — add 'stageFinal' to use it on stage-final laps too
+const FL_HOLD_MS = 3200;        // time from the header switch until the panel starts wiping out
+const FL_PANEL   = { x: 30, y: 190, w: 321.5, h: 776, r: 19 };  // body panel rect on the 399x1080 canvas (r = bottom corner radius)
+const FL_LOGO    = { maxW: 300, maxH: 520, cy: 0.463 };         // logo box: max size, vertical centre as a fraction of the panel height
+const FL_COLORS  = { panel: '#ededed', shine: '#e1e1e1', bar: '#000000' };
+const FL_FRAME   = 1000 / 60;   // one reference frame in ms
+const FL_SLOPE   = 0.3;         // bar lean: x shifts left 0.3px per px going down
+const FL_SS      = 2;           // canvas backing-store scale (crisper edges)
+
+// Wipe-in: reveal front (px from panel top, out of 762) by frame after the reveal starts.
+const FL_REVEAL = [[-1,0],[0,15],[1,15],[2,43],[3,84],[4,197],[5,253],[6,345],[7,440],[8,526],
+                   [9,563],[10,595],[11,627],[12,659],[13,691],[14,723],[15,755],[15.4,762]];
+// Wipe-out: three horizontal bands; the middle one runs ahead of the other two (the "stepped" look).
+const FL_BANDS   = [[0, 268, 0], [268, 512, 127], [512, FL_PANEL.h, 0]];  // [top, bottom, x-offset]
+
+const _fl = { on: false, fired: false, t0: 0, raf: 0, logo: null, ctx: null };
+
+function flLerp(tbl, t) {
+  if (t <= tbl[0][0]) return tbl[0][1];
+  for (let i = 1; i < tbl.length; i++) {
+    if (t <= tbl[i][0]) {
+      const a = tbl[i - 1], b = tbl[i];
+      return a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]);
+    }
+  }
+  return tbl[tbl.length - 1][1];
+}
+
+function flEnsureCanvas() {
+  if (_fl.ctx) return;
+  const cv = document.getElementById('finallap-canvas');
+  cv.width  = Math.round(FL_PANEL.w * FL_SS);
+  cv.height = Math.round(FL_PANEL.h * FL_SS);
+  cv.style.left   = FL_PANEL.x + 'px';
+  cv.style.top    = FL_PANEL.y + 'px';
+  cv.style.width  = FL_PANEL.w + 'px';
+  cv.style.height = FL_PANEL.h + 'px';
+  _fl.ctx = cv.getContext('2d');
+}
+
+function flLoadLogo() {
+  const im = new Image();
+  im.onload = () => { _fl.logo = im; };
+  im.src = PRIME_BASE + '/finallapsponsor.png';
+}
+
+// Slanted bar: its left edge is at xRef on row yRef and leans left going down.
+function flBar(c, xRef, yRef, w, yt, yb) {
+  const x0 = xRef - FL_SLOPE * (yt - yRef);
+  const x1 = xRef - FL_SLOPE * (yb - yRef);
+  c.fillStyle = FL_COLORS.bar;
+  c.beginPath();
+  c.moveTo(x0, yt); c.lineTo(x0 + w, yt); c.lineTo(x1 + w, yb); c.lineTo(x1, yb);
+  c.closePath();
+  c.fill();
+}
+
+// Right edge of the thin trailing bar on row y — everything left of it is already erased.
+function flEraseX(tau, off, y) {
+  const L1 = 75.3 + 49.3 * tau + off;
+  return Math.min(FL_PANEL.w + 2, L1 - 193 + 18.3 - FL_SLOPE * (y - 3.5));
+}
+
+function flDraw(mode, front, tb, tau) {
+  const c = _fl.ctx, W = FL_PANEL.w, H = FL_PANEL.h, R = FL_PANEL.r;
+  c.setTransform(FL_SS, 0, 0, FL_SS, 0, 0);
+  c.clearRect(0, 0, W, H);
+  if (mode === 'none') return;
+
+  const panelPath = () => {
+    c.beginPath();
+    c.moveTo(0, 0); c.lineTo(W, 0); c.lineTo(W, H - R);
+    c.arcTo(W, H, W - R, H, R); c.lineTo(R, H); c.arcTo(0, H, 0, H - R, R);
+    c.closePath();
+  };
+
+  // 1) the light panel (+ shine + logo), limited to whatever is currently visible
+  c.save();
+  panelPath(); c.clip();
+  if (mode === 'in') {
+    c.beginPath(); c.rect(0, 0, W, front); c.clip();
+  } else if (mode === 'out') {
+    c.beginPath();
+    for (const [yt, yb, off] of FL_BANDS) {
+      c.moveTo(flEraseX(tau, off, yt), yt); c.lineTo(W + 2, yt);
+      c.lineTo(W + 2, yb); c.lineTo(flEraseX(tau, off, yb), yb); c.closePath();
+    }
+    c.clip();
+  }
+  c.fillStyle = FL_COLORS.panel;
+  c.fillRect(0, 0, W, H);
+  c.fillStyle = FL_COLORS.shine;                       // soft diagonal shine bands
+  for (let k = -1; k < 7; k++) {
+    const y = 55 + 150 * k;
+    c.beginPath();
+    c.moveTo(0, y); c.lineTo(W, y + 0.31 * W); c.lineTo(W, y + 0.31 * W + 54); c.lineTo(0, y + 54);
+    c.closePath(); c.fill();
+  }
+  const lg = _fl.logo;
+  if (lg && lg.naturalWidth) {
+    const k = Math.min(FL_LOGO.maxW / lg.naturalWidth, FL_LOGO.maxH / lg.naturalHeight);
+    const lw = lg.naturalWidth * k, lh = lg.naturalHeight * k;
+    c.drawImage(lg, (W - lw) / 2, H * FL_LOGO.cy - lh / 2, lw, lh);
+  }
+  c.restore();
+
+  // 2) black bars
+  if (mode === 'in' && tb > -2 && tb < 16.5) {
+    c.save();
+    panelPath(); c.clip();
+    c.beginPath(); c.rect(0, 0, W, front); c.clip();
+    const x = 9.2 + (52 * tb + 0.9 * tb * tb) / 0.983;   // leading bar, sweeping left → right
+    for (let k = 0; k < 3; k++) flBar(c, x - k * 208.5, 34, 23.5, 0, H);
+    c.restore();
+  } else if (mode === 'out') {
+    for (const [yt, yb, off] of FL_BANDS) {
+      c.save();
+      panelPath(); c.clip();
+      c.beginPath(); c.rect(0, yt, W, yb - yt); c.clip();
+      const L1 = 75.3 + 49.3 * tau + off;
+      flBar(c, L1, 3.5, 63, yt, yb);          // wide leading bar
+      flBar(c, L1 - 193, 3.5, 18.3, yt, yb);  // thin trailing bar (the erasing edge)
+      c.restore();
+    }
+  }
+}
+
+// ms = time since the header switched to FINAL LAP. Returns 'done' when finished.
+function flRenderAt(ms) {
+  flEnsureCanvas();
+  const F = ms / FL_FRAME;
+  const holdF = FL_HOLD_MS / FL_FRAME;
+  const tr = F - 5;                       // reveal starts 5 frames after the header switch
+  if (tr < -1) { flDraw('none'); return 'wait'; }
+  if (F >= holdF) {
+    const tau = (F - holdF) - 3;          // bars enter 3 frames before tau = 0
+    if (tau > 14) { flDraw('none'); return 'done'; }
+    flDraw('out', FL_PANEL.h, 0, tau);
+    return 'out';
+  }
+  const front = Math.min(FL_PANEL.h, flLerp(FL_REVEAL, tr) / 762 * FL_PANEL.h);
+  flDraw('in', front, F - 13, 0);         // bars start 13 frames after the header switch
+  return 'in';
+}
+
+function flTick(now) {
+  if (!_fl.on) return;
+  if (flRenderAt(now - _fl.t0) === 'done') { flStop(); return; }
+  _fl.raf = requestAnimationFrame(flTick);
+}
+
+function flStart() {
+  flEnsureCanvas();
+  flLoadLogo();                           // picks up edits to finallapsponsor.png
+  _fl.on = true; _fl.fired = true; _fl.t0 = performance.now();
+  document.getElementById('finallap-layer').style.display = 'block';
+  _fl.raf = requestAnimationFrame(flTick);
+}
+
+function flStop() {
+  _fl.on = false;
+  cancelAnimationFrame(_fl.raf);
+  if (_fl.ctx) _fl.ctx.clearRect(0, 0, FL_PANEL.w, FL_PANEL.h);
+  document.getElementById('finallap-layer').style.display = 'none';
+}
+
+function flReset() { flStop(); _fl.fired = false; }
+
+// Called from applyFlagState() on every tick with the resolved flag state.
+function finalLapSync(state) {
+  if (FL_STATES.includes(state)) {
+    if (!_fl.on && !_fl.fired) flStart();      // once per entry into the state
+  } else {
+    if (_fl.on) flStop();                      // flag changed (caution/checkered…): drop the panel at once
+    _fl.fired = false;
+  }
+}
+flLoadLogo();
+
+
+// ── Starting grid (pre-race) ──────────────────────────────────────────────
+// Option "Starting grid" of the layout editor (off by default): when the race goes from GRIDDING ("get in car") to PACING (warmup / parade
+// laps) the grid is shown over the body panel, SG_DELAY_MS later. Rows of two cars: position 1 inside (left), 2 outside (right), 3 inside...
+// Each row drops in from above, one after another. 10 cars (5 rows) per page; each page stays up for the "Grid Page Time" and the grid goes
+// away after the last page, or at once when the green flag drops. "Grid: my car" leaves the user's own car out (its slot stays empty).
+let START_GRID  = /^(1|true)$/i.test(String(psf.startgrid || params.get('startgrid') || '0'));
+let SG_SKIP_SELF = /^(1|true)$/i.test(String(psf.startgridskip || params.get('startgridskip') || '0'));
+const grClamp = v => Math.min(30, Math.max(1, parseFloat(v) || 8)) * 1000;
+let GR_HOLD_MS = grClamp(psf.startgridtime || params.get('startgridtime') || '8');
+const GR_PAGE = 10;                                          // cars per page (5 rows)
+const GR_ENTER_MS = 1500, GR_SWAP_MS = 750, SG_DELAY_MS = 5000;
+const _gr = { on: false, page: 0, key: '', busyUntil: 0, timer: null, hideT: null, hideT2: null, swapT: null, delayT: null, list: [], skey: '', shown: false };
+const grEl = id => document.getElementById(id);
+
+// Start order: the app's detected start positions first (same source as Race Stats / Driver Info), the game's standings only as a fallback.
+// The user's own car is left out when "Grid: my car" is on (its slot stays empty so the other cars keep their real position).
+function grList(d) {
+  if (!d) return [];
+  const pool = {};
+  [d.standings, d.liveStandings, d.drivers].forEach(l => { if (Array.isArray(l)) l.forEach(x => { if (x && x.number != null) { const k = normNum(x.number); if (k && !(k in pool)) pool[k] = x; } }); });
+  const trk = String(d.track || '');
+  const srv = (_srvStart && (!_srvStart.track || !trk || String(_srvStart.track) === trk)) ? _srvStart : null;
+  let list = null;
+  if (srv) {
+    const map = srv.start || srv.qual || ((srv.grid && String(srv.key) === String(d.sessionCookie) + '|' + trk) ? srv.grid : null);
+    if (map) {
+      const rows = Object.keys(map).map(k => ({ k: normNum(k), pos: Number(map[k]) || 0 })).filter(r => r.k && r.pos > 0).sort((x, y) => x.pos - y.pos);
+      if (rows.length) list = rows.map(r => pool[r.k] || { number: r.k, carIdx: -1, name: '' });
+    }
+  }
+  if (!list) list = ((d.standings && d.standings.length) ? d.standings : (d.liveStandings || [])).filter(Boolean);
+  if (!SG_SKIP_SELF) return list;
+  const pi = d.playerCarIdx;
+  return list.map(x => (x && ((pi != null && pi >= 0 && x.carIdx === pi) || x.isPlayer === true)) ? null : x);
+}
+function grPhotoHTML(num, own) {
+  const srcs = [assetPath('series/' + SERIES_ID + '/headshots/' + encodeURIComponent(num) + '.png')];
+  if (own) srcs.unshift(assetPath('images/playerheadshot.png'));
+  srcs.push(assetPath('images/defaultheadshot.png'));
+  return '<img alt="" src="' + diEsc(srcs[0]) + '" data-q="' + diEsc(JSON.stringify(srcs.slice(1))) +
+         '" onerror="var q=JSON.parse(this.dataset.q||\'[]\');if(q.length){this.dataset.q=JSON.stringify(q.slice(1));this.src=q[0]}else{this.remove()}">';
+}
+function grNumHTML(num) {
+  const src = numImgSrc(num), fb = '<span>' + diEsc(num) + '</span>';
+  if (!src) return fb;
+  return '<img data-fb="' + diEsc(fb) + '" src="' + diEsc(src) + '" alt="" onerror="var p=this.parentNode,f=this.dataset.fb;p.innerHTML=f">';
+}
+function grCard(s, d, rowNo) {
+  const num = (s.number == null ? '' : String(s.number)).trim() || '??';
+  const col = _driverColors[num] || '';
+  const bg = col ? 'linear-gradient(160deg,' + lightenHex(col, 16) + ' 0%,' + col + ' 62%)' : 'linear-gradient(160deg,#34343a 0%,#17171a 100%)';
+  const full = String(diNameOf(s, num) || '').trim().toUpperCase() || num;
+  const last = diLastNameOf(full) || full;
+  const own = s.carIdx === (d.playerCarIdx ?? -2);
+  const rgb = col ? _diRGB(col) : null, light = !!(rgb && _diLum(rgb) > 0.4);
+  return '<div class="gr-card" style="background:' + bg + '">' +
+    (rowNo ? '<div class="gr-rowlbl"' + (light ? ' style="color:#111;text-shadow:none"' : '') + '><b>ROW</b><i>' + rowNo + '</i></div>' : '') +
+    '<div class="gr-photo">' + grPhotoHTML(num, own) + '</div>' +
+    '<div class="gr-numbox"><div class="gr-num">' + grNumHTML(num) + '</div><div class="gr-manu">' + diManuHTML(s, num) + '</div></div>' +
+    '<div class="gr-name"><span>' + diEsc(last) + '</span></div></div>';
+}
+function grFit() {
+  document.querySelectorAll('#gr-rows .gr-name span').forEach(sp => {
+    const box = sp.parentNode, max = box.clientWidth - 12;
+    let sz = 17; sp.style.fontSize = sz + 'px';
+    while (sp.offsetWidth > max && max > 0 && sz > 9) { sz -= 0.5; sp.style.fontSize = sz + 'px'; }
+  });
+}
+function grKey() {
+  return _gr.page + '|' + _gr.list.map(s => s ? s.carIdx + ':' + (s.number == null ? '' : s.number) + ':' + (_driverColors[String(s.number == null ? '' : s.number).trim()] || '') : '-').join(',');
+}
+function grBuild(d) {
+  const list = _gr.list, pages = Math.max(1, Math.ceil(list.length / GR_PAGE));
+  if (_gr.page >= pages) _gr.page = 0;
+  const base = _gr.page * GR_PAGE, nRows = GR_PAGE / 2;
+  let html = '';
+  for (let r = 0; r < nRows; r++) {
+    const a = list[base + r * 2], b = list[base + r * 2 + 1];
+    if (!a && !b) continue;                                    // both cars of the row are missing / skipped
+    const rowNo = base / 2 + r + 1;
+    html += '<div class="gr-row" style="--i:' + r + ';--o:' + (nRows - 1 - r) + '">' +
+      (a ? grCard(a, d, rowNo) : '<div class="gr-slot"></div>') +
+      (b ? grCard(b, d, 0) : '<div class="gr-slot"></div>') + '</div>';
+  }
+  grEl('gr-rows').innerHTML = html;
+  _gr.key = grKey();
+  grFit();
+}
+function grClearTimers() { clearTimeout(_gr.timer); clearTimeout(_gr.swapT); clearTimeout(_gr.hideT); clearTimeout(_gr.hideT2); clearTimeout(_gr.delayT); }
+function grShow(d) {
+  grClearTimers();
+  const L = grEl('grid-layer'), rows = grEl('gr-rows');
+  _gr.on = true; _gr.page = 0;
+  L.style.display = 'block';
+  rows.classList.remove('on', 'out');
+  grBuild(d);
+  void L.offsetWidth;                         // start the fade / drop from their hidden pose
+  L.classList.add('show');
+  rows.classList.add('on');
+  _gr.busyUntil = Date.now() + GR_ENTER_MS;
+  _gr.timer = setTimeout(grAdvance, GR_ENTER_MS + GR_HOLD_MS);
+}
+function grHide(immediate) {
+  grClearTimers();
+  const L = grEl('grid-layer'), rows = grEl('gr-rows');
+  _gr.on = false; _gr.key = '';
+  if (!L || !rows) return;
+  if (immediate) { rows.classList.remove('on', 'out'); L.classList.remove('show'); L.style.display = 'none'; return; }
+  rows.classList.remove('on'); rows.classList.add('out');                 // rows leave upwards, bottom row first
+  _gr.hideT = setTimeout(() => {
+    if (_gr.on) return;
+    L.classList.remove('show');                                           // then the header and the panel fade away
+    _gr.hideT2 = setTimeout(() => { if (!_gr.on) { L.style.display = 'none'; rows.classList.remove('out'); } }, 600);
+  }, 650);
+}
+// Next page of 10 cars, or the end of the grid after the last page
+function grAdvance() {
+  if (!_gr.on) return;
+  const pages = Math.ceil(_gr.list.length / GR_PAGE);
+  if (_gr.page + 1 >= pages) { grHide(false); return; }
+  const rows = grEl('gr-rows');
+  rows.classList.remove('on'); rows.classList.add('out');
+  _gr.busyUntil = Date.now() + GR_SWAP_MS + GR_ENTER_MS;
+  clearTimeout(_gr.swapT);
+  _gr.swapT = setTimeout(() => {
+    if (!_gr.on) return;
+    _gr.page++;
+    rows.classList.remove('out');
+    grBuild(_latestData || {});
+    void rows.offsetWidth;
+    rows.classList.add('on');
+  }, GR_SWAP_MS);
+  clearTimeout(_gr.timer);
+  _gr.timer = setTimeout(grAdvance, GR_SWAP_MS + GR_ENTER_MS + GR_HOLD_MS);
+}
+function grSync(d) {
+  if (_preview) return;                                        // the editor preview uses its Preview button
+  const session = (d.session || '').toLowerCase(), state = (d.sessionState || '').toLowerCase();
+  const key = String(d.sessionCookie) + '|' + String(d.track);
+  if (_gr.skey !== key) { grHide(true); _gr.skey = key; _gr.shown = false; }
+  const pacing = session === 'race' && (state === 'warmup' || state === 'parade laps');
+  if (!pacing) { clearTimeout(_gr.delayT); if (_gr.on) grHide(false); return; }   // green flag (or anything else): the grid goes away
+  if (!START_GRID) return;
+  if (_gr.on) {                                                // already up: follow changes of the list without replaying the animation
+    if (Date.now() < _gr.busyUntil) return;
+    _gr.list = grList(d);
+    if (grKey() !== _gr.key) grBuild(d);
+    return;
+  }
+  if (_gr.shown) return;
+  const list = grList(d);
+  if (!list.some(Boolean)) return;
+  _gr.shown = true;
+  clearTimeout(_gr.delayT);
+  _gr.delayT = setTimeout(() => {
+    const l = grList(_latestData);
+    if (!START_GRID || !l.some(Boolean)) return;
+    _gr.list = l; grShow(_latestData);
+  }, SG_DELAY_MS);
+}
+// Messages of the layout editor (option changes + Preview button)
+function grMessage(m) {
+  if (m._startGrid !== undefined) { START_GRID = !!m._startGrid; if (!START_GRID) { clearTimeout(_gr.delayT); if (_gr.on) grHide(false); } return true; }
+  if (m._startGridTime !== undefined) { GR_HOLD_MS = grClamp(m._startGridTime); return true; }
+  if (m._startGridSkipSelf !== undefined) { SG_SKIP_SELF = !!m._startGridSkipSelf; if (_gr.on && _latestData) { _gr.list = grList(_latestData); grBuild(_latestData); } return true; }
+  if (m._startGridPreview) {
+    const l = grList(_latestData);
+    if (l.some(Boolean)) { _gr.list = l; grShow(_latestData); }
+    return true;
+  }
+  return false;
+}
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (_gr.on) grFit(); });
+
+// ── Live editor preview ───────────────────────────────────────────────────
+let _preview = false;
+
+window.addEventListener('message', e => {
+  if (typeof e.data !== 'string') return;
+  try {
+    const m = JSON.parse(e.data);
+    if (m.reset) return;
+    if (m._pointsToggle) { ppToggle(); return; }
+    if (grMessage(m)) return;
+    _preview = true;
+    document.getElementById('app').style.display = '';
+    if (m._visibilityMode     !== undefined) VISIBILITY_MODE = m._visibilityMode;
+    if (m._sponsorRotationTime !== undefined) SPONSOR_ROTATION_MS = parseInt(m._sponsorRotationTime) * 1000;
+    if (m._series !== undefined) { SERIES_ID = m._series; IS_DEFAULT = !SERIES_ID || SERIES_ID === 'default'; loadCfg(); }
+    if (m._customName !== undefined) {
+      customName = m._customName;
+      if (_latestData) layoutTrackName(customName || _latestData.trackNameShort || _latestData.track || '');
+    }
+    handleData(m);
+  } catch(_) {}
+});
+
+// ── WebSocket ─────────────────────────────────────────────────────────────
+// ── Championship config + laps led (for the points panel) ──────────────────
+let CFG = null;
+async function loadCfg() {
+  try {
+    if (window.shl && window.shl.getChampionship) {
+      const r = await window.shl.getChampionship(SERIES_ID);
+      CFG = (r && r.data) || null;
+      _ppKey = '';
+      if (_ppOn && _latestData) ppRender(_latestData, getStandings(_latestData));
+    }
+  } catch (e) {}
+}
+if (window.shl && window.shl.onChampionshipUpdated) window.shl.onChampionshipUpdated(loadCfg);
+loadCfg();
+
+// If this race's points were already added to the totals (and its session is still on
+// screen), take them back out so the live projection isn't counted twice.
+function ppEffectiveCfg(cfg, key) {
+  const la = cfg && cfg.lastApplied;
+  if (!la || !la.live || la.key !== key || !Array.isArray(la.deltas) || !la.deltas.length) return cfg;
+  const sub = new Map(la.deltas.map(x => [String(x.number).trim(), Number(x.pts) || 0]));
+  return { ...cfg, drivers: (cfg.drivers || []).map(x => {
+    const k = String(x.number).trim();
+    return sub.has(k) ? { ...x, points: (Number(x.points) || 0) - sub.get(k) } : x;
+  }) };
+}
+
+const normNum = n => String(n == null ? '' : n).trim();
+const LED_KEY = 'psf_prime_led_v1';
+let LED = { cookie: null, track: null, lastLap: 0, counts: {} };
+try { const o = JSON.parse(localStorage.getItem(LED_KEY)); if (o && o.counts) LED = o; } catch (e) {}
+function saveLed() { try { localStorage.setItem(LED_KEY, JSON.stringify(LED)); } catch (e) {} }
+function trackLed(d) {
+  const session = (d.session || '').toLowerCase();
+  const state   = (d.sessionState || '').toLowerCase();
+  const off     = d.standings || [];
+  if (session !== 'race' || !off.length) return;
+  const cookie = d.sessionCookie != null ? String(d.sessionCookie) : null;
+  const track  = d.track || null;
+  const lap    = Number(off[0].lap) || 0;
+  if (cookie !== LED.cookie || track !== LED.track || lap < LED.lastLap) {
+    LED = { cookie, track, lastLap: 0, counts: {} };
+    saveLed();
+  }
+  if (state !== 'racing' && state !== 'checkered') return;
+  if (lap > LED.lastLap) {
+    if (LED.lastLap === 0 && lap > 1) {
+      LED.lastLap = lap;                         // joined mid-race: earlier laps unknown
+    } else {
+      const k = normNum(off[0].number);
+      if (k) LED.counts[k] = (LED.counts[k] || 0) + (lap - LED.lastLap);
+      LED.lastLap = lap;
+    }
+    saveLed();
+  }
+}
+function getLedCounts(d) {
+  const off = d.standings || [];
+  if (off.some(x => x.lapsLead !== undefined || x.leadLaps !== undefined)) {
+    const m = {};
+    off.forEach(x => { m[normNum(x.number)] = Number(x.lapsLead ?? x.leadLaps) || 0; });
+    return m;
+  }
+  return LED.counts;
+}
+
+// ── Points panel (toggled by the Points Table hotkey) ───────────────────────
+// "Points as they run": top 5 of the championship with this race's points projected from the live
+// order (same maths as the Championship widget). Enter: rows 16-20 fade out, the card and its rows
+// slide in under row 15 (11-15 stay visible). Exit: the reverse. Leader shows "Leader", the rest the points gap to him.
+const PP_ROWS = 7, PP_Y0 = 830, PP_PITCH = 38.9, PP_ROWH = 37;   // card sits under row 15: rows 11-15 stay visible, 16-20 are covered
+let _ppOn = false, _ppTimers = [], _ppKey = '', _ppPrev = new Map();
+const ppEsc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function ppSurname(full) { const w = String(full || '').trim().split(/\s+/).filter(Boolean); return w.length ? w[w.length - 1] : ''; }
+(function ppInit() {
+  const panel = document.getElementById('points-panel');
+  for (let i = 0; i < PP_ROWS; i++) {
+    const r = document.createElement('div');
+    r.className = 's-row'; r.id = 'pp-row-' + i;
+    r.style.setProperty('--i', i);
+    r.style.top = (PP_Y0 + i * PP_PITCH) + 'px';
+    r.style.height = PP_ROWH + 'px';
+    panel.appendChild(r);
+  }
+})();
+
+// The card keeps its bottom edge and grows/shrinks upwards with the number of rows (5 = the original size);
+// the standings rows it covers follow it (16-20 for 5 rows, 14-20 for 7).
+let _ppN = 5;
+function ppLayout(n) {
+  n = Math.max(1, Math.min(PP_ROWS, n || 5));
+  const extra = (n - 5) * PP_PITCH, bg = document.getElementById('pp-bg'), tt = document.getElementById('pp-title');
+  bg.style.top = (774 - extra) + 'px'; bg.style.height = (256 + extra) + 'px';
+  tt.style.top = (780 - extra) + 'px';
+  for (let i = 0; i < PP_ROWS; i++) { const el = document.getElementById('pp-row-' + i); if (el) el.style.top = (PP_Y0 - extra + i * PP_PITCH) + 'px'; }
+  _ppN = n;
+  if (_ppOn) ppCover(true);
+}
+
+function ppRows(d, standings) {
+  const cfg0 = d && d._championship ? d._championship : CFG;
+  const cfg  = cfg0 ? ppEffectiveCfg(cfg0, String(d.sessionCookie) + '|' + String(d.track)) : null;
+  if (!cfg || !Array.isArray(cfg.drivers) || !cfg.drivers.length) return { rows: [], hasCfg: false };
+  const session = (d.session || '').toLowerCase(), state = (d.sessionState || '').toLowerCase();
+  const project = session === 'race' && (state === 'racing' || state === 'checkered' || state === 'cool down');
+  const table = Array.isArray(cfg.pointsTable) ? cfg.pointsTable : [];
+  const led = getLedCounts(d) || {};
+  const bLed = Number(cfg.bonusLedLap) || 0, bMost = Number(cfg.bonusMostLed) || 0;
+  let maxLed = 0; Object.keys(led).forEach(k => { if (led[k] > maxLed) maxLed = led[k]; });
+  const race = new Map();
+  (standings || []).forEach((st, i) => { const k = normNum(st.number); if (!race.has(k)) race.set(k, { pos: i + 1, entry: st }); });
+  const stageMap = project ? stagePtsMap(d, cfg) : {};
+  const seen = new Set(), rows = [];
+  cfg.drivers.forEach((dr, idx) => {
+    const k = normNum(dr.number); if (seen.has(k)) return; seen.add(k);
+    const base = Number(dr.points) || 0, r = race.get(k), ledN = led[k] || 0;
+    const add = project ? ((r ? (Number(table[r.pos - 1]) || 0) : 0) + (ledN > 0 ? bLed : 0) + (ledN > 0 && ledN === maxLed ? bMost : 0) + (stageMap[k] || 0)) : 0;
+    const name = (r && r.entry && r.entry.name) ? displayName(r.entry) : (ppSurname(dr.name) || k);
+    rows.push({ number: k, name, base, total: base + add, idx, rpos: r ? r.pos : 0 });
+  });
+  rows.sort((a, b) => (b.total - a.total) || (b.base - a.base) || (a.idx - b.idx));
+  return { rows: PPV.pick(rows, 5), hasCfg: true };
+}
+
+function ppRender(d, standings) {
+  if (!d) return;
+  const { rows } = ppRows(d, standings || getStandings(d));
+  const key = rows.map(r => r.number + ':' + r.name + ':' + r.total).join('|') + '|' + PPV.key();
+  if (key === _ppKey) return;
+  _ppKey = key;
+  const lead = rows.length ? rows[0].total : 0, fmt = v => Math.round(v * 100) / 100;
+  ppLayout(rows.length || 5);
+  const moved = [], newPrev = new Map();
+  for (let i = 0; i < PP_ROWS; i++) {
+    const el = document.getElementById('pp-row-' + i), r = rows[i];
+    if (!r) { el.innerHTML = ''; continue; }
+    const src = numImgSrc(r.number);
+    const numColor = _driverColors[r.number] || '';
+    const numBg = numColor ? `background:${numColor}` : '';
+    const numHtml = src
+      ? `<div class="s-num-wrap"><div class="s-num-bg" style="${numBg}"><img class="s-num-img" src="${src}" onerror="this.style.display='none';this.nextElementSibling.style.display='block';" alt="${ppEsc(r.number)}"><span class="s-num-text">${ppEsc(r.number)}</span></div></div>`
+      : `<div class="s-num-wrap"><div class="s-num-bg" style="${numBg}"><span class="s-num-text" style="display:block">${ppEsc(r.number)}</span></div></div>`;
+    el.innerHTML = `${numHtml}<span class="s-name">${ppEsc(String(r.name).toUpperCase())}</span>`
+      + `<span class="s-gap${PPV.isDefault() && r.cpos === 1 ? ' pp-leader' : ''}">${PPV.val(r, r.cpos === 1 ? 'Leader' : '-' + fmt(r.lead - r.total))}</span>`;
+    const nm = el.querySelector('.s-name');
+    if (nm) { let size = 18; while (nm.scrollWidth > nm.clientWidth && size > 10) { size -= 0.5; nm.style.fontSize = size + 'px'; } }
+    newPrev.set(r.number, i);
+    const p = _ppPrev.get(r.number);
+    if (_ppOn && p !== undefined && p !== i) {          // a driver changes place: glide to the new row
+      el.style.transition = 'none';
+      el.style.transform = `translateY(${(p - i) * PP_PITCH}px)`;
+      el.style.zIndex = p > i ? '3' : '2';
+      moved.push(el);
+    }
+  }
+  _ppPrev = newPrev;
+  if (moved.length) {
+    void document.getElementById('points-panel').offsetWidth;
+    moved.forEach(el => { el.style.transition = 'transform .7s cubic-bezier(.65,0,.35,1)'; el.style.transform = 'translateY(0)'; });
+    setTimeout(() => moved.forEach(el => { el.style.transition = ''; el.style.transform = ''; el.style.zIndex = ''; }), 760);
+  }
+}
+
+// While the panel is up, rows 11-15 stay on screen and rows 16-20 (under the card) fade out.
+function ppCover(on) {
+  const sd = document.getElementById('standings-data');
+  if (on) sd.style.height = '1080px';                       // the card hangs below the usual 966px cut-off
+  const first = 21 - _ppN;                                  // 5 rows cover 16-20, 7 rows cover 14-20
+  for (let i = 11; i <= 20; i++) {
+    const el = document.getElementById('row-' + i); if (!el) continue;
+    if (on && i >= first) { el.style.transition = 'opacity 0.3s ease'; el.style.opacity = '0'; }
+    else if (el.style.opacity === '0') { el.style.transition = 'opacity 0.3s ease'; el.style.opacity = ''; }
+  }
+  if (!on) _ppTimers.push(setTimeout(() => {
+    if (_ppOn) return;
+    sd.style.height = '';
+    for (let i = 11; i <= 20; i++) { const el = document.getElementById('row-' + i); if (el && el.style.opacity === '') el.style.transition = ''; }
+  }, 700));
+}
+
+function ppToggle() {
+  const panel = document.getElementById('points-panel');
+  _ppTimers.forEach(clearTimeout); _ppTimers = [];
+  if (!_ppOn) {                                            // ── enter
+    _ppOn = true; _ppKey = ''; _ppPrev = new Map();
+    ppCover(true);
+    panel.style.display = 'block';
+    if (_latestData) ppRender(_latestData, getStandings(_latestData)); else ppRender({}, []);
+    void panel.offsetWidth;
+    _ppTimers.push(setTimeout(() => { if (_ppOn) panel.classList.add('show'); }, 200));
+  } else {                                                 // ── exit
+    _ppOn = false;
+    panel.classList.remove('show');
+    ppCover(false);
+    _ppTimers.push(setTimeout(() => { if (!_ppOn) { panel.style.display = 'none'; } }, 600));
+  }
+}
+window.__togglePoints = ppToggle;
+PPV.onChange(() => { _ppKey = ''; if (_ppOn) { if (_latestData) ppRender(_latestData, getStandings(_latestData)); else ppRender({}, []); } });
+if (window.shl && window.shl.onPointsToggle) window.shl.onPointsToggle(ppToggle);
+
+let ws, _lastFrame = Date.now();
+function connect() {
+  if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;       // already connecting / connected
+  const sock = ws = new WebSocket(WS_URL);
+  _lastFrame = Date.now();
+  sock.onmessage = e => { _lastFrame = Date.now(); try { handleData(JSON.parse(e.data)); } catch (err) { _logErr('onmessage', err); } };
+  sock.onclose = () => { if (ws === sock) setTimeout(connect, 2000); };
+  sock.onerror = () => { try { sock.close(); } catch (_) {} };
+}
+connect();
+// Watchdog: a socket that is "open" but delivers nothing for 5 s (stale connection) is dropped and reopened
+setInterval(() => {
+  if (ws && ws.readyState === 1 && Date.now() - _lastFrame > 5000) {
+    const old = ws; old.onmessage = null; old.onclose = null; old.onerror = null;
+    try { old.close(); } catch (_) {}
+    ws = null; connect();
+  }
+}, 2000);
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+loadSponsors();
+startRotation();
+positionRows();
+layoutTrackName();
+layoutLapStageRow();
+layoutFlagTint();
+applyFlagState();
+
+// Custom @font-face fonts (Halyard, Racer) load asynchronously. If a
+// measurement-based layout (track name auto-shrink, lap/stage centering)
+// runs before they're ready, canvas.measureText() silently falls back to
+// Verdana/Impact metrics — the text then *renders* correctly once the real
+// font arrives, but its position was computed against the wrong widths and
+// never gets recalculated. Re-run both layouts once fonts are confirmed
+// loaded so any such stale measurement gets corrected.
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => {
+    layoutTrackName();
+    layoutLapStageRow();
+  });
+}
+
+// Stage points earned so far this race, per car number: the bridge's stageWinners (stage, pos, carIdx)
+// scored with the Championship window's stage table.
+function stagePtsMap(d, cfg) {
+  const t = (cfg && Array.isArray(cfg.stagePointsTable)) ? cfg.stagePointsTable : [10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+  const m = {};
+  if (!d || String(d.session || '').toLowerCase() !== 'race' || !Array.isArray(d.stageWinners)) return m;
+  const srcs = [d.liveStandings, d.standings, d.drivers], done = new Set();
+  d.stageWinners.forEach(w => {
+    if (!w || !(w.pos >= 1)) return;
+    const key = w.stage + ':' + w.pos; if (done.has(key)) return; done.add(key);
+    let e = null;
+    for (const s of srcs) { if (Array.isArray(s)) { e = s.find(x => x && x.carIdx === w.carIdx); if (e) break; } }
+    if (!e) return;
+    const k = String(e.number == null ? '' : e.number).trim();
+    m[k] = (m[k] || 0) + (Number(t[w.pos - 1]) || 0);
+  });
+  return m;
+}
+
+// ── Driver Info Banner (Prime look; logic ported from the NBC 2016 / ESPN 2017 banners) ───────────────────────
+// [oval headshot | number + make | NAME | Info 1 / Info 2]. Shows the car the camera is on (falls back to the player / leader).
+// The Driver Info hotkey toggles it with a fade. The overlay window is stretched to the full screen while it is up.
+const DI_FADE_MS = 600;
+const DI_SCALE   = 1.0;                  // size of the banner relative to the tower's own scale
+const DI_BOTTOM  = 0.90;                 // bottom edge of the banner as a fraction of the screen height (lower third)
+const DI_W = 860, DI_H = 102;            // banner design size (css px)
+const DI_TAB = '';                       // little tab above the banner; empty = series name from the sim
+const DI_LINE1 = '', DI_LINE2 = '';      // fallback text for the right-hand block; both empty = not shown
+const DI_SERIES_NAME = psf.seriesname || params.get('seriesname') || '';
+let _diOn = false, _diKey = '', _diHideT = null, _diSel = null, _diPhotoNum = null, _diInfo = {};
+let _diShownCar = null, _diGhost = null;   // driver on screen (for the smooth change) and the fading copy of the previous card
+const diEsc = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const diEl = id => document.getElementById(id);
+const diWrap = diEl('di-wrap'), diBox = diEl('di-box');
+
+// Per-driver info lines (Info 1 / Info 2) edited in the app's Driver Info window
+function _diSetInfo(m) { _diInfo = (m && typeof m === 'object') ? m : {}; _diKey = ''; if (_diOn && _latestData) diUpdate(_latestData); }
+if (window.shl && window.shl.getDriverInfo) window.shl.getDriverInfo().then(_diSetInfo).catch(() => {});
+if (window.shl && window.shl.onDriverInfoChanged) window.shl.onDriverInfoChanged(_diSetInfo);
+
+// ── names ──
+const DI_SUFFIX = /^(JR\.?|SR\.?|II|III|IV)$/;
+const DI_PARTICLES = new Set(['VAN','VON','DE','DER','DEN','DI','DA','DEL','DELLA','LA','LE','ST.','ST']);
+const diMarker = t => !t || /^[\(\[]?[-\u2013]?\s*R\*?[\)\]]?$/i.test(t) || /^\d+\s*[-\u2013]?\s*R?$/i.test(t);
+function diStripRookie(n) { return String(n || '').replace(/\s+[\(\[]?[-\u2013]?\s*R\*?[\)\]]?\s*$/i, '').trim(); }
+const diWords = t => String(t || '').trim().split(/\s+/).filter(Boolean).length;
+function diLastNameOf(full) {
+  const t = String(full || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+  if (t.length <= 1) return t[0] || '';
+  const suffix = [];
+  while (t.length > 1 && DI_SUFFIX.test(t[t.length - 1])) suffix.unshift(t.pop());
+  let i = t.length - 1;
+  while (i > 0 && DI_PARTICLES.has(t[i - 1])) i--;
+  return t.slice(i).concat(suffix).join(' ');
+}
+// Full names seen in any list of the frame (standings often carry only an abbreviated name)
+let _diNames = {};
+function diLearnNames(d) {
+  ['standings', 'liveStandings', 'computedStandings', 'drivers', 'relative'].forEach(k => {
+    if (!Array.isArray(d[k])) return;
+    d[k].forEach(s => {
+      if (!s || s.carIdx == null) return;
+      const c = diStripRookie(s.fullName || s.name);
+      if (c && !diMarker(c) && diWords(c) >= diWords(_diNames[s.carIdx])) _diNames[s.carIdx] = c;
+    });
+  });
+}
+function diNameOf(s, num) {
+  let best = '';
+  [s.fullName, _diNames[s.carIdx], s.name].forEach(c => {
+    c = diStripRookie(c);
+    if (c && !diMarker(c) && (!best || diWords(c) > diWords(best))) best = c;
+  });
+  return best || num;
+}
+
+// ── which car is on screen (camera position + car id read by the app from NR2003's memory) ──
+const DI_CAM_KEYS = ['camCarIdx', 'cameraCarIdx', 'viewCarIdx', 'viewedCarIdx', 'focusCarIdx', 'focusedCarIdx', 'watchedCarIdx', 'spectatedCarIdx', 'followCarIdx'];
+function diWatchedIdx(d) {
+  for (const k of DI_CAM_KEYS) if (typeof d[k] === 'number' && d[k] >= 0) return d[k];
+  if (d.camera && typeof d.camera.carIdx === 'number' && d.camera.carIdx >= 0) return d.camera.carIdx;
+  return d.playerCarIdx;
+}
+const DI_VERIFY_MS = 3000;               // how long a position / id disagreement must last before the banner is corrected
+let _mmKey = '', _mmSince = 0, _mmT = null, _camPos = -1, _camCar = -1;
+function _applyCam(pos, car) {
+  pos = (typeof pos === 'number') ? pos : -1; car = (typeof car === 'number') ? car : -1;
+  const changed = (pos !== _camPos) || (car !== _camCar);
+  if (changed) _diSel = null;
+  _camPos = pos; _camCar = car;
+  if (changed && _diOn && _latestData) diUpdate(_latestData);
+}
+if (window.shl && window.shl.onCam && window.shl.getCam) {
+  window.shl.onCam(v => { if (v) _applyCam(v.pos, v.idx); });
+  window.shl.getCam().then(v => { if (v) _applyCam(v.pos, v.idx); }).catch(() => {});
+}
+function diFind(d, idx) {
+  for (const l of [d.standings, d.liveStandings, d.computedStandings, d.drivers]) {
+    const f = Array.isArray(l) && l.find(x => x && x.carIdx === idx);
+    if (f) return f;
+  }
+  return null;
+}
+function diByCamPos(d) {
+  if (!(_camPos >= 1)) return null;
+  const st = getStandings(d);
+  return (Array.isArray(st) && st[_camPos - 1]) || null;
+}
+function diDriver(d) {
+  if (!d) return null;
+  if (_diSel !== null) { const f = diFind(d, _diSel); if (f) return f; }
+  const byPos = diByCamPos(d);
+  if (byPos) {
+    if (!(_camCar >= 0) || byPos.carIdx === _camCar) { _mmKey = ''; return byPos; }
+    const byId = diFind(d, _camCar);
+    if (!byId) return byPos;
+    const k = _camPos + '|' + _camCar + '|' + byPos.carIdx, now = performance.now();
+    if (k !== _mmKey) { _mmKey = k; _mmSince = now; }
+    const left = DI_VERIFY_MS - (now - _mmSince);
+    if (left <= 0) return byId;
+    clearTimeout(_mmT); _mmT = setTimeout(() => { if (_diOn && _latestData) diUpdate(_latestData); }, left + 5);
+    return byPos;
+  }
+  if (_camCar >= 0) { const f = diFind(d, _camCar); if (f) return f; }
+  const hasCamField = DI_CAM_KEYS.some(k => typeof d[k] === 'number' && d[k] >= 0) || (d.camera && typeof d.camera.carIdx === 'number');
+  const spectating = !hasCamField && d.player && d.player.inCar === false;
+  const w = diWatchedIdx(d);
+  if (!spectating && w !== undefined && w !== null && w >= 0) { const f = diFind(d, w); if (f) return f; }
+  const st = getStandings(d);
+  return (st && st[0]) || diFind(d, w) || null;
+}
+// Next / previous driver in the running order (shows the banner if it is not up)
+function diStep(dir) {
+  const d = _latestData; if (!d) return;
+  let list = getStandings(d);
+  if (!list || !list.length) list = Array.isArray(d.drivers) ? d.drivers.filter(x => x && x.carIdx !== undefined) : [];
+  if (!list.length) return;
+  let i = list.findIndex(x => x.carIdx === _diSel);
+  if (i < 0) { const cur = diDriver(d); i = cur ? list.findIndex(x => x.carIdx === cur.carIdx) : -1; }
+  if (i < 0) i = dir > 0 ? -1 : 0;
+  i = (i + dir + list.length) % list.length;
+  _diSel = list[i].carIdx;
+  if (_diOn) diUpdate(d); else diShow();
+}
+
+// ── Info 1 / Info 2 kinds (same set as the other banners) ──
+const _ord = n => { const v = n % 100; if (v >= 11 && v <= 13) return n + 'th'; return n + ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th'); };
+const _fmtPts = v => String(Math.round((Number(v) || 0) * 100) / 100);
+const _fmtLap = t => (t > 0 && isFinite(t)) ? t.toFixed(3) + 's' : '';
+let _season = { races: [] };
+async function loadSeasonStats() {
+  try {
+    if (!(window.shl && window.shl.getSeasonState)) return;
+    const st = await window.shl.getSeasonState(SERIES_ID);
+    const sn = (st && Array.isArray(st.seasons)) ? st.seasons.find(x => x.id === st.activeId) : null;
+    _season = { races: sn ? (sn.races || []).filter(r => !r.nonPoints && Array.isArray(r.rows) && r.rows.length) : [] };
+    _diKey = ''; if (_diOn && _latestData) diUpdate(_latestData);
+  } catch (e) {}
+}
+if (window.shl && window.shl.onSeasonUpdated) window.shl.onSeasonUpdated(loadSeasonStats);
+loadSeasonStats();
+// Starting grid: the order seen up to the green flag
+let _grid = { key: '', order: null, locked: false };
+function trackGrid(d) {
+  if ((d.session || '').toLowerCase() !== 'race') return;
+  const key = String(d.sessionCookie) + '|' + String(d.track);
+  if (_grid.key !== key) _grid = { key, order: null, locked: false };
+  if (_grid.locked) return;
+  const state = (d.sessionState || '').toLowerCase();
+  const off = (d.standings && d.standings.length) ? d.standings : (d.liveStandings || []);
+  const snap = () => { const o = {}; off.forEach((x, i) => { if (!x) return; const k = normNum(x.number); if (!(k in o)) o[k] = i + 1; }); return o; };
+  if (state === 'racing' || state === 'checkered' || state === 'cool down') {
+    if (!_grid.order && off.length && (Number(d.lapsComplete) || 0) <= 1 && state === 'racing') _grid.order = snap();
+    if (_grid.order) _grid.locked = true;
+    return;
+  }
+  if (off.length) _grid.order = snap();
+}
+// Pit stops seen during this race
+// The last pit stop of every car is saved (localStorage, shared by all overlays) so it survives an overlay reload or an app restart during the same race.
+const PIT_KEY = 'psf_pit_v1';
+function pitLoad() {
+  try { const o = JSON.parse(localStorage.getItem(PIT_KEY)); return (o && typeof o.key === 'string' && o.last && typeof o.last === 'object') ? o : null; } catch (e) { return null; }
+}
+let _pitSig = '', _pitSavedAt = 0;
+function pitPersist() {
+  const now = Date.now(), sig = JSON.stringify([_pit.last, _pit.count]);
+  if (sig === _pitSig && now - _pitSavedAt < 1500) return;       // a new stop is written at once, the rest of the state at most every 1.5 s
+  _pitSavedAt = now;
+  const o = pitLoad();
+  if (o && o.key === _pit.key) {                                  // merge what another overlay saved (the lap of a car's last stop only goes up within a race)
+    Object.keys(o.last).forEach(k => { const v = Number(o.last[k]) || 0; if (v > (Number(_pit.last[k]) || 0)) _pit.last[k] = v; });
+    if (o.count && typeof o.count === 'object') Object.keys(o.count).forEach(k => { const v = Number(o.count[k]) || 0; if (!_ptvAuth[k] && v > (Number(_pit.count[k]) || 0)) _pit.count[k] = v; });   // the pit count of a car only goes up within a race
+  }
+  _pitSig = JSON.stringify([_pit.last, _pit.count]);
+  try { localStorage.setItem(PIT_KEY, JSON.stringify({ key: _pit.key, st: _pit.st, last: _pit.last, count: _pit.count, evs: _pit.evs || [] })); } catch (e) {}
+}
+let _pit = (function () { const o = pitLoad(); return o ? { key: o.key, st: (o.st && typeof o.st === 'object') ? o.st : {}, last: o.last, count: (o.count && typeof o.count === 'object') ? o.count : {} } : { key: '', st: {}, last: {}, count: {} }; })();
+// A stop is detected from the pit-stall flags of the telemetry: InPitStallWaitingSlow / InPitStallWaitingFast / InPitStallSlow / InPitStallFast.
+// The first one that turns on counts the stop; no other flag counts until all four have been off for a moment (the next stop).
+// If the telemetry frame has none of these fields, the old running -> pitting status switch is used instead.
+const PIT_STALL_KEYS = ['inpitstallwaitingslow', 'inpitstallwaitingfast', 'inpitstallslow', 'inpitstallfast'];
+const _pitStallKey = k => PIT_STALL_KEYS.includes(String(k).toLowerCase().replace(/[^a-z]/g, ''));
+const _pitOn = v => v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true';
+const PIT_REARM_MS = 1500;                 // all four flags must stay off this long before the next stop can be counted (a Waiting -> Stall hand-over is the same stop)
+const _pitHot = {};                        // car number -> last time one of the four flags was on
+// true / false = a flag is on / all are off; null = this car has none of the fields in the frame
+function pitStallState(d, s, topKeys) {
+  let found = false, on = false;
+  const read = o => { if (!o || typeof o !== 'object') return; for (const k in o) if (_pitStallKey(k)) { found = true; if (_pitOn(o[k])) on = true; } };
+  read(s); read(s.pit); read(s.pitStall);
+  if (s.carIdx !== undefined) topKeys.forEach(k => { const v = d[k]; if (v && typeof v === 'object') { const x = v[s.carIdx]; if (x !== undefined && x !== null) { found = true; if (_pitOn(x)) on = true; } } });
+  return found ? on : null;
+}
+// Pit-out messages: the app reads NR2003's on-screen text "AIPIT OUT 84: 16.00" (car 84 left the pits) from the game's memory; each one is a pit stop of that car.
+// Once the first message has been seen, the stops of the AI cars come only from these messages (the player's car keeps using the status / stall detection).
+let _pitOutQ = [], _pitOutOn = false;
+const _pitCountAt = {};                    // car number -> when a stop was last counted (by either route), so one stop is never counted twice
+if (window.shl && window.shl.onPitOut) window.shl.onPitOut(e => { if (e && e.id) _pitOutQ.push(e); });
+if (window.shl && window.shl.onPitOutStatus) window.shl.onPitOutStatus(v => { _pitOutOn = !!v; });
+if (window.shl && window.shl.getPitOutStatus) window.shl.getPitOutStatus().then(v => { _pitOutOn = !!v; }).catch(() => {});
+// Pit stops straight from the telemetry (the same field the Race Stats page shows): null if this car has no numeric pitStops in the frame
+function pitTelemetry(d, s) {
+  if (!s) return null;
+  let v = s.pitStops;
+  if (typeof v !== 'number' && Array.isArray(d.liveStandings) && s.carIdx !== undefined) { const x = d.liveStandings.find(y => y && y.carIdx === s.carIdx); if (x) v = x.pitStops; }
+  v = typeof v === 'number' ? v : (typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN);
+  return Number.isFinite(v) && v >= 0 ? Math.floor(v) : null;
+}
+let _pitTelKey = '', _pitTelSeen = {};   // car number -> true once its telemetry count was seen in this race (so a rise is a stop we watched, not a page opened late)
+function pitLapOf(d, s) {
+  const cl = (d.carLaps && s.carIdx !== undefined) ? Number(d.carLaps[s.carIdx]) : NaN;
+  return Math.max(Number.isFinite(cl) ? cl : 0, Number(s.lap) || 0) + 1;      // the lap in progress
+}
+function pitOutProcess(d) {
+  if (!_pitOutQ.length) return;
+  const q = _pitOutQ; _pitOutQ = [];
+  const o = pitLoad(), seen = (o && o.key === _pit.key && Array.isArray(o.evs)) ? o.evs : [];
+  _pit.evs = Array.from(new Set([...(Array.isArray(_pit.evs) ? _pit.evs : []), ...seen]));    // events another overlay already counted
+  const now = Date.now();
+  q.forEach(e => {
+    if (_pit.evs.includes(e.id)) return;
+    _pit.evs.push(e.id); if (_pit.evs.length > 60) _pit.evs.shift();
+    if (now - (Number(e.at) || now) > 15000) return;
+    const num = normNum(e.car);
+    let car = null;
+    [d.standings, d.liveStandings].forEach(l => { if (!car && Array.isArray(l)) car = l.find(x => x && normNum(x.number) === num) || null; });
+    if (!car || now - (_pitCountAt[num] || 0) < 90000) return;                // unknown car, or this stop was already counted when the car entered the pits
+    _pit.count[num] = (Number(_pit.count[num]) || 0) + 1;
+    _pit.last[num] = pitLapOf(d, car);
+    _pitCountAt[num] = now;
+  });
+}
+// ── Pit stops: the telemetry's pitStops (the PITS column of Race Stats) is the authority ──────────────────────────
+// The stall-flag / status / "pit out" message detection above can miscount; whenever the frame carries a numeric pitStops for a car, that number wins,
+// and the lap is taken when we see it rise (the lap in progress), keeping the lap the detection noted a moment earlier when it caught the entry first.
+let _ptvKey = '', _ptvPrev = {}, _ptvLastSeen = {}, _ptvLastAt = {}, _ptvAuth = {};   // _ptvAuth: cars whose count comes from the telemetry (never raised from storage)
+function _ptvOf(s) { const v = s ? s.pitStops : undefined; const n = typeof v === 'number' ? v : (typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN); return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null; }
+function _ptvLap(d, s) {
+  const cl = (d.carLaps && s.carIdx !== undefined) ? Number(d.carLaps[s.carIdx]) : NaN;
+  return Math.max(Number.isFinite(cl) ? cl : 0, Number(s.lap) || 0) + 1;      // the lap in progress
+}
+function pitTelApply(d) {
+  const key = String(d.sessionCookie) + '|' + String(d.track);
+  if (_ptvKey !== key) { _ptvKey = key; _ptvPrev = {}; _ptvLastSeen = {}; _ptvLastAt = {}; _ptvAuth = {}; }
+  const live = d.liveStandingsEnabled !== false;
+  const lists = live ? [d.liveStandings, d.standings] : [d.standings, d.liveStandings];   // same preference as the Race Stats table
+  const done = {}, now = Date.now();
+  lists.forEach(l => (Array.isArray(l) ? l : []).forEach(s => {
+    if (!s) return;
+    const num = normNum(s.number); if (!num || done[num]) return;
+    const tp = _ptvOf(s); if (tp === null) return;
+    done[num] = true; _ptvAuth[num] = true;
+    if (_pit.last[num] !== _ptvLastSeen[num]) { _ptvLastSeen[num] = _pit.last[num]; _ptvLastAt[num] = now; }      // the detection just noted a lap
+    const prev = _ptvPrev[num];
+    if (prev !== undefined && tp > prev && (!_pit.last[num] || now - (_ptvLastAt[num] || 0) > 30000)) {
+      _pit.last[num] = _ptvLap(d, s); _ptvLastSeen[num] = _pit.last[num]; _ptvLastAt[num] = 0;      // 0 = set by the telemetry itself: the next rise may overwrite it at once
+    }
+    _ptvPrev[num] = tp;
+    if ((Number(_pit.count[num]) || 0) !== tp) _pit.count[num] = tp;
+    if (tp === 0 && _pit.last[num]) { _pit.last[num] = 0; _ptvLastSeen[num] = 0; }
+  }));
+}
+function trackPits(d) {
+  if ((d.session || '').toLowerCase() !== 'race') { _pitOutQ.length = 0; return; }
+  const key = String(d.sessionCookie) + '|' + String(d.track);
+  if (_pit.key !== key) { const o = pitLoad(); _pit = (o && o.key === key) ? { key, st: (o.st && typeof o.st === 'object') ? o.st : {}, last: o.last, count: (o.count && typeof o.count === 'object') ? o.count : {} } : { key, st: {}, last: {}, count: {} }; }
+  const state = (d.sessionState || '').toLowerCase();
+  if (state === 'get in car' || state === 'warmup' || state === 'parade laps') { _pit.st = {}; return; }
+  const stallTop = Object.keys(d).filter(_pitStallKey);
+  (d.standings || []).forEach(s => {
+    if (!s) return;
+    const num = normNum(s.number);
+    if (_pitTelKey !== key) { _pitTelKey = key; _pitTelSeen = {}; }
+    const tp = pitTelemetry(d, s);
+    if (tp !== null) {
+      const prev = Number(_pit.count[num]) || 0;
+      if (tp > prev) {                                                                      // the telemetry knows a stop that is not counted yet
+        if (_pitTelSeen[num] || prev > 0) _pit.last[num] = pitLapOf(d, s);                  // a stop we saw happen: the lap in progress (opened late with stops already made: the lap is unknown)
+        _pit.count[num] = tp; _pitCountAt[num] = Date.now();
+      }
+      _pitTelSeen[num] = true;
+    }
+    const stall = pitStallState(d, s, stallTop);
+    let now;
+    if (stall === null) now = String(s.status || 'running').trim().toLowerCase();
+    else if (stall) { _pitHot[num] = Date.now(); now = 'pitting'; }
+    else now = (_pit.st[num] === 'pitting' && Date.now() - (_pitHot[num] || 0) < PIT_REARM_MS) ? 'pitting' : 'running';
+    if (now === 'pitting' && _pit.st[num] !== undefined && _pit.st[num] !== 'pitting' && !(_pitOutOn && s.carIdx !== d.playerCarIdx) && !(tp !== null && Date.now() - (_pitCountAt[num] || 0) < 90000)) {
+      const done = pitLapOf(d, s) - 1;
+      // every running -> pitting switch is one more stop (a stop already merged from another overlay for the same lap is not counted twice)
+      if (_pit.last[num] !== done + 1) _pit.count[num] = (Number(_pit.count[num]) || 0) + 1;
+      _pit.last[num] = done + 1;
+      _pitCountAt[num] = Date.now();
+    }
+    _pit.st[num] = now;
+  });
+  pitOutProcess(d);
+  pitTelApply(d);                            // telemetry pitStops wins over the detection above
+  pitPersist();
+}
+// Qualifying order (kept in localStorage per track)
+const DI_QUAL_KEY = 'psf_prime_qual_v1';
+let _qual = null;
+try { const o = JSON.parse(localStorage.getItem(DI_QUAL_KEY)); if (o && o.track && o.order) _qual = o; } catch (e) {}
+function trackQual(d) {
+  const session = (d.session || '').toLowerCase(), state = (d.sessionState || '').toLowerCase();
+  if (session === 'qualifying') {
+    // The game's Qualifying table is taken as it is, also when nobody has a time (a skipped session shows "--" everywhere)
+    const off = (d.standings && d.standings.length) ? d.standings : (d.liveStandings || []);
+    if (!off.length) return;
+    const timed = off.some(x => x && Number(x.time) > 0);
+    const track = String(d.track || '');
+    // a table with real times is not replaced by one without times, unless it was already used by a race (then it is an old one)
+    if (!timed && _qual && _qual.track === track && _qual.timed && !_qual.usedKey) return;
+    const order = {}; off.forEach((x, i) => { if (!x) return; const k = normNum(x.number); if (!(k in order)) order[k] = i + 1; });
+    if (_qual && _qual.track === track && JSON.stringify(_qual.order) === JSON.stringify(order)) return;
+    _qual = { track, order, timed };
+    try { localStorage.setItem(DI_QUAL_KEY, JSON.stringify(_qual)); } catch (e) {}
+    return;
+  }
+  if (session === 'race' && _qual) {
+    const key = String(d.sessionCookie) + '|' + String(d.track);
+    const drop = () => { _qual = null; try { localStorage.removeItem(DI_QUAL_KEY); } catch (e) {} };
+    if (state === 'checkered' || state === 'cool down') drop();
+    else if (_qual.usedKey && _qual.usedKey !== key) drop();                      // used by an earlier race: with qualifying skipped this time it must not be shown
+    else if (state === 'racing' && !_qual.usedKey) { _qual.usedKey = key; try { localStorage.setItem(DI_QUAL_KEY, JSON.stringify(_qual)); } catch (e) {} }
+  }
+}
+// Starting order kept by the app's hidden recorder (the same source the Race Stats page uses): Qualifying table of this track, else the grid seen before the green flag.
+// It is always running, so it has it even when this overlay was opened late or reloaded.
+let _srvStart = null, _srvStartBusy = false, _srvStartPort = 0;
+async function loadSrvStart() {
+  if (_srvStartBusy) return; _srvStartBusy = true;
+  try {
+    if (window.shl && window.shl.getStartOrder) { _srvStart = await window.shl.getStartOrder(); return; }
+    const host = location.hostname || 'localhost';
+    const tryPort = async p => {
+      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 800);
+      try { const r = await fetch('http://' + host + ':' + p + '/api/startorder', { signal: ctl.signal, cache: 'no-store' }); if (r.ok) { _srvStart = await r.json(); return true; } } catch (e) {} finally { clearTimeout(t); }
+      return false;
+    };
+    if (_srvStartPort && await tryPort(_srvStartPort)) return;
+    _srvStartPort = 0;
+    for (let p = 48765; p <= 48785; p++) { if (await tryPort(p)) { _srvStartPort = p; break; } }
+  } catch (e) {} finally { _srvStartBusy = false; }
+}
+setInterval(loadSrvStart, 2500); loadSrvStart();
+// Live championship place: season points + this race's points projected from the live order (same maths as the "as they run" panel)
+function diLiveRows(d) {
+  const cfg0 = d && d._championship ? d._championship : CFG;
+  const cfg = cfg0 ? ppEffectiveCfg(cfg0, String(d.sessionCookie) + '|' + String(d.track)) : null;
+  if (!cfg || !Array.isArray(cfg.drivers) || !cfg.drivers.length) return null;
+  const session = (d.session || '').toLowerCase(), state = (d.sessionState || '').toLowerCase();
+  const project = session === 'race' && (state === 'racing' || state === 'checkered' || state === 'cool down');
+  const table = Array.isArray(cfg.pointsTable) ? cfg.pointsTable : [];
+  const led = getLedCounts(d) || {};
+  const bLed = Number(cfg.bonusLedLap) || 0, bMost = Number(cfg.bonusMostLed) || 0;
+  let maxLed = 0; Object.keys(led).forEach(k => { if (led[k] > maxLed) maxLed = led[k]; });
+  const race = new Map();
+  (getStandings(d) || []).forEach((st, i) => { const k = normNum(st.number); if (!race.has(k)) race.set(k, i + 1); });
+  const stageMap = (project && typeof stagePtsMap === 'function') ? stagePtsMap(d, cfg) : {};
+  const seen = new Set(), rows = [];
+  cfg.drivers.forEach((dr, idx) => {
+    const k = normNum(dr.number); if (seen.has(k)) return; seen.add(k);
+    const base = Number(dr.points) || 0, pos = race.get(k), ledN = led[k] || 0;
+    const add = project ? ((pos ? (Number(table[pos - 1]) || 0) : 0) + (ledN > 0 ? bLed : 0) + (ledN > 0 && ledN === maxLed ? bMost : 0) + (stageMap[k] || 0)) : 0;
+    rows.push({ k, base, total: base + add, idx });
+  });
+  rows.sort((a, b) => (b.total - a.total) || (b.base - a.base) || (a.idx - b.idx));
+  return { rows, cfg0 };
+}
+function diLiveChampPos(d, num) {
+  const r = diLiveRows(d); if (!r) return 0;
+  return r.rows.findIndex(x => x.k === num) + 1;
+}
+// Points to the cutoff line (only while the cutoff line is on in the Championship screen): points above / below it in the live championship
+function diCutoffText(d, num) {
+  const r = diLiveRows(d); if (!r) return '';
+  const c = r.cfg0 || {}, cp = parseInt(c.cutoffPos, 10) || 0, rows = r.rows;
+  if (c.cutoffEnabled !== true || cp < 1 || cp >= rows.length) return '';
+  const i = rows.findIndex(x => x.k === num); if (i < 0) return '';
+  const gap = i < cp ? rows[i].total - rows[cp].total : rows[i].total - rows[cp - 1].total;   // same rule as the Championship overlay
+  const above = gap > 0 || (gap === 0 && i < cp);
+  const n = Math.round(Math.abs(gap) * 100) / 100;
+  return 'Is ' + _fmtPts(n) + (n === 1 ? ' point ' : ' points ') + (above ? 'above' : 'below') + ' the cutoff line';
+}
+// ── Estimated speed of every car ──────────────────────────────────────────────────────────────────────────
+// The bridge only gives real telemetry (speed, rpm, throttle…) for the player's own car. For the other cars the speed is ESTIMATED from how far
+// the car moves along the track between frames (track % x lap length), smoothed; the lap averages come from lap time and lap length.
+function diKindText(kind, inf, i, d, s, num) {
+  const isRace = (d.session || '').toLowerCase() === 'race';
+  const key = String(d.sessionCookie) + '|' + String(d.track);
+  const past = _season.races.filter(r => r.key !== key);
+  const mine = r => (r.rows || []).find(x => normNum(x.number) === num);
+  switch (kind) {
+    case 'custom': return inf['line' + i] || '';
+    case 'ledToday': {
+      if (!isRace) return '';
+      const led = (getLedCounts(d) || {})[num] || 0;
+      const total = Math.max(Number(d.lapsComplete) || 0, LED.lastLap || 0);
+      return total ? 'Has led ' + led + ' of ' + total + ' laps' : 'Has led ' + led + ' laps';
+    }
+    case 'ledSeason': {
+      let n = isRace ? ((getLedCounts(d) || {})[num] || 0) : 0;
+      past.forEach(r => { const x = mine(r); if (x) n += Number(x.led) || 0; });
+      return 'Has led ' + n + ' laps all season';
+    }
+    case 'champPos': case 'champPts': {
+      const cfg0 = d._championship || CFG; if (!cfg0) return '';
+      const cfg = ppEffectiveCfg(cfg0, key);
+      if (!cfg || !Array.isArray(cfg.drivers)) return '';
+      const rows = cfg.drivers.map((x, idx) => ({ k: normNum(x.number), pts: Number(x.points) || 0, idx }));
+      const me = rows.find(x => x.k === num); if (!me) return '';
+      if (kind === 'champPts') return 'Has scored ' + _fmtPts(me.pts) + ' points';
+      rows.sort((a, b) => (b.pts - a.pts) || (a.idx - b.idx));
+      return 'Is ' + _ord(rows.findIndex(x => x.k === num) + 1) + ' in standings';
+    }
+    case 'winsSeason': {
+      const w = past.filter(r => { const x = mine(r); return x && !x.dq && Number(x.finish) === 1; }).length;
+      return w === 0 ? 'Has not won yet this season' : 'Has won ' + w + (w === 1 ? ' race' : ' races') + ' this season';
+    }
+    case 'top5Season': case 'top10Season': {
+      const lim = kind === 'top5Season' ? 5 : 10;
+      const n = past.filter(r => { const x = mine(r); const f = x ? Number(x.finish) : 0; return x && !x.dq && f >= 1 && f <= lim; }).length;
+      return 'Has finished ' + n + (n === 1 ? ' time' : ' times') + ' in the top ' + lim + ' this season';
+    }
+    case 'wins': {
+      const want = Math.max(1, Math.min(99, parseInt(inf['n' + i], 10) || 5));
+      const last = past.slice(-want); if (!last.length) return '';
+      const w = last.filter(r => { const x = mine(r); return x && !x.dq && Number(x.finish) === 1; }).length;
+      return 'Has won ' + w + ' of the last ' + last.length + ' races';
+    }
+    case 'dnfSeason': case 'dnfLast': {
+      const isDnf = x => { const st = String(x.status || '').trim().toLowerCase(); return !!x.dq || (st && st !== 'running' && st !== 'pitting'); };
+      if (kind === 'dnfSeason') {
+        const n = past.filter(r => { const x = mine(r); return x && isDnf(x); }).length;
+        return 'Has not finished in ' + n + ' races this season';
+      }
+      const want = Math.max(1, Math.min(99, parseInt(inf['n' + i], 10) || 5));
+      const last = past.slice(-want); if (!last.length) return '';
+      const n = last.filter(r => { const x = mine(r); return x && isDnf(x); }).length;
+      return 'Has not finished in ' + n + ' of the last ' + last.length + ' races';
+    }
+    case 'pitCount': {
+      const c = isRace && _pit.key === key ? (Number(_pit.count[num]) || 0) : 0;
+      return c ? 'Has pitted ' + c + (c === 1 ? ' time' : ' times') : (isRace ? 'Yet to pit' : '');
+    }
+    case 'lastPit': {
+      const l = isRace && _pit.key === key ? _pit.last[num] : 0;
+      return l ? 'Last pitted on lap ' + l : (isRace ? 'Yet to pit' : '');
+    }
+    case 'startPos': {
+      if (!isRace) return '';
+      let p = 0;
+      const trk = String(d.track || '');
+      if (_srvStart && String(_srvStart.track || '') === trk) {          // the recorder's order first (same as Race Stats)
+        p = (_srvStart.start && _srvStart.start[num]) || (_srvStart.qual && _srvStart.qual[num]) || ((_srvStart.grid && String(_srvStart.key) === key) ? (_srvStart.grid[num] || 0) : 0) || 0;
+      }
+      if (!p) p = (_qual && _qual.track === trk ? (_qual.order[num] || 0) : 0) || (_grid.order ? (_grid.order[num] || 0) : 0);
+      return p ? 'Started ' + _ord(p) + ' today' : '';
+    }
+    case 'curPos': {
+      const st = getStandings(d);
+      let k = st.findIndex(x => x && x.carIdx === s.carIdx);
+      if (k < 0) k = st.findIndex(x => x && normNum(x.number) === num);
+      return k >= 0 ? 'Current position: ' + _ord(k + 1) : '';
+    }
+    case 'lastLap': {
+      const ld = (d.lapData || []).find(l => l.carIdx === s.carIdx);
+      const lt = d.lapTracker && d.lapTracker[s.carIdx];
+      const t = _fmtLap((ld && ld.lastLap > 0) ? ld.lastLap : (lt ? Number(lt.lastLap) : 0));
+      return t ? 'Last Lap: ' + t : '';
+    }
+    case 'cutoffPts': return diCutoffText(d, num);
+    case 'liveChampPos': {
+      const p = diLiveChampPos(d, num);
+      return p > 0 ? 'Is ' + _ord(p) + ' in championship as it stands' : '';
+    }
+    case 'fastestLap': {                                              // fastest lap of the whole race + surname of the driver who set it
+      let fc = (d.fastestCarIdx == null ? -1 : Number(d.fastestCarIdx)), ft = Number(d.fastestLap) || 0;
+      if (!(ft > 0) || fc < 0) {
+        ft = 0; fc = -1; const lts = d.lapTracker || {};
+        Object.keys(lts).forEach(k => { const b = Number(lts[k] && lts[k].bestLap); if (b > 0 && (ft === 0 || b < ft)) { ft = b; fc = Number(k); } });
+      }
+      const t = (ft > 0 && fc >= 0) ? _fmtLap(ft) : '';
+      if (!t) return '';
+      const fe = (d.standings || []).find(x => x && x.carIdx === fc) || (d.drivers || []).find(x => x && x.carIdx === fc);
+      let fn = '';
+      if (fe) { const fnum = normNum(fe.number); try { fn = String((typeof winnerName === 'function' ? winnerName(fe, fnum) : diNameOf(fe, fnum)) || ''); } catch (e) { fn = String(fe.fullName || fe.name || ''); } }
+      const parts = fn.trim().split(/\s+/).filter(Boolean);
+      while (parts.length > 1 && /^(jr\.?|sr\.?|ii|iii|iv|v)$/i.test(parts[parts.length - 1])) parts.pop();
+      const sn = parts.length ? parts[parts.length - 1] : '';
+      return 'Fastest Lap: ' + t + (sn ? ' (' + sn + ')' : '');
+    }
+    case 'bestLap': {
+      const lt = d.lapTracker && d.lapTracker[s.carIdx];
+      const t = _fmtLap(lt ? Number(lt.bestLap) : 0);
+      return t ? 'Best Lap: ' + t : '';
+    }
+  }
+  return '';
+}
+function diLine(inf, i, d, s, num) {
+  const kind = inf['k' + i] || (inf['line' + i] ? 'custom' : '');
+  return kind ? diKindText(kind, inf, i, d, s, num) : '';
+}
+
+// ── markup ──
+let _cmByIdx = {};
+function diManuCands(s, num) {
+  if (!SERIES_ID || IS_DEFAULT) return [];
+  const n = String(num).trim();
+  const c = [assetPath(`series/${SERIES_ID}/manufacturers/${encodeURIComponent(n)}.png`)];
+  const slot = (s && _cmByIdx[s.carIdx]) || ((s && s.carMakeFromFile != null && s.carMakeFromFile >= 0) ? s.carMakeFromFile + 1 : 0);
+  if (slot) c.push(assetPath(`series/${SERIES_ID}/manufacturers/manu${slot}.png`));
+  return c;
+}
+function diManuHTML(s, num) {
+  const c = diManuCands(s, num);
+  if (!c.length) return '';
+  const alt = c[1] ? ' data-alt="' + diEsc(c[1]) + '"' : '';
+  return '<img src="' + diEsc(c[0]) + '"' + alt + ' alt="" onerror="var a=this.dataset.alt;if(a){this.dataset.alt=\'\';this.src=a}else{this.remove()}">';
+}
+function diNumHTML(num) {
+  const src = numImgSrc(num);
+  const fb = '<span>' + diEsc(num) + '</span>';
+  if (!src) return '<div class="nn">' + fb + '</div>';
+  return '<div class="nn"><img src="' + diEsc(src) + '" alt="" onerror="var p=this.parentNode;this.remove();p.innerHTML=this.dataset.fb"></div>'.replace('<img ', '<img data-fb="' + diEsc(fb) + '" ');
+}
+function diRightHTML(l1, l2) {
+  return (l1 ? '<div class="a"><span>' + diEsc(l1) + '</span></div>' : '') +
+         (l2 ? '<div class="b"><span class="ic"></span><span>' + diEsc(l2) + '</span></div>' : '');
+}
+function diFit() {
+  const nm = diEl('di-name'), max = nm.clientWidth - 26;
+  const els = Array.from(nm.querySelectorAll('.f, .l'));
+  const base = els.map(el => { const sz = el.classList.contains('l') ? 36 : 28; el.style.fontSize = sz + 'px'; return sz; });
+  const widths = els.map(el => el.scrollWidth);
+  els.forEach((el, i) => { if (widths[i] > max && max > 0) el.style.fontSize = Math.max(14, Math.floor(base[i] * max / widths[i])) + 'px'; });
+  els.forEach(el => { let sz = parseInt(el.style.fontSize, 10); while (el.scrollWidth > max && max > 0 && sz > 14) { sz -= 1; el.style.fontSize = sz + 'px'; } });
+  const rr = diEl('di-r');
+  if (rr && rr.style.display !== 'none') {
+    rr.querySelectorAll('.a, .b').forEach(el => {
+      const t = el.querySelector('span:last-child'); if (!t) return;
+      const isA = el.classList.contains('a'), avail = el.clientWidth - (isA ? 36 : 62);
+      let sz = isA ? 32 : 22; el.style.fontSize = sz + 'px';
+      while (t.offsetWidth > avail && avail > 0 && sz > 9) { sz -= 1; el.style.fontSize = sz + 'px'; }
+    });
+  }
+}
+// Smooth change from one driver to another while the banner is up: a copy of the previous card stays on top and fades out (drifting up a
+// little) while the new card fades in from below, so the colour, number, name and photo change with a cross-fade instead of a cut.
+const DI_SWAP_MS = 520;
+function diCrossfade() {
+  try {
+    if (_diGhost) { _diGhost.remove(); _diGhost = null; }
+    const g = diBox.cloneNode(true);
+    g.classList.add('di-ghost');   // keeps its id on purpose: the card's CSS is written by id (the original card comes first in the page, so lookups still find it)
+    const w = diBox.offsetWidth, h = diBox.offsetHeight;
+    g.style.cssText += ';position:absolute;left:0;top:' + diBox.offsetTop + 'px;width:' + w + 'px;height:' + h + 'px;z-index:5;pointer-events:none;margin:0;'
+      + ';';
+    g._w = w;
+    diWrap.appendChild(g); _diGhost = g;
+    if (g.animate) {
+      const a = g.animate([{ opacity: 1, transform: 'translateY(0)' }, { opacity: 1, transform: 'translateY(0)', offset: 0.2 }, { opacity: 0, transform: 'translateY(-10px)' }],
+                          { duration: DI_SWAP_MS, easing: 'ease-in', fill: 'forwards' });
+      a.onfinish = () => { if (_diGhost === g) _diGhost = null; g.remove(); };
+      if (diBox.animate) diBox.animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: DI_SWAP_MS, easing: 'ease-out' });
+    } else { setTimeout(() => { if (_diGhost === g) _diGhost = null; g.remove(); }, 50); }
+  } catch (e) { if (_diGhost) { _diGhost.remove(); _diGhost = null; } }
+}
+// Name colours of the Driver Info card follow the driver's background colour: first name white (or dark on light cards), surname red
+// unless the red would disappear into the card (red / light-red cards) — then a deeper red, else white or dark, whichever reads best.
+function _diRGB(hex) {
+  const m = /^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i.exec(String(hex || '').trim());
+  if (m) return [+m[1], +m[2], +m[3]];
+  let h = String(hex || '').replace('#', '').trim();
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  const n = parseInt(h, 16); if (!/^[0-9a-f]{6}$/i.test(h) || isNaN(n)) return null;
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function _diLum(rgb) {
+  const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+  return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
+}
+function _diContrast(a, b) { const la = _diLum(a), lb = _diLum(b); return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05); }
+function diNameColours(col) {
+  const bgA = _diRGB(col), bgB = _diRGB(lightenHex(col, 18));
+  if (!bgA || !bgB) return null;
+  const worst = fg => Math.min(_diContrast(fg, bgA), _diContrast(fg, bgB));
+  const WHITE = [255, 255, 255], DARK = [17, 19, 26], RED = [255, 45, 59], DEEP = [184, 15, 28];
+  const hexOf = c => '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
+  const best = worst(WHITE) >= worst(DARK) ? WHITE : DARK;
+  const first = worst(WHITE) >= 3 ? WHITE : best;
+  const last = worst(RED) >= 3.2 ? RED : (worst(DEEP) >= 3.2 ? DEEP : (worst(WHITE) >= 3 ? WHITE : best));
+  const shadow = c => (c === DARK || c === DEEP) ? 'none' : null;
+  return { f: hexOf(first), l: hexOf(last), fs: shadow(first), ls: shadow(last) };
+}
+function diRender(d) {
+  const s = diDriver(d); if (!s) return false;
+  const num = (s.number || '??').toString().trim();
+  const full = String(diNameOf(s, num) || '').trim().toUpperCase() || num.toUpperCase();
+  const col = _driverColors[num] || '';                      // colour assigned in the Series Editor ('' = Prime blue)
+  const inf = _diInfo[num] || {}, l1 = diLine(inf, 1, d, s, num) || DI_LINE1, l2 = diLine(inf, 2, d, s, num) || DI_LINE2;
+  const tab = DI_TAB || DI_SERIES_NAME || '';
+  const key = [s.carIdx, num, full, col, tab, l1, l2].join('|');
+  if (key === _diKey) return 2;                              // unchanged
+  const _prevCar = _diShownCar; _diShownCar = s.carIdx;
+  if (_diOn && _prevCar != null && _prevCar !== s.carIdx && diWrap.style.display !== 'none') diCrossfade();
+  _diKey = key;
+  if (col) diBox.style.setProperty('--di-bg', `linear-gradient(90deg, ${lightenHex(col, 18)} 0%, ${col} 55%, ${col} 100%)`);
+  else diBox.style.removeProperty('--di-bg');
+  { const nc = col ? diNameColours(col) : null;
+    ['--di-f', '--di-l', '--di-fs', '--di-ls'].forEach(k => diBox.style.removeProperty(k));
+    if (nc) { diBox.style.setProperty('--di-f', nc.f); diBox.style.setProperty('--di-l', nc.l); if (nc.fs) diBox.style.setProperty('--di-fs', nc.fs); if (nc.ls) diBox.style.setProperty('--di-ls', nc.ls); } }
+  diEl('di-num').innerHTML = diNumHTML(num) + '<div id="di-manu">' + diManuHTML(s, num) + '</div>';
+  if (_diPhotoNum !== num) {                                  // reload the headshot only when the driver changes
+    _diPhotoNum = num;
+    const ph = diEl('di-photo'); ph.classList.remove('on');
+    const own = s.carIdx === (d.playerCarIdx ?? -2);
+    const srcs = [assetPath(`series/${SERIES_ID}/headshots/${encodeURIComponent(num)}.png`)];
+    if (own) srcs.unshift(assetPath('images/playerheadshot.png'));
+    srcs.push(assetPath('images/defaultheadshot.png'));
+    ph.innerHTML = '<img alt="" src="' + diEsc(srcs[0]) + '" data-q="' + diEsc(JSON.stringify(srcs.slice(1))) + '" onload="this.parentNode.classList.add(\'on\')" onerror="var q=JSON.parse(this.dataset.q||\'[]\');if(q.length){this.dataset.q=JSON.stringify(q.slice(1));this.src=q[0]}else{this.parentNode.classList.remove(\'on\');this.remove()}">';
+  }
+  const last = diLastNameOf(full), first = (last && full.endsWith(last)) ? full.slice(0, full.length - last.length).trim() : '';
+  diEl('di-name').innerHTML = (first ? '<div class="f">' + diEsc(first) + '</div>' : '') + '<div class="l">' + diEsc(last || full) + '</div>';
+  const tabEl = diEl('di-tab'); tabEl.textContent = tab; tabEl.style.display = tab ? 'flex' : 'none';
+  const r = diEl('di-r');
+  if (l1 || l2) { r.innerHTML = diRightHTML(l1, l2); r.style.display = ''; diBox.classList.remove('tight'); }
+  else { r.innerHTML = ''; r.style.display = 'none'; diBox.classList.add('tight'); }
+  return 1;                                                   // changed
+}
+
+// ── placement: lower third, centred on the screen. The tower's window only covers the tower, so it is stretched
+// to the screen's bottom and right edge while the banner is up (and put back afterwards). Without the app bridge (OBS)
+// the banner is scaled down to fit the tower canvas width and sits at the bottom of the canvas.
+async function diPlace() {
+  const sc = SCALE * DI_SCALE;
+  diWrap.style.transformOrigin = '0 0';
+  if (!(window.shl && window.shl.extendOverlay) || !window.screen) {
+    const f = Math.min(1, 399 / diWrap.offsetWidth);
+    diWrap.style.transform = 'scale(' + f + ')';
+    diWrap.style.left = '0px';
+    diWrap.style.top = Math.round(1080 - diWrap.offsetHeight * f - 8) + 'px';
+    return;
+  }
+  try {
+    const scrH = window.screen.height, scrW = window.screen.width, offX = window.screen.availLeft || 0;
+    await window.shl.extendOverlay(scrH, offX + scrW);
+    const winTop = window.screenY || 0, winLeft = window.screenX || 0;
+    diWrap.style.transform = 'scale(' + sc + ')';
+    const w = diWrap.offsetWidth, h = diWrap.offsetHeight;
+    diWrap.style.left = Math.max(0, Math.round(offX + scrW / 2 - winLeft - w * sc / 2)) + 'px';
+    diWrap.style.top  = Math.max(0, Math.round(scrH * DI_BOTTOM - h * sc - winTop)) + 'px';
+  } catch (e) { diWrap.style.transform = 'scale(' + sc + ')'; diWrap.style.left = '0px'; diWrap.style.top = '1000px'; }
+}
+function diRestoreWindow() { try { if (window.shl && window.shl.extendOverlay) window.shl.extendOverlay(null); } catch (e) {} }
+async function diShow() {
+  clearTimeout(_diHideT); _diKey = ''; _diShownCar = null; if (_diGhost) { _diGhost.remove(); _diGhost = null; }
+  if (!diRender(_latestData)) return;
+  _diOn = true;
+  diWrap.style.display = 'block';                             // laid out (still transparent) so it can be measured
+  await diPlace();
+  if (!_diOn) return;                                         // toggled off while the window was being stretched
+  void diWrap.offsetWidth;                                    // start the fade from opacity 0
+  diWrap.style.opacity = String(isNaN(OPACITY) ? 1 : OPACITY);
+  diFit(); diPlace();
+}
+function diHide() {
+  _diOn = false; diWrap.style.opacity = '0';
+  clearTimeout(_diHideT);
+  _diHideT = setTimeout(() => { if (!_diOn) { diWrap.style.display = 'none'; diRestoreWindow(); } }, DI_FADE_MS + 50);
+}
+function diToggle() { if (_diOn) diHide(); else diShow(); }
+function diUpdate(d) { if (!_diOn) return; const r = diRender(d); if (r === 1) { diFit(); if (_diGhost && _diGhost.isConnected) _diGhost.style.left = Math.round((diWrap.offsetWidth - _diGhost._w) / 2) + 'px'; diPlace(); } }
+function diReset() { _diSel = null; _diKey = ''; _diPhotoNum = null; _diNames = {}; _diShownCar = null; if (_diGhost) { _diGhost.remove(); _diGhost = null; } }
+window.__toggleDriverInfo = diToggle;
+window.__stepDriverInfo = diStep;
+if (window.shl && window.shl.onDriverInfoToggle) window.shl.onDriverInfoToggle(diToggle);
+if (window.shl && window.shl.onDriverInfoStep) window.shl.onDriverInfoStep(diStep);
+// Called with every data frame (the Info lines need the grid, pit stops, qualifying order and car makes even while the banner is hidden)
+function diFeed(d) {
+  diLearnNames(d); trackQual(d); trackGrid(d); trackPits(d);
+  (d.standings || []).forEach(e => { if (e && e.carIdx != null && e.carMakeFromFile != null && e.carMakeFromFile >= 0 && !_cmByIdx[e.carIdx]) _cmByIdx[e.carIdx] = e.carMakeFromFile + 1; });
+  (d.drivers || []).forEach(e => { if (e && e.carIdx != null && e.carMakeFromFile != null && e.carMakeFromFile >= 0) _cmByIdx[e.carIdx] = e.carMakeFromFile + 1; });
+  if (_diOn) diUpdate(d);
+}
+</script>
+</body>
+</html>

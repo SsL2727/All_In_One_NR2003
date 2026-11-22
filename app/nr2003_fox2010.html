@@ -1,0 +1,1641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="perf-shim.js"></script>
+<meta charset="UTF-8">
+<title>NR2003 Fox 2010 Ticker</title>
+<style>
+/* Chase highlight — drivers in the chase get a yellow name background */
+.chase { background: #f5d100 !important; color: #111 !important; text-shadow: none !important;
+         box-shadow: -3px 0 0 #f5d100, 3px 0 0 #f5d100; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --font: 'D-DIN Condensed Bold', 'Arial Narrow', Impact, sans-serif;
+  --pos:  #f5a31a;
+  --ink:  #15171b;
+  /* number-cell shape (pos_cell.png), tinted with the driver colour */
+  --cell-mask: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEoAAABACAMAAACKlRElAAAAAXNSR0IB2cksfwAAAAlwSFlzAAALEwAACxMBAJqcGAAAAQJQTFRFAAAA////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////eRL3UwAAAFZ0Uk5TABAwQDotHQqPv62IWAsgcM//7ciYXTQbBGCv7/ndyZtRIgWV2pFq+vMzn99vNfQPbc49uPj9P73+tvb8N6TjJ3S05g0mZsw2ouH1phIGjs3EOWhNnShT/NaFAAABXElEQVR4nO3YsUvDQBQG8HsJXmuuFmyHOjiodJMiZHBSOziIWP9W1y6OoujgIKaIgkJFaqlaqElj2ubMNTmrFIXeyyT3TQkkP16SJd8DklpgcgTwx3W/3B3lY5oyqBIVBD+pBXg3mOJUAB5rTag8eyt4zJuZYh4TVqcnqbV7Y+VFAYpThEH/WVIA5WYh11akSsOB1ZBUni3CkyIkwpcdzmOqMgKziaAs1w9CQW046/CAgET8YCSoOZoV46VB2dHXvENS47cFZBNC8wZJjd8WEJNmkZCIXznXlKY0pSlNaUpTmtKUpv4FZWcAHCSU/GxvAQwbSCqpANWoTVwiqaSY7EbURToUIXsRdoqAvkocIatlGp4hqG/Vsta9CuYtFzdTTB3y9tKJcidMZpLLAUo5pwqdvuTaUI9nklSG89rt4+wri1x/B47k8+AWKQf1/ddjeYJb7xS729etaQqdT3OZx0EjIS+oAAAAAElFTkSuQmCC");
+}
+
+body {
+  background: transparent;
+  width: 1456px;
+  height: 176px;
+  overflow: hidden;
+  font-family: var(--font);
+}
+
+#scale-root {
+  position: relative;
+  width: 1456px;
+  height: 176px;
+  transform-origin: top left;
+  visibility: hidden;
+}
+
+/* ── Background: the header art (1456x107) plus two CSS rows under it ──── */
+#bg-layer { position: absolute; inset: 0; z-index: 1; opacity: 0; transition: opacity .2s ease; }
+#bg-img   { position: absolute; left: 0; top: 0; width: 1456px; height: 107px; display: block; }
+
+/* driver row (dark) — sits under the header art so the sponsor box overlaps it */
+#row-top {
+  position: absolute; left: 0; top: 100px; width: 1456px; height: 44px;
+  background: linear-gradient(#2b2c30 0%, #17181b 55%, #0f1012 100%);
+  border-top: 2px solid #050506;
+}
+/* interval row (light grey, diagonal hatching) — collapses under caution */
+#row-bottom-wrap {
+  position: absolute; left: 0; top: 144px; width: 1456px; height: 30px;
+  overflow: hidden;
+  transition: height .45s cubic-bezier(.4,0,.2,1);
+}
+#row-bottom-wrap.collapsed { height: 0; }
+#row-bottom {
+  position: absolute; left: 0; top: 0; width: 1456px; height: 30px;
+  background:
+    repeating-linear-gradient(135deg, rgba(255,255,255,.55) 0 3px, rgba(255,255,255,0) 3px 7px),
+    linear-gradient(#dfe1e4, #c6c9ce);
+  border-bottom: 2px solid #8a8e96;
+}
+
+/* ── Data layer ───────────────────────────────────────────────────────── */
+#data-layer { position: absolute; inset: 0; z-index: 2; visibility: hidden; }
+
+/* series logo (left of the flag square) */
+#logo-plate {
+  position: absolute; left: 266px; top: 60px; width: 208px; height: 34px;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+  background: linear-gradient(#202228, #0a0a0c);
+  border: 2px solid #3b3e46; border-radius: 3px;
+  box-shadow: inset 0 0 0 1px #000;
+}
+#series-logo { max-width: 194px; max-height: 28px; object-fit: contain; }
+
+/* flag square — fills the dark square already drawn in the background */
+#flag-box {
+  position: absolute; left: 484px; top: 63px; width: 31px; height: 28px;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.35);
+  transition: background .25s;
+}
+#flag-box.green  { background: linear-gradient(#34d34a, #0a8a1f); }
+#flag-box.yellow { background: linear-gradient(#ffe45e, #e8aa00); }
+#flag-box.red    { background: linear-gradient(#ff5a4d, #b3120a); }
+#flag-box.white  { background: linear-gradient(#ffffff, #cfd3d9); }
+#flag-box.checkered {
+  background: conic-gradient(#fff 25%, #111 0 50%, #fff 0 75%, #111 0) 0 0 / 20.67px 18.67px;
+}
+
+/* lap / state pill — transparent normally (the pill is in the background art),
+   filled yellow or red while a banner is up */
+#pill {
+  position: absolute; left: 528px; top: 62px; width: 424px; height: 30px;
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent;
+  overflow: hidden;
+  transition: background .25s;
+}
+#pill.yellow { background: linear-gradient(#fff08a 0%, #ffd91a 45%, #e6a800 100%); }
+#pill.green  { background: linear-gradient(#7dff8f 0%, #22c43c 45%, #0a8a1f 100%); }
+#pill.green #pill-text { color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,.5); }
+#pill.red    { background: linear-gradient(#ff8c82 0%, #e33a2d 45%, #a50e06 100%); }
+#pill.red #pill-text { color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,.5); }
+#pill-text {
+  font-size: 28px; line-height: 1; white-space: nowrap; color: var(--ink);
+  letter-spacing: .04em; text-transform: uppercase; word-spacing: .18em;
+  display: inline-flex; align-items: center; gap: .3em;
+}
+
+/* rotating sponsor (right box) */
+#sponsor-zone {
+  position: absolute; left: 986px; top: 54px; width: 300px; height: 46px;
+  display: flex; align-items: center; justify-content: flex-start; overflow: hidden;
+}
+#sponsor-zone img {
+  position: absolute; left: 0; top: 0; max-width: 300px; max-height: 46px;
+  object-fit: contain; object-position: left center;
+  opacity: 0; transition: opacity .8s ease-in-out;
+}
+#sponsor-zone img.on { opacity: 1; }
+
+/* ── Scrolling running order ──────────────────────────────────────────── */
+#strip {
+  position: absolute; left: 0; top: 102px; width: 1456px; height: 72px;
+  overflow: hidden;
+}
+#track {
+  position: absolute; left: 0; top: 0; display: flex; align-items: flex-start;
+  white-space: nowrap; will-change: transform;
+}
+.entry { flex: 0 0 auto; display: flex; flex-direction: column; margin-right: 26px; }
+.e-top { height: 42px; display: flex; align-items: center; }
+.e-bot { height: 30px; display: flex; align-items: center; transition: opacity .25s ease; }
+#strip.no-gaps .e-bot { opacity: 0; }
+
+.e-pos {
+  font-size: 34px; line-height: 1; color: var(--pos); min-width: 22px; text-align: right;
+  text-shadow: 0 1px 0 rgba(0,0,0,.6);
+}
+/* number cell: dark outline + light rim + driver-colour fill, all shaped by pos_cell.png */
+.e-numwrap { position: relative; margin: 0 10px 0 9px; height: 32px; width: 46px; flex: 0 0 auto;
+             display: flex; align-items: center; justify-content: center; }
+.e-numwrap .nb-d, .e-numwrap .nb-h, .e-numwrap .nb-c {
+  position: absolute;
+  -webkit-mask: var(--cell-mask) center / 100% 100% no-repeat;
+          mask: var(--cell-mask) center / 100% 100% no-repeat;
+}
+.e-numwrap .nb-d { inset: -2px;  background: #07080a; }
+.e-numwrap .nb-h { inset: 0;     background: rgba(255,255,255,.7); }
+.e-numwrap .nb-c { inset: 1.5px; }
+.e-numwrap img { position: absolute; inset: 2px; width: calc(100% - 4px); height: calc(100% - 4px);
+                  object-fit: contain; object-position: center; display: block; }
+.e-numfb { position: relative; font-size: 30px; line-height: 1; transform: skewX(-8deg); letter-spacing: .01em; }
+.e-numwrap.sm { height: 28px; width: 40px; margin: 0 8px; }
+.e-numwrap.sm .e-numfb { font-size: 26px; }
+.e-name { font-size: 34px; line-height: 1; color: #fff; text-transform: uppercase; letter-spacing: .015em; text-shadow: 0 2px 2px rgba(0,0,0,.55); }
+.e-gap  { font-size: 25px; line-height: 1; color: #1b1d21; letter-spacing: .02em; }
+.e-gap-pad { width: 0; flex: 0 0 auto; } /* aligns the gap with the name start */
+
+/* checkered-flag separator marks the leader / loop point */
+.sep-flag {
+  width: 152px; height: 29px; margin-right: 20px;
+  background: conic-gradient(#f4f4f4 25%, #151515 0 50%, #f4f4f4 0 75%, #151515 0) 0 0 / 7.25px 7.25px;
+  border: 1px solid #000;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.18);
+}
+.sep-label { font-size: 25px; color: #1b1d21; letter-spacing: .03em; padding-left: 2px; }
+
+/* ── Driver Info Banner (hotkey): Fox 2010 look — [hatch | number on the driver's colour | name | TV logo] over a dark row with Info 1 / Info 2 ── */
+#di-wrap { position: absolute; left: 4px; top: 190px; width: 1060px; transform-origin: 0 0; z-index: 40; pointer-events: none; display: none; opacity: 0;
+           transition: opacity .6s ease; font-family: var(--font); color: #fff; filter: drop-shadow(0 4px 8px rgba(0,0,0,.55)); }
+#di-top { position: relative; height: 58px; display: flex; align-items: center; gap: 8px; padding-right: 9px; border-radius: 9px 9px 0 0;
+          background: linear-gradient(180deg, #3a3c41 0%, #1b1c1f 48%, #0c0d0f 100%);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.6), inset 0 0 0 1px rgba(170,176,186,.55); }
+#di-hatch { flex: 0 0 222px; height: 30px; margin-left: 3px; border-radius: 4px 0 0 4px; border: 1px solid #70757c; border-right: 0;
+            background: repeating-linear-gradient(135deg, rgba(255,255,255,.55) 0 3px, rgba(255,255,255,0) 3px 7px), linear-gradient(#dfe1e4, #a9adb3);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 -2px 3px rgba(0,0,0,.25); }
+#di-num { position: relative; flex: 0 0 126px; height: 44px; border-radius: 7px; border: 2px solid var(--di-acc, #1e90d8); overflow: hidden;
+          display: flex; align-items: center; justify-content: center; background: var(--di-nbg, #3b3f47);
+          box-shadow: inset 0 0 0 1px rgba(0,0,0,.65), 0 0 0 1px rgba(0,0,0,.55); }
+#di-num::after { content: ''; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+                 background: linear-gradient(180deg, rgba(255,255,255,.30) 0%, rgba(255,255,255,0) 52%, rgba(0,0,0,.28) 100%); }
+#di-num img { position: relative; z-index: 1; height: calc(100% - 4px); max-width: calc(100% - 8px); object-fit: contain; display: block; }
+#di-num .nf { position: relative; z-index: 1; font-size: 38px; line-height: 1; font-style: italic; transform: skewX(-8deg); letter-spacing: .01em; }
+#di-name { flex: 1; min-width: 0; height: 44px; border-radius: 7px; border: 2px solid var(--di-acc, #1e90d8); display: flex; align-items: center; padding: 0 16px; overflow: hidden;
+           background: linear-gradient(180deg, #25272b 0%, #0f1012 55%, #050506 100%); box-shadow: inset 0 0 0 1px rgba(0,0,0,.65), 0 0 0 1px rgba(0,0,0,.55); }
+#di-nm { font-size: 38px; line-height: 1; text-transform: uppercase; white-space: nowrap; letter-spacing: .02em; color: #fff; text-shadow: 0 2px 2px rgba(0,0,0,.6); }
+#di-logo { flex: 0 0 130px; height: 38px; display: none; align-items: center; justify-content: center; border-radius: 4px; border: 1px solid #8a9098; overflow: hidden;
+           background: linear-gradient(180deg, #2c2e33, #0b0c0e); box-shadow: inset 0 0 0 1px rgba(0,0,0,.6); }
+#di-logo img { max-width: 118px; max-height: 30px; object-fit: contain; display: block; }
+#di-sep { height: 7px; background: linear-gradient(180deg, #f4f5f7 0%, #bcc0c6 50%, #7d828a 100%); box-shadow: 0 1px 0 rgba(0,0,0,.55); }
+#di-low { position: relative; height: 64px; display: flex; align-items: center; padding-left: 388px; overflow: hidden;
+          background: repeating-linear-gradient(135deg, rgba(255,255,255,.07) 0 2px, rgba(255,255,255,0) 2px 6px), linear-gradient(180deg, #303236 0%, #1c1d20 55%, #101113 100%); }
+#di-low::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 372px; clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+                  background: repeating-linear-gradient(135deg, rgba(255,255,255,.2) 0 3px, rgba(255,255,255,0) 3px 7px), linear-gradient(180deg, #5d6065 0%, #3a3c40 100%); }
+#di-r { position: relative; z-index: 1; flex: 1; min-width: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; padding-right: 18px; line-height: 1.04; white-space: nowrap; }
+#di-r .a, #di-r .b { font-size: 28px; text-transform: uppercase; letter-spacing: .02em; color: #fff; text-shadow: 0 2px 2px rgba(0,0,0,.55); }
+#di-r .b { display: flex; align-items: center; gap: 9px; }
+#di-r .b .ar { flex: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
+#di-base { position: relative; height: 15px; background: linear-gradient(180deg, #f4f5f7 0 2px, #b3b7bd 2px 6px, rgba(0,0,0,0) 6px); border-radius: 0 0 6px 6px; }
+#di-base i { position: absolute; left: 356px; width: 612px; top: 4px; height: 11px; background: linear-gradient(180deg, var(--di-acc-hi, #46b4f2) 0%, var(--di-acc-mid, #1f8fd8) 55%, var(--di-acc-lo, #0c5fa0) 100%);
+             clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 100%, 10px 100%); }
+/* di-css-end */
+</style>
+</head>
+<body>
+<div id="scale-root">
+
+  <div id="bg-layer">
+    <div id="row-top"></div>
+    <div id="row-bottom-wrap"><div id="row-bottom"></div></div>
+    <img id="bg-img" src="data:image/png;base64,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" alt="">
+  </div>
+
+  <div id="data-layer">
+    <div id="logo-plate"><img id="series-logo" src="" alt="" onerror="this.style.display='none'"></div>
+    <div id="flag-box" class="green"></div>
+    <div id="pill"><span id="pill-text">LAP -- OF --</span></div>
+    <div id="sponsor-zone">
+      <img id="sponsor-a" src="" alt="">
+      <img id="sponsor-b" src="" alt="">
+    </div>
+    <div id="strip"><div id="track"></div></div>
+  </div>
+
+  <div id="di-wrap">
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="di-yel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe680"/><stop offset=".5" stop-color="#ffbf1f"/><stop offset="1" stop-color="#d48a00"/></linearGradient></defs></svg>
+    <div id="di-top">
+      <div id="di-hatch"></div>
+      <div id="di-num"></div>
+      <div id="di-name"></div>
+      <div id="di-logo"><img id="di-logo-img" alt=""></div>
+    </div>
+    <div id="di-sep"></div>
+    <div id="di-low"><div id="di-r"></div></div>
+    <div id="di-base"><i></i></div>
+  </div>
+
+</div>
+
+<script>
+// ── Chase highlight ─────────────────────────────────────────────────────────
+let _CHASE = new Set();
+const chaseKey = n => String(n == null ? '' : n).trim().replace(/"/g, '');
+function chaseMark(el, n) {
+  if (!el) return;
+  const k = chaseKey(n);
+  el.dataset.chaseNum = k;
+  el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(k));
+}
+function _chasePass() {
+  document.querySelectorAll('[data-chase-num]').forEach(el =>
+    el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(el.dataset.chaseNum)));
+}
+function _setChase(list) {
+  _CHASE = new Set((Array.isArray(list) ? list : []).map(chaseKey));
+  _chasePass();
+}
+if (window.shl && window.shl.onChaseSet) {
+  window.shl.onChaseSet(_setChase);
+  if (window.shl.getChaseSet) window.shl.getChaseSet().then(_setChase).catch(() => {});
+}
+
+// ── PSF bootstrap ───────────────────────────────────────────────────────────
+const psf           = window.__PSF || {};
+const params        = new URLSearchParams(location.search);
+const INSTALL_DIR   = psf.installDir || params.get('installdir') || '';
+const SERIES_ID     = psf.series     || params.get('series')     || '';
+let   SERIES_NAME   = psf.seriesname || params.get('seriesname') || '';
+const $ = id => document.getElementById(id);
+const SCALE         = parseFloat(psf.scale   || params.get('scale')   || '1');
+const OPACITY       = parseFloat(psf.opacity || params.get('opacity') || '1');
+const WS_URL        = psf.wsUrl || `ws://${location.hostname || 'localhost'}:8765`;
+let   ROTATION_MS   = (parseInt(psf.sponsorrotationtime || params.get('sponsorrotationtime') || '10')) * 1000;
+const BANNER_MS     = (parseInt(psf.cautionbannertime   || params.get('cautionbannertime')   || '8'))  * 1000;
+let VISIBILITY_MODE = psf.visibilitymode || params.get('visibilitymode') || 'at_track';
+let SCROLL_SPEED    = parseFloat(psf.scrollspeed || params.get('scrollspeed') || '80');
+let DNF_DISPLAY     = psf.dnfdisplay || params.get('dnfdisplay') || 'reason';
+
+function assetPath(rel) {
+  if (psf.assetBase) return psf.assetBase + '/' + rel;
+  if (INSTALL_DIR) {
+    const enc = INSTALL_DIR.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+    return 'file:///' + enc + '/' + rel;
+  }
+  return rel;
+}
+const FOX_BASE = assetPath('images/Fox2010');
+
+// ── Fonts ───────────────────────────────────────────────────────────────────
+(function injectFonts() {
+  const el = document.createElement('style');
+  el.textContent = `@font-face { font-family:'D-DIN Condensed Bold'; src:url('${assetPath('images/ticker/DIN Condensed Bold.ttf')}') format('truetype'); font-weight:bold; font-style:normal; font-display:swap; }`;
+  document.head.appendChild(el);
+})();
+
+// ── Scale ───────────────────────────────────────────────────────────────────
+const root = document.getElementById('scale-root');
+root.style.transform = `scale(${SCALE})`;
+document.body.style.width  = Math.round(1456 * SCALE) + 'px';
+document.body.style.height = Math.round(176  * SCALE) + 'px';
+
+// ── Visibility ──────────────────────────────────────────────────────────────
+let _preview = false;
+function checkVisibility(d) {
+  if (_preview) return true;
+  switch (VISIBILITY_MODE) {
+    case 'always': return true;
+    case 'in_car': return !!(d.atTrack && d.player?.inCar);
+    default:       return !!d.atTrack;
+  }
+}
+function setVisible(v) {
+  root.style.visibility = v ? 'visible' : 'hidden';
+  document.getElementById('bg-layer').style.opacity = v ? OPACITY : '0';
+  document.getElementById('data-layer').style.visibility = v ? 'visible' : 'hidden';
+}
+
+// ── Background override ─────────────────────────────────────────────────────
+// The header art is embedded as a default; a file at images/Fox2010/background.png
+// (1456x107, transparent below the bar) replaces it when present.
+(function() {
+  const probe = new Image();
+  probe.onload = () => { document.getElementById('bg-img').src = probe.src; };
+  probe.src = FOX_BASE + '/background.png';
+})();
+
+// ── Series logo (left plate) ────────────────────────────────────────────────
+(function() {
+  const img = document.getElementById('series-logo');
+  img.onload  = () => { img.style.display = ''; };
+  img.onerror = () => { img.style.display = 'none'; };
+  img.src = SERIES_ID ? assetPath(`series/${SERIES_ID}/serieslogo.png`) : assetPath('images/nr2003_logo.svg');
+})();
+
+// ── Rotating sponsor (right box) ────────────────────────────────────────────
+let _sponsors = [], _sIdx = 0, _sFront = 'a';
+async function loadSponsors() {
+  const probes = [];
+  for (let i = 1; i <= 20; i++) {
+    probes.push(new Promise(res => {
+      const img = new Image();
+      const src = `${FOX_BASE}/sponsors/sponsor${String(i).padStart(2, '0')}.png`;
+      img.onload  = () => res(src);
+      img.onerror = () => res(null);
+      img.src = src;
+    }));
+  }
+  _sponsors = (await Promise.all(probes)).filter(Boolean);
+  if (!_sponsors.length) return;
+  const a = document.getElementById('sponsor-a');
+  a.src = _sponsors[0]; a.classList.add('on');
+  if (_sponsors.length > 1) startSponsorTimer();
+}
+let _sponsorTimer = null;
+function startSponsorTimer() {
+  if (_sponsorTimer) clearInterval(_sponsorTimer);
+  _sponsorTimer = setInterval(nextSponsor, ROTATION_MS);
+}
+function nextSponsor() {
+  _sIdx = (_sIdx + 1) % _sponsors.length;
+  const front = document.getElementById('sponsor-' + _sFront);
+  const backId = _sFront === 'a' ? 'b' : 'a';
+  const back  = document.getElementById('sponsor-' + backId);
+  back.onload = () => { back.classList.add('on'); front.classList.remove('on'); _sFront = backId; back.onload = null; };
+  back.src = _sponsors[_sIdx];
+}
+
+// ── Flag square + pill (lap / caution banner) ───────────────────────────────
+const flagBox  = document.getElementById('flag-box');
+const pill     = document.getElementById('pill');
+const pillText = document.getElementById('pill-text');
+const rowBotWrap = document.getElementById('row-bottom-wrap');
+
+function ordinal(n) {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return n + 'TH';
+  return n + (['TH','ST','ND','RD'][n % 10] || 'TH');
+}
+function fitPill() {
+  let size = 28;
+  pillText.style.fontSize = size + 'px';
+  while (pillText.scrollWidth > pill.clientWidth - 20 && size > 13) { size -= 1; pillText.style.fontSize = size + 'px'; }
+}
+let _pillTxt = '', _pillCls = '';
+function setPill(html, cls) {            // html: plain caps text or markup (winner badge)
+  if (html !== _pillTxt) { _pillTxt = html; pillText.innerHTML = html; fitPill(); }
+  if (cls !== _pillCls)  { _pillCls = cls;  pill.className = cls; }
+}
+let _flagCls = '';
+function setFlag(name) {
+  if (name === _flagCls) return;
+  _flagCls = name; flagBox.className = name;
+}
+
+// After the checkered flag the pill shows  WINNER [number] NAME  in yellow.
+function winnerPillHTML(d) {
+  const w = getStandings(d)[0];
+  if (!w) return '';
+  const num  = (w.number || '').toString().trim();
+  const name = (w.name || num).toUpperCase();
+  return `WINNER${num ? numberHTML(num, ' sm') : ''}<span>${esc(name)}</span>`;
+}
+
+// La bandera de cuadros y el ganador solo salen cuando el LÍDER ya ha cruzado la
+// línea de meta al acabar la última vuelta. La fuente de datos puede marcar
+// 'checkered' unos instantes antes, así que se usa la posición del líder en la
+// pista (trkPct: 0 = línea de meta) y se "engancha" (latch) al cruzar.
+let _finishLatched = false;
+function _leaderTrkPct(d) {
+  const lead = (d.liveStandings || d.standings || [])[0];
+  if (!lead || lead.carIdx === undefined) return null;
+  const opp = (d.opponents || []).find(o => o.carIdx === lead.carIdx);
+  if (opp && typeof opp.trkPct === 'number') return opp.trkPct;
+  if (d.playerCarIdx === lead.carIdx && d.player && typeof d.player.trkPct === 'number') return d.player.trkPct;
+  return null;
+}
+function updateFinishLatch(d) {
+  const state = (d.sessionState || '').toLowerCase();
+  if (state !== 'checkered' && state !== 'cool down') { _finishLatched = false; return; }
+  if (_finishLatched) return;
+  if (state === 'cool down' || (d.session || '').toLowerCase() !== 'race') { _finishLatched = true; return; }
+  const lt = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  const lead = (d.liveStandings || d.standings || [])[0];
+  const cl = lead && d.carLaps ? d.carLaps[lead.carIdx] : undefined;
+  const laps = Math.max(d.lapsComplete || 0, cl || 0, (lead && lead.lap) || 0);
+  if (lt > 0 && laps < lt) return;                     // aún le queda vuelta al líder
+  if (d.lapsRemaining !== undefined && lt > 0 && d.lapsRemaining > 0) return;
+  const pct = _leaderTrkPct(d);
+  if (pct === null) { _finishLatched = true; return; } // sin posición en pista: criterio antiguo
+  if (pct < 0.5) _finishLatched = true;                // ya pasó la meta (pct vuelve a ~0)
+}
+function raceFinished(d) {
+  const state = (d.sessionState || '').toLowerCase();
+  if (state === 'cool down') return true;
+  if (state !== 'checkered') return false;
+  if ((d.session || '').toLowerCase() !== 'race') return true;
+  return _finishLatched;
+}
+
+function lapText(d) {
+  const session = (d.session || '').toLowerCase();
+  const state   = (d.sessionState || '').toLowerCase();
+  const lc = d.lapsComplete || 0;
+  const lt = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  if (session === 'race') {
+    if (raceFinished(d)) return 'RESULTS';
+    if (state === 'get in car' || state === 'warmup' || state === 'parade laps') return 'PRE-RACE';
+    if (lt > 0) {
+      const togo = lt - lc;
+      if (lc > 0 && togo <= 1) return 'FINAL LAP';
+      if (lc > 0 && lc >= Math.floor(lt / 2)) return `${togo} ${togo === 1 ? 'LAP' : 'LAPS'} TO GO`;   // from halfway on
+      return `LAP ${Math.min(lc + 1, lt)} OF ${lt}`;
+    }
+    return `LAP ${lc + 1}`;
+  }
+  if (session === 'qualifying') return 'QUALIFYING';
+  const t = d.timeRemaining || 0;
+  if (t > 0) return `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+  return 'PRACTICE';
+}
+
+// Caution banner: when the yellow comes out the pill shows "1ST CAUTION" in
+// yellow for BANNER_MS, then returns to the lap counter while the small flag
+// square stays yellow until the green is shown.
+let _wasYellow = false, _bannerUntil = 0, _bannerText = '', _localCautions = 0, _bannerTimer = null;
+let _lastData = null;
+// Banner "START OF THE RACE": sale al pasar de pre-carrera a carrera en verde.
+let _wasPreRace = false, _startUntil = 0, _startTimer = null;
+
+function updateHeader(d) {
+  _lastData = d;
+  const session = (d.session || '').toLowerCase();
+  const state   = (d.sessionState || '').toLowerCase();
+  const flag    = (d.sessionFlag || '').toLowerCase();
+  const lc = d.lapsComplete || 0;
+  const lt = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  const togo = lt > 0 ? lt - lc : 99;
+  const isRace = session === 'race';
+  const finished = raceFinished(d);
+
+  let flagName = 'green';
+  if (finished)                                  flagName = 'checkered';
+  else if (flag === 'red')                       flagName = 'red';
+  else if (flag === 'yellow')                    flagName = 'yellow';
+  else if (isRace && togo <= 1 && lc > 0)        flagName = 'white';
+  setFlag(flagName);
+
+  const isYellow = flagName === 'yellow';
+  if (isYellow && !_wasYellow && isRace) {
+    _localCautions += 1;
+    const n = (d.cautionFlags && d.cautionFlags > 0) ? d.cautionFlags : _localCautions;
+    _bannerText  = `${ordinal(n)} CAUTION`;
+    _bannerUntil = Date.now() + BANNER_MS;
+    if (_bannerTimer) clearTimeout(_bannerTimer);
+    _bannerTimer = setTimeout(() => { if (_lastData) updateHeader(_lastData); }, BANNER_MS + 30);
+  }
+  if (!isYellow) { _bannerUntil = 0; }
+  _wasYellow = isYellow;
+
+  const preRaceNow = isRace && (state === 'get in car' || state === 'warmup' || state === 'parade laps');
+  if (_wasPreRace && !preRaceNow && isRace && !finished && flagName !== 'red') {
+    _startUntil = Date.now() + BANNER_MS;
+    if (_startTimer) clearTimeout(_startTimer);
+    _startTimer = setTimeout(() => { if (_lastData) updateHeader(_lastData); }, BANNER_MS + 30);
+  }
+  _wasPreRace = preRaceNow;
+  const startBanner = Date.now() < _startUntil && !isYellow && flagName !== 'red' && !finished;
+
+  if (flagName === 'red') {
+    setPill('RED FLAG', 'red');
+  } else if (startBanner) {
+    setPill('START OF THE RACE', 'green');
+  } else if (isYellow && Date.now() < _bannerUntil) {
+    setPill(_bannerText, 'yellow');
+  } else if (isRace && finished && winnerPillHTML(d)) {
+    setPill(winnerPillHTML(d), 'yellow');
+  } else if (isRace && state === 'checkered' && !finished) {
+    setPill('RACE RESULTS', '');             // bandera de cuadros dada, líder aún sin cruzar la meta
+  } else {
+    setPill(lapText(d), '');
+  }
+
+  // interval row only while racing green / practice / quali / results
+  const preRace = isRace && (state === 'get in car' || state === 'warmup' || state === 'parade laps');
+  const hideGaps = isYellow || flagName === 'red' || preRace;
+  rowBotWrap.classList.toggle('collapsed', hideGaps);
+  document.getElementById('strip').classList.toggle('no-gaps', hideGaps);
+}
+
+// ── Running order ───────────────────────────────────────────────────────────
+let _standings = [], _driverColors = {}, _driverColorsSig = '', _session = '', _underCaution = false;
+
+function fmtGap(entry, idx) {
+  const status = (entry.status || '').toLowerCase();
+  if (status && status !== 'running' && status !== 'pitting') {
+    return DNF_DISPLAY === 'out' ? 'OUT' : status.toUpperCase().slice(0, 10);
+  }
+  if (_session === 'practice' || _session === 'qualifying' || _session === 'testing') {
+    const t = entry.time || 0;
+    return t > 0 ? t.toFixed(3) : '';
+  }
+  if (idx === 0) return '';
+  const ld = entry.lapsDown || 0;
+  if (ld > 0) return `-${ld} ${ld === 1 ? 'LAP' : 'LAPS'}`;
+  const t = entry.time || 0;
+  return t > 0 ? `-${t.toFixed(2)}` : '';
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// Each car number is probed ONCE and cached. Cells are drawn from the cache and,
+// when a probe finishes, patched in place — the track is never rebuilt because an
+// image arrived or failed, so numbers without an image don't flicker.
+const _numInfo = {};   // num → { state: 'loading' | 'ok' | 'fail', src }
+const _ccCtx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+const _lumCache = {};
+function bgLuma(c) {                       // 0..1, or -1 when transparent / unknown
+  if (!c || c === 'transparent') return -1;
+  if (_lumCache[c] !== undefined) return _lumCache[c];
+  let v = -1;
+  try {
+    _ccCtx.clearRect(0, 0, 1, 1);
+    _ccCtx.fillStyle = '#000'; _ccCtx.fillStyle = c;
+    _ccCtx.fillRect(0, 0, 1, 1);
+    const d = _ccCtx.getImageData(0, 0, 1, 1).data;
+    if (d[3] >= 32) v = (0.299 * d[0] + 0.587 * d[1] + 0.114 * d[2]) / 255;
+  } catch (_) {}
+  return (_lumCache[c] = v);
+}
+const FB_DEFAULT_BG = '#3b3f47';
+// Accent shades (light / mid / dark) for the blue parts of the Driver Info banner; null = unknown colour
+function accentShades(c) {
+  if (!c || c === 'transparent') return null;
+  try {
+    _ccCtx.clearRect(0, 0, 1, 1); _ccCtx.fillStyle = '#000'; _ccCtx.fillStyle = c; _ccCtx.fillRect(0, 0, 1, 1);
+    const p = _ccCtx.getImageData(0, 0, 1, 1).data; if (p[3] < 32) return null;
+    const mix = (t, k) => 'rgb(' + [0, 1, 2].map(i => Math.round(p[i] + (t - p[i]) * k)).join(',') + ')';
+    return { hi: mix(255, .35), mid: 'rgb(' + p[0] + ',' + p[1] + ',' + p[2] + ')', lo: mix(0, .4) };
+  } catch (_) { return null; }
+}
+
+// Average colour of the opaque corners of a number PNG (used as the cell colour
+// when the series has no driver colour for that car); null if corners are transparent.
+function sampleCorners(img) {
+  try {
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+    const w = c.width, h = c.height, i = 3;
+    const px = [g.getImageData(i, i, 1, 1).data, g.getImageData(w - i - 1, i, 1, 1).data,
+                g.getImageData(i, h - i - 1, 1, 1).data, g.getImageData(w - i - 1, h - i - 1, 1, 1).data];
+    const op = px.filter(p => p[3] >= 32);
+    if (op.length < 3) return null;
+    const a = op.reduce((t, p) => [t[0] + p[0], t[1] + p[1], t[2] + p[2]], [0, 0, 0]).map(v => Math.round(v / op.length));
+    return `rgb(${a[0]},${a[1]},${a[2]})`;
+  } catch (_) { return null; }
+}
+// Recorta el margen vacío (transparente o del color de fondo) del PNG del número,
+// de modo que los dígitos llenen todo el cuadro. Si el canvas no se puede leer
+// (imagen "tainted"), devuelve null y se usa la imagen original.
+function trimNumber(img, bgCss) {
+  try {
+    const w = img.naturalWidth, h = img.naturalHeight;
+    if (!w || !h) return null;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0);
+    const data = g.getImageData(0, 0, w, h).data;
+    let bg = null;
+    if (bgCss) { const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(bgCss); if (m) bg = [+m[1], +m[2], +m[3]]; }
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (data[i + 3] < 40) continue;
+      if (bg && Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1]) + Math.abs(data[i + 2] - bg[2]) < 60) continue;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+    if (x1 < x0 || y1 < y0) return null;
+    const tw = x1 - x0 + 1, th = y1 - y0 + 1;
+    if (tw >= w - 1 && th >= h - 1) return null;       // ya ocupa todo
+    const o = document.createElement('canvas'); o.width = tw; o.height = th;
+    o.getContext('2d').drawImage(c, x0, y0, tw, th, 0, 0, tw, th);
+    return o;
+  } catch (_) { return null; }
+}
+function numColor(num) {
+  const i = _numInfo[num];
+  return _driverColors[num] || (i && i.color) || FB_DEFAULT_BG;
+}
+function loadNumber(num) {
+  if (_numInfo[num]) return;
+  const src = SERIES_ID ? assetPath(`series/${SERIES_ID}/numbers/${encodeURIComponent(num)}.png`) : '';
+  if (!src) { _numInfo[num] = { state: 'fail' }; return; }
+  const n = _numInfo[num] = { state: 'loading', src };
+  const img = new Image();
+  img.onload  = () => {
+    n.color = sampleCorners(img);
+    const t = trimNumber(img, n.color);                // número recortado: llena el cuadro
+    const done = () => { n.state = 'ok'; patchNumber(num); };
+    if (t && t.toBlob) t.toBlob(b => { if (b) n.src = URL.createObjectURL(b); done(); }, 'image/png');   // async encode: no main-thread stall
+    else done();
+  };
+  img.onerror = () => { n.state = 'fail'; patchNumber(num); };
+  img.src = src;
+}
+function numInnerHTML(num) {
+  const i  = _numInfo[num];
+  const bg = numColor(num);
+  const layers = `<span class="nb-d"></span><span class="nb-h"></span><span class="nb-c" style="background:${esc(bg)}"></span>`;
+  if (i && i.state === 'ok') return layers + `<img src="${i.src}" alt="${esc(num)}">`;
+  const fg   = bgLuma(bg) > 0.6 ? '#111111' : '#ffffff';
+  const hide = (i && i.state === 'fail') ? '' : 'visibility:hidden;';   // loading: keep the cell, show no text yet
+  return layers + `<span class="e-numfb" style="${hide}color:${fg}">${esc(num)}</span>`;
+}
+function numberHTML(num, extraCls) {
+  loadNumber(num);
+  return `<div class="e-numwrap${extraCls || ''}" data-num="${esc(num)}">${numInnerHTML(num)}</div>`;
+}
+const _patchDirty = new Set();
+let _patchRaf = 0;
+function patchNumber(num) {
+  _patchDirty.add(num);
+  if (_patchRaf) return;
+  _patchRaf = requestAnimationFrame(() => {
+    _patchRaf = 0;
+    const dirty = _patchDirty;
+    if (!dirty.size) return;
+    document.querySelectorAll('.e-numwrap').forEach(w => {
+      if (dirty.has(w.dataset.num)) w.innerHTML = numInnerHTML(w.dataset.num);
+    });
+    dirty.clear();
+    diNumLoaded();
+  });
+}
+function resetNumberCache() {              // new session: retry numbers that had no image
+  Object.keys(_numInfo).forEach(k => { if (_numInfo[k].state !== 'ok') delete _numInfo[k]; });
+}
+
+function copyHTML() {
+  const sep = `<div class="entry"><div class="e-top"><div class="sep-flag"></div></div><div class="e-bot"><span class="sep-label">BEHIND LEADER</span></div></div>`;
+  const entries = _standings.map((s, i) => {
+    const num  = (s.number || '??').toString().trim();
+    const name = (s.name || num).toUpperCase();
+    const gap  = fmtGap(s, i);
+    return `<div class="entry" data-caridx="${s.carIdx}">
+      <div class="e-top"><span class="e-pos">${i + 1}</span>${numberHTML(num)}<span class="e-name" data-chase-num="${esc(chaseKey(num))}">${esc(name)}</span></div>
+      <div class="e-bot"><span class="e-gap-pad"></span><span class="e-gap">${esc(gap)}</span></div>
+    </div>`;
+  }).join('');
+  return sep + entries;
+}
+
+let scrollX = 0, loopWidth = 0, lastTs = null, scrollStarted = false;
+const track = document.getElementById('track');
+
+// Per-entry element references (built once per full rebuild): updating the order / gaps never has to query or re-parse the DOM
+let _trackEls = [];          // one item per entry element, in track order: { en, wrap, nm, gapEl, id, num, gap }
+let _trackN = -1, _trackCopies = 0;
+function indexTrack() {
+  const kids = track.children, out = [];
+  for (let k = 0; k < kids.length; k++) {
+    const en = kids[k];
+    if (!en.dataset.caridx) continue;                    // the "BEHIND LEADER" separator
+    const nm = en.querySelector('.e-name'), gapEl = en.querySelector('.e-gap');
+    out.push({ en, wrap: en.querySelector('.e-numwrap'), nm, pad: en.querySelector('.e-gap-pad'), gapEl,
+               id: en.dataset.caridx, num: en.querySelector('.e-numwrap').dataset.num, gap: gapEl.textContent });
+  }
+  _trackEls = out;
+}
+function alignGaps() {
+  // put each interval under the start of its driver name. The offsets are the same in every copy, so measure one copy
+  // (all reads first = a single layout pass) and apply the widths to all of them
+  const N = _trackN, els = _trackEls, pads = new Array(N);
+  for (let i = 0; i < N; i++) { const e = els[i]; pads[i] = Math.round((e.nm.getBoundingClientRect().left - e.en.getBoundingClientRect().left) / SCALE * 100) / 100; }   // exact (not rounded per element), independent of the scroll position
+  for (let k = 0; k < els.length; k++) els[k].pad.style.width = pads[k % N] + 'px';
+}
+
+function renderTrack() {
+  if (!_standings.length) { track.innerHTML = ''; loopWidth = 0; _trackEls = []; _trackN = -1; return; }
+  const prevLoop = loopWidth || 0;
+  const ratio = prevLoop > 0 ? Math.abs(scrollX) / prevLoop : 0;
+  const N = _standings.length;
+
+  if (N === _trackN && _trackEls.length === N * _trackCopies * 2) {
+    // Same cars, new order: change the text / number of each row in place. No HTML parsing, no image decoding, no new nodes.
+    const rows = _standings.map((s, i) => { const num = (s.number || '??').toString().trim(); loadNumber(num); return { id: String(s.carIdx), num, name: (s.name || num).toUpperCase(), gap: fmtGap(s, i) }; });
+    for (let k = 0; k < _trackEls.length; k++) {
+      const e = _trackEls[k], r = rows[k % N];
+      if (e.id !== r.id) { e.id = r.id; e.en.dataset.caridx = r.id; }
+      if (e.num !== r.num) {
+        e.num = r.num; e.wrap.dataset.num = r.num; e.wrap.innerHTML = numInnerHTML(r.num);
+        const ck = chaseKey(r.num); e.nm.dataset.chaseNum = ck; e.nm.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(ck));
+      }
+      if (e.nm.textContent !== r.name) e.nm.textContent = r.name;
+      if (e.gap !== r.gap) { e.gap = r.gap; e.gapEl.textContent = r.gap; }
+    }
+  } else {
+    const one = copyHTML();
+    track.innerHTML = one;
+    const w1 = track.scrollWidth;                       // width of one copy (margins incl.)
+    const copies = Math.max(1, Math.ceil(1456 / Math.max(w1, 1)));
+    track.insertAdjacentHTML('beforeend', one.repeat(copies * 2 - 1));   // 2 x copies in total, the first one is already there
+    _trackN = N; _trackCopies = copies;
+    indexTrack();
+    alignGaps();
+    _chasePass();
+  }
+  loopWidth = track.scrollWidth / 2;
+  scrollX = prevLoop > 0 ? -(ratio * loopWidth) : 0;
+  track.style.transform = `translate3d(${scrollX}px,0,0)`;
+}
+
+function refreshGaps() {
+  const len = _standings.length;
+  if (!len || len !== _trackN) return;
+  const t = new Array(len);
+  for (let i = 0; i < len; i++) t[i] = fmtGap(_standings[i], i);   // once per car, not once per copy
+  for (let k = 0; k < _trackEls.length; k++) {
+    const e = _trackEls[k], v = t[k % len];
+    if (e.gap !== v) { e.gap = v; e.gapEl.textContent = v; }
+  }
+}
+
+// The D-DIN font may finish loading after the first build: widths (gap padding, loop width) were measured with the fallback font. Rebuild once it is in.
+if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => { if (_standings.length) { _trackN = -1; renderTrack(); } });
+
+function tickScroll(ts) {
+  const dt = lastTs ? Math.min((ts - lastTs) / 1000, 0.05) : 0;
+  scrollX -= SCROLL_SPEED * dt;
+  if (loopWidth > 0 && Math.abs(scrollX) >= loopWidth) scrollX += loopWidth;
+  track.style.transform = `translate3d(${scrollX}px,0,0)`;
+  lastTs = ts;
+  requestAnimationFrame(tickScroll);
+}
+function startScroll() { if (scrollStarted) return; scrollStarted = true; requestAnimationFrame(tickScroll); }
+
+// ── Standings source ────────────────────────────────────────────────────────
+function getStandings(d) {
+  const state = (d.sessionState || '').toLowerCase();
+  const flag  = (d.sessionFlag  || '').toLowerCase();
+  const liveEnabled = d.liveStandingsEnabled !== false;
+  const live = d.liveStandings || d.standings || [];
+  if (state === 'cool down' || flag === 'yellow') return d.standings || [];
+  if (state === 'checkered' && raceFinished(d) && liveEnabled && Array.isArray(d.computedStandings) && d.computedStandings.length)
+    return d.computedStandings;
+  return liveEnabled && live.length ? live : (d.standings || []);
+}
+
+// ── Names / gaps ────────────────────────────────────────────────────────────
+const SUFFIX = /^(JR\.?|SR\.?|II|III|IV)$/;
+const ROOKIE_TAIL = /(?:\s*[\(\[]\s*R\s*[\)\]]|\s*[-\u2013]\s*R\*?|\s+R\*?|\s*\*)\s*$/i;
+function splitRookie(raw) {
+  let s = String(raw == null ? '' : raw).trim(), rookie = false;
+  for (let k = 0; k < 2; k++) {
+    const m = s.match(ROOKIE_TAIL);
+    if (!m || m.index === 0) break;
+    s = s.slice(0, m.index).trim(); rookie = true;
+  }
+  return { name: s, rookie };
+}
+const isMarkerOnly = t => !t || /^[\(\[]?[-\u2013]?\s*R\*?[\)\]]?$/i.test(t) || /^\d+\s*[-\u2013]?\s*R?$/i.test(t);
+const NAME_PARTICLES = new Set(['VAN','VON','DE','DER','DEN','DI','DA','DEL','DELLA','LA','LE','ST.','ST']);
+function lastNameOf(full) {
+  const t = String(full || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+  if (t.length <= 1) return t[0] || '';
+  const suffix = [];
+  while (t.length > 1 && SUFFIX.test(t[t.length - 1])) suffix.unshift(t.pop());
+  let i = t.length - 1;
+  while (i > 0 && NAME_PARTICLES.has(t[i - 1])) i--;
+  return t.slice(i).concat(suffix).join(' ');
+}
+function baseName(s, num) {
+  const r = splitRookie(s.name);
+  let base = r.name;
+  if (isMarkerOnly(base) && s.fullName) { const f = splitRookie(s.fullName); if (f.name && !isMarkerOnly(f.name)) base = f.name; }
+  if (isMarkerOnly(base)) base = '';
+  return base;
+}
+
+// Full names by carIdx. fullName is not present in every list the bridge sends (liveStandings /
+// computedStandings often only carry the short name), so remember the most complete one seen in any of them.
+// Used for the WINNER cell only; everywhere else keeps showing the last name.
+let _fullNames = {};
+const _words = t => String(t || '').split(/\s+/).filter(Boolean).length;
+function learnName(carIdx, raw) {
+  if (carIdx === undefined || carIdx === null || !raw) return;
+  const n = splitRookie(raw).name;
+  if (!n || isMarkerOnly(n)) return;
+  const cur = _fullNames[carIdx];
+  if (!cur || _words(n) >= _words(cur)) _fullNames[carIdx] = n;
+}
+function learnNames(d) {
+  ['standings', 'liveStandings', 'computedStandings'].forEach(k => {
+    if (Array.isArray(d[k])) d[k].forEach(s => { if (s) learnName(s.carIdx, s.fullName); });
+  });
+  ['drivers', 'relative'].forEach(k => {
+    if (Array.isArray(d[k])) d[k].forEach(s => { if (s) learnName(s.carIdx, s.fullName || s.name); });
+  });
+}
+function winnerName(s, num) {
+  let best = String(baseName(s, num) || '').trim();
+  const cands = [s.fullName ? splitRookie(s.fullName).name : '', _fullNames[s.carIdx]];
+  cands.forEach(c => { c = String(c || '').trim(); if (c && !isMarkerOnly(c) && _words(c) > _words(best)) best = c; });
+  return best;
+}
+
+// Championship table (used by the Driver Info lines "Is Nth in standings" / "Has scored N points")
+let CFG = null;
+async function loadCfg() {
+  try {
+    if (window.shl && window.shl.getChampionship) {
+      const r = await window.shl.getChampionship(SERIES_ID);
+      CFG = (r && r.data) || null;
+      _diKey = ''; if (_diOn && _lastData) diUpdate(_lastData);
+    }
+  } catch (e) {}
+}
+if (window.shl && window.shl.onChampionshipUpdated) window.shl.onChampionshipUpdated(loadCfg);
+loadCfg();
+
+// If this race's points were already added to the totals (and its session is still on screen),
+// take them back out so the live projection isn't counted twice.
+function ppEffectiveCfg(cfg, key) {
+  const la = cfg && cfg.lastApplied;
+  if (!la || !la.live || la.key !== key || !Array.isArray(la.deltas) || !la.deltas.length) return cfg;
+  const sub = new Map(la.deltas.map(x => [String(x.number).trim(), Number(x.pts) || 0]));
+  return { ...cfg, drivers: (cfg.drivers || []).map(x => {
+    const k = String(x.number).trim();
+    return sub.has(k) ? { ...x, points: (Number(x.points) || 0) - sub.get(k) } : x;
+  }) };
+}
+
+// Laps led (for the led-a-lap / most-laps-led bonuses)
+const normNum = n => String(n == null ? '' : n).trim();
+const LED_KEY = 'psf_fox2010_led_v1';
+let LED = { cookie: null, track: null, lastLap: 0, counts: {} };
+try { const o = JSON.parse(localStorage.getItem(LED_KEY)); if (o && o.counts) LED = o; } catch (e) {}
+function saveLed() { try { localStorage.setItem(LED_KEY, JSON.stringify(LED)); } catch (e) {} }
+function trackLed(d) {
+  const session = (d.session || '').toLowerCase();
+  const state   = (d.sessionState || '').toLowerCase();
+  const off     = d.standings || [];
+  if (session !== 'race' || !off.length) return;
+  const cookie = d.sessionCookie != null ? String(d.sessionCookie) : null;
+  const track  = d.track || null;
+  const lapsOf = s => { if (!s) return 0; const cl = (d.carLaps && s.carIdx !== undefined) ? Number(d.carLaps[s.carIdx]) : NaN;
+                        return Math.max(Number.isFinite(cl) ? cl : 0, Number(s.lap) || 0); };
+  const lead   = ((d.liveStandings && d.liveStandings.length) ? d.liveStandings : off)[0] || off[0];
+  const lap    = Math.max(Number(d.lapsComplete) || 0, lapsOf(lead), lapsOf(off[0]));
+  if (cookie !== LED.cookie || track !== LED.track || lap < LED.lastLap) {
+    LED = { cookie, track, lastLap: 0, counts: {} };
+    saveLed();
+  }
+  if (state !== 'racing' && state !== 'checkered') return;
+  if (lap > LED.lastLap) {
+    if (LED.lastLap === 0 && lap > 1) {
+      LED.lastLap = lap;                         // joined mid-race: earlier laps unknown
+    } else {
+      const k = normNum(lead.number);
+      if (k) LED.counts[k] = (LED.counts[k] || 0) + (lap - LED.lastLap);
+      LED.lastLap = lap;
+    }
+    saveLed();
+  }
+}
+function getLedCounts(d) {
+  const off = d.standings || [];
+  if (off.some(x => x.lapsLead !== undefined || x.leadLaps !== undefined)) {
+    const m = {};
+    off.forEach(x => { m[normNum(x.number)] = Number(x.lapsLead ?? x.leadLaps) || 0; });
+    return m;
+  }
+  return LED.counts;
+}
+
+
+// ── Driver Info Banner (Driver Info Banner hotkey toggles it, fading in / out) ──────────────────────────────
+// [number | manufacturer | full name] on the driver's colour. Shows the player's car (falls back to the leader).
+// The text block on the right and the tab text are fixed for now (not editable yet): set DI_TAB / DI_LINE1 / DI_LINE2 here.
+const DI_FADE_MS = 600;
+const DI_SCALE = 0.85;                    // size of the banner relative to the ticker
+const DI_BOTTOM = 0.90;                   // bottom edge of the banner as a fraction of the screen height (lower third)
+const DI_TAB = '';                        // little tab above the banner; empty = series name from the sim
+const DI_LINE1 = '', DI_LINE2 = '';       // right-hand text block; both empty = not shown
+let _diOn = false, _diKey = '', _diHideT = null;
+// Per-driver info lines (Info 1 / Info 2) edited in the app's Driver Info window: { "<number>": { line1, line2 } }
+let _diInfo = {};
+function _diSetInfo(m) { _diInfo = (m && typeof m === 'object') ? m : {}; _diKey = ''; if (_diOn && _lastData) diUpdate(_lastData); }
+if (window.shl && window.shl.getDriverInfo) window.shl.getDriverInfo().then(_diSetInfo).catch(() => {});
+if (window.shl && window.shl.onDriverInfoChanged) window.shl.onDriverInfoChanged(_diSetInfo);
+// Which car is being watched. playerCarIdx is the user's OWN car, so when spectating another driver we look for a camera / focus field
+// from the bridge first (names are a guess: the current bridge sends none) and only then fall back to playerCarIdx.
+const DI_CAM_KEYS = ['camCarIdx', 'cameraCarIdx', 'viewCarIdx', 'viewedCarIdx', 'focusCarIdx', 'focusedCarIdx', 'watchedCarIdx', 'spectatedCarIdx', 'followCarIdx'];
+function diWatchedIdx(d) {
+  for (const k of DI_CAM_KEYS) if (typeof d[k] === 'number' && d[k] >= 0) return d[k];
+  if (d.camera && typeof d.camera.carIdx === 'number' && d.camera.carIdx >= 0) return d.camera.carIdx;
+  return d.playerCarIdx;
+}
+// Diagnostic snapshot: appended to driverinfo-debug.json (last 8, next to config.json) every time the banner is shown
+function diDump(d) {
+  try {
+    if (!d || !(window.shl && window.shl.writeDebugDump)) return;
+    const pl = d.player || {}, opp = Array.isArray(d.opponents) ? d.opponents : [], rel = Array.isArray(d.relative) ? d.relative : [];
+    const st = Array.isArray(d.standings) ? d.standings : [];
+    const r4 = x => (typeof x === 'number') ? Math.round(x * 10000) / 10000 : x;
+    const byWorld = opp.filter(o => o && typeof o.worldX === 'number' && typeof pl.worldX === 'number')
+      .map(o => ({ carIdx: o.carIdx, dist: r4(Math.hypot(o.worldX - pl.worldX, o.worldY - pl.worldY)) })).sort((x, y) => x.dist - y.dist).slice(0, 4);
+    const byPct = opp.filter(o => o && typeof o.trkPct === 'number' && typeof pl.trkPct === 'number')
+      .map(o => { let dp = Math.abs(o.trkPct - pl.trkPct); dp = Math.min(dp, 1 - dp); return { carIdx: o.carIdx, dpct: r4(dp) }; }).sort((x, y) => x.dpct - y.dpct).slice(0, 4);
+    const relFields = r => ({ carIdx: r.carIdx, number: r.number, name: r.name, isPlayer: r.isPlayer, trkPct: r4(r.trkPct), deltaS: r4(r.deltaS), lap: r.lap });
+    const shown = diDriver(d);
+    window.shl.writeDebugDump({
+      time: new Date().toISOString(), session: d.session, sessionState: d.sessionState,
+      selectedCarIdx: _diSel, camPos: _camPos, camCar: _camCar, camCarRaw: _camCarRaw, camCarFound: !!(_camCar >= 0 && diFind(d, _camCar)), shownCarIdx: shown ? shown.carIdx : null, watchedIdxUsed: diWatchedIdx(d),
+      playerCarIdx: d.playerCarIdx, playerName: d.playerName, player: pl, staleCars: d.staleCars,
+      relativePlayer: rel.filter(r => r && r.isPlayer).map(relFields),
+      relativeNearestDelta: rel.filter(r => r && typeof r.deltaS === 'number').sort((x, y) => Math.abs(x.deltaS) - Math.abs(y.deltaS)).slice(0, 3).map(relFields),
+      nearestToPlayerWorld: byWorld, nearestToPlayerTrkPct: byPct,
+      opponents: opp.map(o => o ? [o.carIdx, r4(o.trkPct), r4(o.worldX), r4(o.worldY)] : null),
+      standingsTop: st.slice(0, 5).map(x => ({ carIdx: x.carIdx, number: x.number, name: x.name, trkPct: r4(x.trkPct) })),
+      otherTopKeys: Object.keys(d).filter(k => /cam|view|focus|watch|spect|follow|replay|tv/i.test(k))
+    });
+  } catch (e) {}
+}
+const DI_VERIFY_MS = 3000;                 // how long a position / id disagreement must last before the banner is corrected
+let _mmKey = '', _mmSince = 0, _mmT = null, _diSel = null;   // _diSel: car picked with the next / previous hotkeys (null = automatic)
+// Race position of the car the camera is on, read from NR2003's memory by the app (-1 = unknown)
+let _camPos = -1;
+// carIdx of the car the camera is on, read by the app from a second NR2003 memory address (no dependence on race position; -1 = unknown)
+let _camCar = -1, _camCarRaw = -1;
+// One combined poll (position + car id in the same pass, 50 ms) so the check never sees one value from before and one from after a camera change.
+// The position (0x8B97B4) is what drives the banner; the car id is only used afterwards to confirm / correct it.
+function _applyCam(pos, car, raw) {
+  pos = (typeof pos === 'number') ? pos : -1; car = (typeof car === 'number') ? car : -1;
+  _camCarRaw = (typeof raw === 'number') ? raw : -1;
+  const changed = (pos !== _camPos) || (car !== _camCar);
+  if (changed) _diSel = null;
+  _camPos = pos; _camCar = car;
+  if (changed && _diOn && _lastData) diUpdate(_lastData);   // refresh right away, without waiting for the next bridge frame
+}
+if (window.shl && window.shl.onCam && window.shl.getCam) {
+  // The app pushes position + car id the moment either changes (no polling, no IPC round trips)
+  window.shl.onCam(v => { if (v) _applyCam(v.pos, v.idx, v.raw); });
+  window.shl.getCam().then(v => { if (v) _applyCam(v.pos, v.idx, v.raw); }).catch(() => {});
+} else if (window.shl && (window.shl.getCamPos || window.shl.getCamCar)) {
+  let _pollBusy = false;   // old app without push support: poll
+  const _pollCamAll = () => {
+    if (_pollBusy) return; _pollBusy = true;
+    Promise.all([
+      window.shl.getCamPos ? window.shl.getCamPos().catch(() => -1) : -1,
+      window.shl.getCamCar ? window.shl.getCamCar().catch(() => null) : null
+    ]).then(([p, v]) => _applyCam(p, v && v.idx, v && v.raw)).finally(() => { _pollBusy = false; });
+  };
+  _pollCamAll(); setInterval(_pollCamAll, 50);
+}
+function diByCamPos(d) {
+  if (!(_camPos >= 1)) return null;
+  const st = getStandings(d);
+  return (Array.isArray(st) && st[_camPos - 1]) || null;
+}
+function diFind(d, idx) {
+  for (const l of [d.standings, d.liveStandings, d.computedStandings, d.drivers]) {
+    const f = Array.isArray(l) && l.find(x => x && x.carIdx === idx);
+    if (f) return f;
+  }
+  return null;
+}
+function diDriver(d) {
+  if (!d) return null;
+  if (_diSel !== null) { const f = diFind(d, _diSel); if (f) return f; }
+  {
+    // Phase 1 (instant): show the driver at the observed car's race position, no waiting for any check.
+    // Phase 2 (afterwards): compare with the car id read from the second address. If it disagrees and keeps disagreeing for
+    // DI_VERIFY_MS (so a value that has not caught up yet after a camera change does not cause a false correction), switch to the driver
+    // the id says is on screen. If the id is unavailable the position result stays.
+    const byPos = diByCamPos(d);
+    if (byPos) {
+      if (!(_camCar >= 0) || byPos.carIdx === _camCar) { _mmKey = ''; return byPos; }
+      const byId = diFind(d, _camCar);
+      if (!byId) return byPos;
+      const k = _camPos + '|' + _camCar + '|' + byPos.carIdx, now = performance.now();
+      if (k !== _mmKey) { _mmKey = k; _mmSince = now; }
+      const left = DI_VERIFY_MS - (now - _mmSince);
+      if (left <= 0) return byId;
+      clearTimeout(_mmT); _mmT = setTimeout(() => { if (_diOn && _lastData) diUpdate(_lastData); }, left + 5);   // re-check when the wait is over
+      return byPos;
+    }
+    if (_camCar >= 0) { const f = diFind(d, _camCar); if (f) return f; }   // no position available: use the id
+  }
+  const hasCamField = DI_CAM_KEYS.some(k => typeof d[k] === 'number' && d[k] >= 0) || (d.camera && typeof d.camera.carIdx === 'number');
+  const spectating = !hasCamField && d.player && d.player.inCar === false;   // own car parked: it is not what is on screen
+  const w = diWatchedIdx(d);
+  if (!spectating && w !== undefined && w !== null && w >= 0) { const f = diFind(d, w); if (f) return f; }
+  const st = getStandings(d);
+  return (st && st[0]) || diFind(d, w) || null;
+}
+// Next / previous driver in the running order (shows the banner if it is not up, so you see who was picked)
+function diStep(dir) {
+  const d = _lastData; if (!d) return;
+  let list = getStandings(d);
+  if (!list || !list.length) list = Array.isArray(d.drivers) ? d.drivers.filter(x => x && x.carIdx !== undefined) : [];
+  if (!list.length) return;
+  let i = list.findIndex(x => x.carIdx === _diSel);
+  if (i < 0) { const cur = diDriver(d); i = cur ? list.findIndex(x => x.carIdx === cur.carIdx) : -1; }
+  if (i < 0) i = dir > 0 ? -1 : 0;
+  i = (i + dir + list.length) % list.length;
+  _diSel = list[i].carIdx;
+  if (_diOn) diUpdate(d); else diShow();
+}
+// ── Info 1 / Info 2 chosen in the Driver Info window: each one is a "kind" resolved live (or custom text) ──────
+// saved per driver as { k1, k2, line1, line2, n1, n2 }: k* = kind, line* = custom text, n* = "last Y races" for wins
+const _ord = n => { const v = n % 100; if (v >= 11 && v <= 13) return n + 'th'; return n + ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th'); };
+const _fmtPts = v => String(Math.round((Number(v) || 0) * 100) / 100);
+const _fmtLap = t => (t > 0 && isFinite(t)) ? t.toFixed(3) + 's' : '';
+// Season history (races stored in the active season, from the app): used for laps led all season and wins
+let _season = { races: [] };
+async function loadSeasonStats() {
+  try {
+    if (!(window.shl && window.shl.getSeasonState)) return;
+    const st = await window.shl.getSeasonState(SERIES_ID);
+    const sn = (st && Array.isArray(st.seasons)) ? st.seasons.find(x => x.id === st.activeId) : null;
+    _season = { races: sn ? (sn.races || []).filter(r => !r.nonPoints && Array.isArray(r.rows) && r.rows.length) : [] };
+    _diKey = ''; if (_diOn && _lastData) diUpdate(_lastData);
+  } catch (e) {}
+}
+if (window.shl && window.shl.onSeasonUpdated) window.shl.onSeasonUpdated(loadSeasonStats);
+loadSeasonStats();
+// Starting grid: the order seen up to the green flag (same rule as the race recorder); unknown if the overlay joined after the start
+let _grid = { key: '', order: null, locked: false };
+function trackGrid(d) {
+  if ((d.session || '').toLowerCase() !== 'race') return;
+  const key = String(d.sessionCookie) + '|' + String(d.track);
+  if (_grid.key !== key) _grid = { key, order: null, locked: false };
+  if (_grid.locked) return;
+  const state = (d.sessionState || '').toLowerCase();
+  const off = (d.standings && d.standings.length) ? d.standings : (d.liveStandings || []);
+  const snap = () => { const o = {}; off.forEach((x, i) => { if (!x) return; const k = normNum(x.number); if (!(k in o)) o[k] = i + 1; }); return o; };
+  if (state === 'racing' || state === 'checkered' || state === 'cool down') {
+    // no grid seen before the green flag (overlay opened late, or the session id changed): use the first racing frame if the race has just started
+    if (!_grid.order && off.length && (Number(d.lapsComplete) || 0) <= 1 && state === 'racing') _grid.order = snap();
+    if (_grid.order) _grid.locked = true;
+    return;
+  }
+  if (off.length) _grid.order = snap();
+}
+// Pit stops seen during this race: the lap in progress when a car's status switches to 'pitting' (unknown if the overlay joined after the stop)
+// The last pit stop of every car is saved (localStorage, shared by all overlays) so it survives an overlay reload or an app restart during the same race.
+const PIT_KEY = 'psf_pit_v1';
+function pitLoad() {
+  try { const o = JSON.parse(localStorage.getItem(PIT_KEY)); return (o && typeof o.key === 'string' && o.last && typeof o.last === 'object') ? o : null; } catch (e) { return null; }
+}
+let _pitSig = '', _pitSavedAt = 0;
+function pitPersist() {
+  const now = Date.now(), sig = JSON.stringify([_pit.last, _pit.count]);
+  if (sig === _pitSig && now - _pitSavedAt < 1500) return;       // a new stop is written at once, the rest of the state at most every 1.5 s
+  _pitSavedAt = now;
+  const o = pitLoad();
+  if (o && o.key === _pit.key) {                                  // merge what another overlay saved (the lap of a car's last stop only goes up within a race)
+    Object.keys(o.last).forEach(k => { const v = Number(o.last[k]) || 0; if (v > (Number(_pit.last[k]) || 0)) _pit.last[k] = v; });
+    if (o.count && typeof o.count === 'object') Object.keys(o.count).forEach(k => { const v = Number(o.count[k]) || 0; if (!_ptvAuth[k] && v > (Number(_pit.count[k]) || 0)) _pit.count[k] = v; });   // the pit count of a car only goes up within a race
+  }
+  _pitSig = JSON.stringify([_pit.last, _pit.count]);
+  try { localStorage.setItem(PIT_KEY, JSON.stringify({ key: _pit.key, st: _pit.st, last: _pit.last, count: _pit.count, evs: _pit.evs || [] })); } catch (e) {}
+}
+let _pit = (function () { const o = pitLoad(); return o ? { key: o.key, st: (o.st && typeof o.st === 'object') ? o.st : {}, last: o.last, count: (o.count && typeof o.count === 'object') ? o.count : {} } : { key: '', st: {}, last: {}, count: {} }; })();
+// A stop is detected from the pit-stall flags of the telemetry: InPitStallWaitingSlow / InPitStallWaitingFast / InPitStallSlow / InPitStallFast.
+// The first one that turns on counts the stop; no other flag counts until all four have been off for a moment (the next stop).
+// If the telemetry frame has none of these fields, the old running -> pitting status switch is used instead.
+const PIT_STALL_KEYS = ['inpitstallwaitingslow', 'inpitstallwaitingfast', 'inpitstallslow', 'inpitstallfast'];
+const _pitStallKey = k => PIT_STALL_KEYS.includes(String(k).toLowerCase().replace(/[^a-z]/g, ''));
+const _pitOn = v => v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true';
+const PIT_REARM_MS = 1500;                 // all four flags must stay off this long before the next stop can be counted (a Waiting -> Stall hand-over is the same stop)
+const _pitHot = {};                        // car number -> last time one of the four flags was on
+// true / false = a flag is on / all are off; null = this car has none of the fields in the frame
+function pitStallState(d, s, topKeys) {
+  let found = false, on = false;
+  const read = o => { if (!o || typeof o !== 'object') return; for (const k in o) if (_pitStallKey(k)) { found = true; if (_pitOn(o[k])) on = true; } };
+  read(s); read(s.pit); read(s.pitStall);
+  if (s.carIdx !== undefined) topKeys.forEach(k => { const v = d[k]; if (v && typeof v === 'object') { const x = v[s.carIdx]; if (x !== undefined && x !== null) { found = true; if (_pitOn(x)) on = true; } } });
+  return found ? on : null;
+}
+// Pit-out messages: the app reads NR2003's on-screen text "AIPIT OUT 84: 16.00" (car 84 left the pits) from the game's memory; each one is a pit stop of that car.
+// Once the first message has been seen, the stops of the AI cars come only from these messages (the player's car keeps using the status / stall detection).
+let _pitOutQ = [], _pitOutOn = false;
+const _pitCountAt = {};                    // car number -> when a stop was last counted (by either route), so one stop is never counted twice
+if (window.shl && window.shl.onPitOut) window.shl.onPitOut(e => { if (e && e.id) _pitOutQ.push(e); });
+if (window.shl && window.shl.onPitOutStatus) window.shl.onPitOutStatus(v => { _pitOutOn = !!v; });
+if (window.shl && window.shl.getPitOutStatus) window.shl.getPitOutStatus().then(v => { _pitOutOn = !!v; }).catch(() => {});
+function pitLapOf(d, s) {
+  const cl = (d.carLaps && s.carIdx !== undefined) ? Number(d.carLaps[s.carIdx]) : NaN;
+  return Math.max(Number.isFinite(cl) ? cl : 0, Number(s.lap) || 0) + 1;      // the lap in progress
+}
+function pitOutProcess(d) {
+  if (!_pitOutQ.length) return;
+  const q = _pitOutQ; _pitOutQ = [];
+  const o = pitLoad(), seen = (o && o.key === _pit.key && Array.isArray(o.evs)) ? o.evs : [];
+  _pit.evs = Array.from(new Set([...(Array.isArray(_pit.evs) ? _pit.evs : []), ...seen]));    // events another overlay already counted
+  const now = Date.now();
+  q.forEach(e => {
+    if (_pit.evs.includes(e.id)) return;
+    _pit.evs.push(e.id); if (_pit.evs.length > 60) _pit.evs.shift();
+    if (now - (Number(e.at) || now) > 15000) return;
+    const num = normNum(e.car);
+    let car = null;
+    [d.standings, d.liveStandings].forEach(l => { if (!car && Array.isArray(l)) car = l.find(x => x && normNum(x.number) === num) || null; });
+    if (!car || now - (_pitCountAt[num] || 0) < 90000) return;                // unknown car, or this stop was already counted when the car entered the pits
+    _pit.count[num] = (Number(_pit.count[num]) || 0) + 1;
+    _pit.last[num] = pitLapOf(d, car);
+    _pitCountAt[num] = now;
+  });
+}
+// ── Pit stops: the telemetry's pitStops (the PITS column of Race Stats) is the authority ──────────────────────────
+// The stall-flag / status / "pit out" message detection above can miscount; whenever the frame carries a numeric pitStops for a car, that number wins,
+// and the lap is taken when we see it rise (the lap in progress), keeping the lap the detection noted a moment earlier when it caught the entry first.
+let _ptvKey = '', _ptvPrev = {}, _ptvLastSeen = {}, _ptvLastAt = {}, _ptvAuth = {};   // _ptvAuth: cars whose count comes from the telemetry (never raised from storage)
+function _ptvOf(s) { const v = s ? s.pitStops : undefined; const n = typeof v === 'number' ? v : (typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN); return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null; }
+function _ptvLap(d, s) {
+  const cl = (d.carLaps && s.carIdx !== undefined) ? Number(d.carLaps[s.carIdx]) : NaN;
+  return Math.max(Number.isFinite(cl) ? cl : 0, Number(s.lap) || 0) + 1;      // the lap in progress
+}
+function pitTelApply(d) {
+  const key = String(d.sessionCookie) + '|' + String(d.track);
+  if (_ptvKey !== key) { _ptvKey = key; _ptvPrev = {}; _ptvLastSeen = {}; _ptvLastAt = {}; _ptvAuth = {}; }
+  const live = d.liveStandingsEnabled !== false;
+  const lists = live ? [d.liveStandings, d.standings] : [d.standings, d.liveStandings];   // same preference as the Race Stats table
+  const done = {}, now = Date.now();
+  lists.forEach(l => (Array.isArray(l) ? l : []).forEach(s => {
+    if (!s) return;
+    const num = normNum(s.number); if (!num || done[num]) return;
+    const tp = _ptvOf(s); if (tp === null) return;
+    done[num] = true; _ptvAuth[num] = true;
+    if (_pit.last[num] !== _ptvLastSeen[num]) { _ptvLastSeen[num] = _pit.last[num]; _ptvLastAt[num] = now; }      // the detection just noted a lap
+    const prev = _ptvPrev[num];
+    if (prev !== undefined && tp > prev && (!_pit.last[num] || now - (_ptvLastAt[num] || 0) > 30000)) {
+      _pit.last[num] = _ptvLap(d, s); _ptvLastSeen[num] = _pit.last[num]; _ptvLastAt[num] = 0;      // 0 = set by the telemetry itself: the next rise may overwrite it at once
+    }
+    _ptvPrev[num] = tp;
+    if ((Number(_pit.count[num]) || 0) !== tp) _pit.count[num] = tp;
+    if (tp === 0 && _pit.last[num]) { _pit.last[num] = 0; _ptvLastSeen[num] = 0; }
+  }));
+}
+function trackPits(d) {
+  if ((d.session || '').toLowerCase() !== 'race') { _pitOutQ.length = 0; return; }
+  const key = String(d.sessionCookie) + '|' + String(d.track);
+  if (_pit.key !== key) { const o = pitLoad(); _pit = (o && o.key === key) ? { key, st: (o.st && typeof o.st === 'object') ? o.st : {}, last: o.last, count: (o.count && typeof o.count === 'object') ? o.count : {} } : { key, st: {}, last: {}, count: {} }; }
+  const state = (d.sessionState || '').toLowerCase();
+  if (state === 'get in car' || state === 'warmup' || state === 'parade laps') { _pit.st = {}; return; }
+  // the pit status can arrive in the official list or in the live list (live standings on), and under slightly different wording: look at both
+  const stallTop = Object.keys(d).filter(_pitStallKey);
+  const seen = new Map();
+  [d.standings, d.liveStandings].forEach(list => (list || []).forEach(s => {
+    if (!s) return;
+    const k = normNum(s.number); if (!k) return;
+    const raw = [s.status, s.liveStatus, s.pitStatus].map(v => String(v == null ? '' : v).trim().toLowerCase());
+    const inPit = s.inPit === true || s.onPitRoad === true || s.pitting === true || raw.some(v => /\bpit/.test(v));
+    const stall = pitStallState(d, s, stallTop);
+    const prev = seen.get(k);
+    if (prev) { prev.inPit = prev.inPit || inPit; prev.stall = (prev.stall === null) ? stall : (stall === null ? prev.stall : (prev.stall || stall)); return; }
+    seen.set(k, { s, inPit, stall, status: raw[0] });
+  }));
+  seen.forEach(({ s, inPit, stall }, num) => {
+    let now;
+    if (stall === null) now = inPit ? 'pitting' : 'running';
+    else if (stall) { _pitHot[num] = Date.now(); now = 'pitting'; }
+    else now = (_pit.st[num] === 'pitting' && Date.now() - (_pitHot[num] || 0) < PIT_REARM_MS) ? 'pitting' : 'running';
+    if (now === 'pitting' && _pit.st[num] !== undefined && _pit.st[num] !== 'pitting' && !(_pitOutOn && s.carIdx !== d.playerCarIdx)) {
+      const done = pitLapOf(d, s) - 1;
+      // every running -> pitting switch is one more stop (a stop already merged from another overlay for the same lap is not counted twice)
+      if (_pit.last[num] !== done + 1) _pit.count[num] = (Number(_pit.count[num]) || 0) + 1;
+      _pit.last[num] = done + 1;
+      _pitCountAt[num] = Date.now();
+    }
+    _pit.st[num] = now;
+  });
+  pitOutProcess(d);
+  pitTelApply(d);                            // telemetry pitStops wins over the detection above
+  pitPersist();
+}
+// Qualifying order: the standings seen in the qualifying session (kept in localStorage per track, so it survives a restart or skipping the session).
+// It is the first choice for "Start position"; the order seen before the green flag is only the fallback.
+const QUAL_KEY = 'psf_fox2010_qual_v1';
+let _qual = null;
+try { const o = JSON.parse(localStorage.getItem(QUAL_KEY)); if (o && o.track && o.order) _qual = o; } catch (e) {}
+function trackQual(d) {
+  const session = (d.session || '').toLowerCase(), state = (d.sessionState || '').toLowerCase();
+  if (session === 'qualifying') {
+    const off = (d.standings && d.standings.length) ? d.standings : (d.liveStandings || []);
+    if (!off.length || !off.some(x => x && Number(x.time) > 0)) return;     // no lap set yet (session just opened): keep the previous table
+    const order = {}; off.forEach((x, i) => { if (!x) return; const k = normNum(x.number); if (!(k in order)) order[k] = i + 1; });
+    const track = String(d.track || '');
+    if (_qual && _qual.track === track && JSON.stringify(_qual.order) === JSON.stringify(order)) return;
+    _qual = { track, order };
+    try { localStorage.setItem(QUAL_KEY, JSON.stringify(_qual)); } catch (e) {}
+    return;
+  }
+  // the race is over: this qualifying table is used up (the next race on the same track must not reuse it)
+  if (session === 'race' && (state === 'checkered' || state === 'cool down') && _qual) {
+    _qual = null; try { localStorage.removeItem(QUAL_KEY); } catch (e) {}
+  }
+}
+// Starting order kept by the app's hidden recorder (same source as Race Stats / Prime): real grid > qualifying table > order on track.
+// It is always running, so it is right even when this overlay was opened late or reloaded (e.g. after switching overlay).
+let _srvStart = null, _srvStartBusy = false, _srvStartPort = 0;
+async function loadSrvStart() {
+  if (_srvStartBusy) return; _srvStartBusy = true;
+  try {
+    if (window.shl && window.shl.getStartOrder) { _srvStart = await window.shl.getStartOrder(); return; }
+    const host = location.hostname || 'localhost';
+    const tryPort = async p => {
+      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 800);
+      try { const r = await fetch('http://' + host + ':' + p + '/api/startorder', { signal: ctl.signal, cache: 'no-store' }); if (r.ok) { _srvStart = await r.json(); return true; } } catch (e) {} finally { clearTimeout(t); }
+      return false;
+    };
+    if (_srvStartPort && await tryPort(_srvStartPort)) return;
+    _srvStartPort = 0;
+    for (let p = 48765; p <= 48785; p++) { if (await tryPort(p)) { _srvStartPort = p; break; } }
+  } catch (e) {} finally { _srvStartBusy = false; }
+}
+setInterval(loadSrvStart, 2500); loadSrvStart();
+// Live championship place: season points + this race's points projected from the live order (same maths as the "as they run" panel)
+function diLiveRows(d) {
+  const cfg0 = d && d._championship ? d._championship : CFG;
+  const cfg = cfg0 ? ppEffectiveCfg(cfg0, String(d.sessionCookie) + '|' + String(d.track)) : null;
+  if (!cfg || !Array.isArray(cfg.drivers) || !cfg.drivers.length) return null;
+  const session = (d.session || '').toLowerCase(), state = (d.sessionState || '').toLowerCase();
+  const project = session === 'race' && (state === 'racing' || state === 'checkered' || state === 'cool down');
+  const table = Array.isArray(cfg.pointsTable) ? cfg.pointsTable : [];
+  const led = getLedCounts(d) || {};
+  const bLed = Number(cfg.bonusLedLap) || 0, bMost = Number(cfg.bonusMostLed) || 0;
+  let maxLed = 0; Object.keys(led).forEach(k => { if (led[k] > maxLed) maxLed = led[k]; });
+  const race = new Map();
+  (getStandings(d) || []).forEach((st, i) => { const k = normNum(st.number); if (!race.has(k)) race.set(k, i + 1); });
+  const stageMap = (project && typeof stagePtsMap === 'function') ? stagePtsMap(d, cfg) : {};
+  const seen = new Set(), rows = [];
+  cfg.drivers.forEach((dr, idx) => {
+    const k = normNum(dr.number); if (seen.has(k)) return; seen.add(k);
+    const base = Number(dr.points) || 0, pos = race.get(k), ledN = led[k] || 0;
+    const add = project ? ((pos ? (Number(table[pos - 1]) || 0) : 0) + (ledN > 0 ? bLed : 0) + (ledN > 0 && ledN === maxLed ? bMost : 0) + (stageMap[k] || 0)) : 0;
+    rows.push({ k, base, total: base + add, idx });
+  });
+  rows.sort((a, b) => (b.total - a.total) || (b.base - a.base) || (a.idx - b.idx));
+  return { rows, cfg0 };
+}
+function diLiveChampPos(d, num) {
+  const r = diLiveRows(d); if (!r) return 0;
+  return r.rows.findIndex(x => x.k === num) + 1;
+}
+// Points to the cutoff line (only while the cutoff line is on in the Championship screen): points above / below it in the live championship
+function diCutoffText(d, num) {
+  const r = diLiveRows(d); if (!r) return '';
+  const c = r.cfg0 || {}, cp = parseInt(c.cutoffPos, 10) || 0, rows = r.rows;
+  if (c.cutoffEnabled !== true || cp < 1 || cp >= rows.length) return '';
+  const i = rows.findIndex(x => x.k === num); if (i < 0) return '';
+  const gap = i < cp ? rows[i].total - rows[cp].total : rows[i].total - rows[cp - 1].total;   // same rule as the Championship overlay
+  const above = gap > 0 || (gap === 0 && i < cp);
+  const n = Math.round(Math.abs(gap) * 100) / 100;
+  return 'Is ' + _fmtPts(n) + (n === 1 ? ' point ' : ' points ') + (above ? 'above' : 'below') + ' the cutoff line';
+}
+function diKindText(kind, inf, i, d, s, num) {
+  const isRace = (d.session || '').toLowerCase() === 'race';
+  const key = String(d.sessionCookie) + '|' + String(d.track);
+  const past = _season.races.filter(r => r.key !== key);            // stored races, not counting the one on screen
+  const mine = r => (r.rows || []).find(x => normNum(x.number) === num);
+  switch (kind) {
+    case 'custom': return inf['line' + i] || '';
+    case 'ledToday': {
+      if (!isRace) return '';
+      const led = (getLedCounts(d) || {})[num] || 0;
+      const total = Math.max(Number(d.lapsComplete) || 0, LED.lastLap || 0);   // laps run so far in the race
+      return total ? 'Has led ' + led + ' of ' + total + ' laps' : 'Has led ' + led + ' laps';
+    }
+    case 'ledSeason': {
+      let n = isRace ? ((getLedCounts(d) || {})[num] || 0) : 0;
+      past.forEach(r => { const x = mine(r); if (x) n += Number(x.led) || 0; });
+      return 'Has led ' + n + ' laps all season';
+    }
+    case 'champPos': case 'champPts': {
+      const cfg0 = d._championship || CFG; if (!cfg0) return '';
+      const cfg = ppEffectiveCfg(cfg0, key);                          // points before this race
+      if (!cfg || !Array.isArray(cfg.drivers)) return '';
+      const rows = cfg.drivers.map((x, idx) => ({ k: normNum(x.number), pts: Number(x.points) || 0, idx }));
+      const me = rows.find(x => x.k === num); if (!me) return '';
+      if (kind === 'champPts') return 'Has scored ' + _fmtPts(me.pts) + ' points';
+      rows.sort((a, b) => (b.pts - a.pts) || (a.idx - b.idx));
+      return 'Is ' + _ord(rows.findIndex(x => x.k === num) + 1) + ' in standings';
+    }
+    case 'winsSeason': {
+      const w = past.filter(r => { const x = mine(r); return x && !x.dq && Number(x.finish) === 1; }).length;
+      return w === 0 ? 'Has not won yet this season' : 'Has won ' + w + (w === 1 ? ' race' : ' races') + ' this season';
+    }
+    case 'top5Season': case 'top10Season': {
+      const lim = kind === 'top5Season' ? 5 : 10;
+      const n = past.filter(r => { const x = mine(r); const f = x ? Number(x.finish) : 0; return x && !x.dq && f >= 1 && f <= lim; }).length;
+      return 'Has finished ' + n + (n === 1 ? ' time' : ' times') + ' in the top ' + lim + ' this season';
+    }
+    case 'wins': {
+      const want = Math.max(1, Math.min(99, parseInt(inf['n' + i], 10) || 5));
+      const last = past.slice(-want); if (!last.length) return '';
+      const w = last.filter(r => { const x = mine(r); return x && !x.dq && Number(x.finish) === 1; }).length;
+      return 'Has won ' + w + ' of the last ' + last.length + ' races';
+    }
+    case 'dnfSeason': case 'dnfLast': {
+      const isDnf = x => { const st = String(x.status || '').trim().toLowerCase(); return !!x.dq || (st && st !== 'running' && st !== 'pitting'); };
+      if (kind === 'dnfSeason') {
+        const n = past.filter(r => { const x = mine(r); return x && isDnf(x); }).length;
+        return 'Has not finished in ' + n + ' races this season';
+      }
+      const want = Math.max(1, Math.min(99, parseInt(inf['n' + i], 10) || 5));
+      const last = past.slice(-want); if (!last.length) return '';
+      const n = last.filter(r => { const x = mine(r); return x && isDnf(x); }).length;
+      return 'Has not finished in ' + n + ' of the last ' + last.length + ' races';
+    }
+    case 'pitCount': {
+      const c = isRace && _pit.key === key ? (Number(_pit.count[num]) || 0) : 0;
+      return c ? 'Has pitted ' + c + (c === 1 ? ' time' : ' times') : (isRace ? 'Yet to pit' : '');
+    }
+    case 'lastPit': {
+      const l = isRace && _pit.key === key ? _pit.last[num] : 0;
+      return l ? 'Last pitted on lap ' + l : (isRace ? 'Yet to pit' : '');
+    }
+    case 'startPos': {
+      if (!isRace) return '';
+      const nn = normNum(num), trk = String(d.track || '');
+      let p = 0;
+      if (_srvStart && String(_srvStart.track || '') === trk) {          // the recorder's order first (same as Race Stats)
+        p = (_srvStart.start && _srvStart.start[nn]) || (_srvStart.qual && _srvStart.qual[nn]) || ((_srvStart.grid && String(_srvStart.key) === String(d.sessionCookie) + '|' + trk) ? (_srvStart.grid[nn] || 0) : 0) || 0;
+      }
+      if (!p) p = (_qual && _qual.track === trk ? (_qual.order[nn] || 0) : 0) || (_grid.order ? (_grid.order[nn] || 0) : 0);
+      return p ? 'Started ' + _ord(p) + ' today' : '';
+    }
+    case 'curPos': {
+      const st = getStandings(d);
+      let i = st.findIndex(x => x && x.carIdx === s.carIdx);
+      if (i < 0) i = st.findIndex(x => x && normNum(x.number) === num);
+      return i >= 0 ? 'Current position: ' + _ord(i + 1) : '';
+    }
+    case 'lastLap': {
+      const ld = (d.lapData || []).find(l => l.carIdx === s.carIdx);
+      const lt = d.lapTracker && d.lapTracker[s.carIdx];
+      const t = _fmtLap((ld && ld.lastLap > 0) ? ld.lastLap : (lt ? Number(lt.lastLap) : 0));
+      return t ? 'Last Lap: ' + t : '';
+    }
+    case 'cutoffPts': return diCutoffText(d, num);
+    case 'liveChampPos': {
+      const p = diLiveChampPos(d, num);
+      return p > 0 ? 'Is ' + _ord(p) + ' in championship as it stands' : '';
+    }
+    case 'fastestLap': {                                              // fastest lap of the whole race + surname of the driver who set it
+      let fc = (d.fastestCarIdx == null ? -1 : Number(d.fastestCarIdx)), ft = Number(d.fastestLap) || 0;
+      if (!(ft > 0) || fc < 0) {
+        ft = 0; fc = -1; const lts = d.lapTracker || {};
+        Object.keys(lts).forEach(k => { const b = Number(lts[k] && lts[k].bestLap); if (b > 0 && (ft === 0 || b < ft)) { ft = b; fc = Number(k); } });
+      }
+      const t = (ft > 0 && fc >= 0) ? _fmtLap(ft) : '';
+      if (!t) return '';
+      const fe = (d.standings || []).find(x => x && x.carIdx === fc) || (d.drivers || []).find(x => x && x.carIdx === fc);
+      let fn = '';
+      if (fe) { const fnum = normNum(fe.number); try { fn = String((typeof winnerName === 'function' ? winnerName(fe, fnum) : diNameOf(fe, fnum)) || ''); } catch (e) { fn = String(fe.fullName || fe.name || ''); } }
+      const parts = fn.trim().split(/\s+/).filter(Boolean);
+      while (parts.length > 1 && /^(jr\.?|sr\.?|ii|iii|iv|v)$/i.test(parts[parts.length - 1])) parts.pop();
+      const sn = parts.length ? parts[parts.length - 1] : '';
+      return 'Fastest Lap: ' + t + (sn ? ' (' + sn + ')' : '');
+    }
+    case 'bestLap': {
+      const lt = d.lapTracker && d.lapTracker[s.carIdx];
+      const t = _fmtLap(lt ? Number(lt.bestLap) : 0);
+      return t ? 'Best Lap: ' + t : '';
+    }
+  }
+  return '';
+}
+// text of line i (1 or 2) for this driver; entries saved before kinds existed are plain custom text
+function diLine(inf, i, d, s, num) {
+  const kind = inf['k' + i] || (inf['line' + i] ? 'custom' : '');
+  return kind ? diKindText(kind, inf, i, d, s, num) : '';
+}
+// ── Fox 2010 banner: markup, fitting, placement, fade ──────────────────────────────────────────────────────
+const FOX_H = 176, DI_W = 1060, DI_HMAX = 143;           // ticker height; banner width; banner height with both rows
+const diWrap = $('di-wrap');
+const DI_ARROW = '<svg class="ar" viewBox="0 0 34 24" width="33" height="23" aria-hidden="true"><path fill="url(#di-yel)" d="M0 0H8L20 12L8 24H0L12 12Z"/><path fill="url(#di-yel)" d="M13 0H21L33 12L21 24H13L25 12Z"/></svg>';
+function diRightHTML(l1, l2) {
+  return (l1 ? '<div class="a">' + esc(l1) + '</div>' : '') + (l2 ? '<div class="b">' + DI_ARROW + '<span>' + esc(l2) + '</span></div>' : '');
+}
+// Logo plate on the right: the series logo (series/<id>/serieslogo.png, else the default logo); the plate stays hidden if neither exists
+(function () {
+  const im = $('di-logo-img'), box = $('di-logo');
+  const cands = [SERIES_ID ? assetPath(`series/${SERIES_ID}/serieslogo.png`) : '', assetPath('images/nr2003_logo.svg')].filter(Boolean);
+  let k = 0;
+  im.onload = () => { box.style.display = 'flex'; };
+  im.onerror = () => { if (++k < cands.length) im.src = cands[k]; else box.style.display = 'none'; };
+  im.src = cands[0];
+})();
+// number cell: the driver's colour behind the number picture (same colour the ticker's number cells use)
+function diNumHTML(num) {
+  loadNumber(num);
+  const i = _numInfo[num], bg = numColor(num);
+  if (i && i.state === 'ok') return '<img src="' + i.src + '" alt="' + esc(num) + '">';
+  const fg = bgLuma(bg) > 0.6 ? '#111' : '#fff';
+  const hide = (i && i.state === 'fail') ? '' : 'visibility:hidden;';
+  return '<span class="nf" style="' + hide + 'color:' + fg + '">' + esc(num) + '</span>';
+}
+function diNumLoaded() { _diKey = ''; if (_diOn && _lastData) diUpdate(_lastData); }   // a number picture arrived: redraw the cell
+function diFit() {
+  const nm = $('di-nm');
+  if (nm) {
+    const max = $('di-name').clientWidth - 36; let sz = 38; nm.style.fontSize = sz + 'px';
+    while (nm.scrollWidth > max && sz > 14) { sz -= 1; nm.style.fontSize = sz + 'px'; }
+  }
+  if ($('di-low').style.display !== 'none') {
+    $('di-r').querySelectorAll('.a, .b').forEach(el => {
+      let sz = 28; el.style.fontSize = sz + 'px';
+      while (el.scrollWidth > el.clientWidth + 1 && sz > 10) { sz -= 1; el.style.fontSize = sz + 'px'; }
+    });
+  }
+}
+// Smooth change from one driver to the next while the banner is up: a copy of the card as it was stays on top and dissolves,
+// so the new driver appears underneath without a hard cut. (The copy keeps its ids on purpose: the CSS is written by id and the original comes first in the page.)
+const DI_SWAP_MS = 200;
+let _diShownCar = null;
+function diCrossfade(car) {
+  const prev = _diShownCar; _diShownCar = car;
+  if (!_diOn || prev == null || prev === car || diWrap.style.display === 'none') return;
+  try {
+    const g = diWrap.cloneNode(true);
+    g.style.pointerEvents = 'none'; g.style.transition = 'none';
+    diWrap.parentNode.insertBefore(g, diWrap.nextSibling);
+    const o = parseFloat(g.style.opacity); const from = isNaN(o) ? 1 : o;
+    if (g.animate) { const a = g.animate([{ opacity: from }, { opacity: 0 }], { duration: DI_SWAP_MS, easing: 'ease-in-out', fill: 'forwards' }); a.onfinish = () => g.remove(); }
+    else g.remove();
+    setTimeout(() => { if (g.isConnected) g.remove(); }, DI_SWAP_MS + 200);
+  } catch (e) {}
+}
+function diRender(d) {
+  const s = diDriver(d); if (!s) return false;
+  const num = (s.number || '??').toString().trim();
+  const full = String(winnerName(s, num) || '').trim().toUpperCase() || num.toUpperCase();
+  const bg = numColor(num), st = (_numInfo[num] && _numInfo[num].state) || '';
+  const inf = _diInfo[num] || {}, l1 = diLine(inf, 1, d, s, num) || DI_LINE1, l2 = diLine(inf, 2, d, s, num) || DI_LINE2;
+  const acc = accentShades(_driverColors[num]);      // colour assigned in the Series Editor; none = the default blue
+  const key = [s.carIdx, num, full, bg, st, l1, l2, acc ? acc.mid : ''].join('|');
+  if (key === _diKey) return true;
+  diCrossfade(s.carIdx);
+  _diKey = key;
+  ['--di-acc', '--di-acc-hi', '--di-acc-mid', '--di-acc-lo'].forEach(v => diWrap.style.removeProperty(v));
+  if (acc) { diWrap.style.setProperty('--di-acc', acc.mid); diWrap.style.setProperty('--di-acc-hi', acc.hi); diWrap.style.setProperty('--di-acc-mid', acc.mid); diWrap.style.setProperty('--di-acc-lo', acc.lo); }
+  const numEl = $('di-num'); numEl.style.setProperty('--di-nbg', bg); numEl.innerHTML = diNumHTML(num);
+  $('di-name').innerHTML = '<span id="di-nm">' + esc(full) + '</span>';
+  const low = $('di-low');
+  if (l1 || l2) { $('di-r').innerHTML = diRightHTML(l1, l2); low.style.display = ''; }
+  else { $('di-r').innerHTML = ''; low.style.display = 'none'; }                  // no Info lines: only the top row
+  return true;
+}
+// Put the banner near the bottom of the screen. The overlay window only covers the ticker, so it is stretched down to the
+// screen bottom while the banner is up (and put back afterwards). Without the app bridge (OBS) it goes right under the ticker.
+let _diAnchor = null;                                                                // bottom edge of the banner (css px) when placed by the app
+function diAnchor() { if (_diAnchor !== null) diWrap.style.top = Math.round(_diAnchor - diWrap.offsetHeight * DI_SCALE) + 'px'; }
+function diPlaceLocal() {
+  _diAnchor = null;
+  const top = FOX_H + 12, h0 = Math.ceil(top + DI_HMAX * DI_SCALE + 8);
+  diWrap.style.top = top + 'px'; diWrap.style.left = '4px';   // flush with the left edge
+  document.body.style.height = Math.round(h0 * SCALE) + 'px'; root.style.height = h0 + 'px';
+}
+async function diPlace() {
+  diWrap.style.transform = 'scale(' + DI_SCALE + ')';
+  _diAnchor = null;
+  if (!(window.shl && window.shl.extendOverlay) || !window.screen) { diPlaceLocal(); return; }
+  try {
+    const scrH = window.screen.height, sc = SCALE * DI_SCALE;
+    const scrW = window.screen.width, winLeft = window.screenX || 0;
+    await window.shl.extendOverlay(scrH);                    // stretch down to the screen bottom (banner sits on the left, no width change needed)
+    const winTop = window.screenY || 0;
+    const h = Math.max(FOX_H, Math.ceil((scrH - winTop) / SCALE)) + 'px';
+    document.body.style.height = h; root.style.height = h;
+    _diAnchor = (scrH * DI_BOTTOM - winTop) / SCALE;
+    diAnchor();
+    diWrap.style.left = '4px';                               // banner on the left side
+  } catch (e) { diPlaceLocal(); }
+}
+function diRestoreWindow() {
+  document.body.style.height = Math.round(FOX_H * SCALE) + 'px'; root.style.height = '';   // back to the ticker's own size
+  document.body.style.width = Math.round(1456 * SCALE) + 'px';
+  try { if (window.shl && window.shl.extendOverlay) window.shl.extendOverlay(null); } catch (e) {}
+}
+async function diShow() {
+  clearTimeout(_diHideT); _diKey = '';
+  diDump(_lastData);                        // diagnostic snapshot (driverinfo-debug.json), written on every show
+  if (!diRender(_lastData)) return;
+  _diOn = true;
+  diWrap.style.display = 'block';           // laid out (still transparent) so its height can be measured
+  await diPlace();
+  if (!_diOn) return;                       // toggled off while the window was being stretched
+  void diWrap.offsetWidth;                  // start the fade from opacity 0
+  diWrap.style.opacity = String(isNaN(OPACITY) ? 1 : OPACITY);
+  diFit(); diAnchor();
+}
+function diHide() {
+  _diOn = false; diWrap.style.opacity = '0';
+  clearTimeout(_diHideT);
+  _diHideT = setTimeout(() => { if (!_diOn) { diWrap.style.display = 'none'; diRestoreWindow(); } }, DI_FADE_MS + 50);
+}
+function diToggle() { if (_diOn) diHide(); else diShow(); }
+function diUpdate(d) { if (_diOn && diRender(d)) { diFit(); diAnchor(); } }
+window.__toggleDriverInfo = diToggle;
+if (window.shl && window.shl.onDriverInfoToggle) window.shl.onDriverInfoToggle(diToggle);
+if (window.shl && window.shl.onDriverInfoStep) window.shl.onDriverInfoStep(diStep);
+window.__stepDriverInfo = diStep;
+
+// Called with every data frame (the Info lines need laps led, grid, pit stops and the qualifying order even while the banner is hidden)
+function diFeed(d) { trackLed(d); trackQual(d); trackGrid(d); trackPits(d); }
+
+// ── Main render ─────────────────────────────────────────────────────────────
+let _lastOrder = '', _lastSessionNum = null, _lastSessionCookie = null;
+
+function resetState() {
+  _diSel = null; _fullNames = {};
+  resetNumberCache();
+  _lastOrder = ''; _standings = []; _wasYellow = false; _bannerUntil = 0; _localCautions = 0;
+  _finishLatched = false;
+  _wasPreRace = false; _startUntil = 0; if (_startTimer) { clearTimeout(_startTimer); _startTimer = null; }
+  if (_bannerTimer) { clearTimeout(_bannerTimer); _bannerTimer = null; }
+  _pillTxt = ''; _pillCls = ''; _flagCls = '';
+  track.innerHTML = ''; loopWidth = 0; scrollX = 0; _trackEls = []; _trackN = -1;
+}
+
+function render(d) {
+  learnNames(d);
+  updateFinishLatch(d);
+  diFeed(d);
+  if (!checkVisibility(d)) { setVisible(false); return; }
+  setVisible(true);
+
+  _session = (d.session || '').toLowerCase();
+  if (d.driverColors) {
+    const sig = JSON.stringify(d.driverColors);
+    if (sig !== _driverColorsSig) { _driverColorsSig = sig; _driverColors = d.driverColors; _lastOrder = ''; }   // by content: every WS message carries a fresh object
+  }
+
+  const hadPrior = _lastSessionNum !== null && _lastSessionCookie !== null;
+  if (hadPrior && (d.sessionNum !== _lastSessionNum || d.sessionCookie !== _lastSessionCookie)) resetState();
+  _lastSessionNum = d.sessionNum; _lastSessionCookie = d.sessionCookie;
+
+  updateHeader(d);
+  diUpdate(d);
+
+  const standings = getStandings(d);
+  if (!standings.length) return;
+
+  const order = standings.map(s => s.carIdx).join(',');
+  if (order !== _lastOrder) {
+    _lastOrder = order; _standings = standings;
+    renderTrack();
+  } else {
+    _standings = standings;
+    refreshGaps();
+  }
+}
+
+// ── WebSocket ───────────────────────────────────────────────────────────────
+let _ws = null;
+function connect() {
+  _ws = new WebSocket(WS_URL);
+  _ws.onmessage = e => {
+    if (_preview) return;
+    try {
+      const d = JSON.parse(e.data);
+      if (d.reset) { setVisible(false); _lastSessionNum = null; _lastSessionCookie = null; resetState(); return; }
+      render(d);
+    } catch (_) {}
+  };
+  _ws.onclose = () => { if (!_preview) setTimeout(connect, 2000); };
+  _ws.onerror = () => _ws.close();
+}
+
+// ── Layout editor preview ───────────────────────────────────────────────────
+window.addEventListener('message', e => {
+  if (typeof e.data !== 'string') return;
+  try {
+    const m = JSON.parse(e.data);
+    if (Array.isArray(m._chase)) _setChase(m._chase);   // preview data carries _chase alongside the race data
+    if (m.reset) return;
+    if (!_preview) { _preview = true; if (_ws) { _ws.onclose = null; _ws.close(); } }
+    if (m._visibilityMode !== undefined) VISIBILITY_MODE = m._visibilityMode;
+    if (m._dnfDisplay     !== undefined) { DNF_DISPLAY = m._dnfDisplay; _lastOrder = ''; }
+    if (m._scrollSpeed    !== undefined) SCROLL_SPEED = parseFloat(m._scrollSpeed);
+    if (m._sponsorRotationTime !== undefined) {
+      ROTATION_MS = Math.max(2, parseInt(m._sponsorRotationTime) || 10) * 1000;
+      if (_sponsors.length > 1) startSponsorTimer();
+    }
+    if (m.atTrack !== undefined || m.standings !== undefined) render(m);
+    else setVisible(true);
+  } catch (_) {}
+});
+
+// ── Boot ────────────────────────────────────────────────────────────────────
+loadSponsors();
+startScroll();
+connect();
+</script>
+</body>
+</html>

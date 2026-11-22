@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NR2003 Season Standings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="broadcast.css">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-a:        1.0;
+  --bg:          rgba(var(--psf-tv-bg-rgb), var(--bg-a));
+  --bg-header:   rgba(var(--psf-tv-header-rgb), var(--bg-a));
+  --bg-row-odd:  rgba(var(--psf-tv-row-odd-rgb), var(--bg-a));
+  --bg-row-even: rgba(var(--psf-tv-row-even-rgb), var(--bg-a));
+  --text:        #ffffff;
+  --text-dim:    var(--psf-tv-muted);
+  --accent:      var(--psf-tv-accent);
+  --green:       var(--psf-tv-green);
+  --red:         var(--psf-tv-red);
+  --live:        #ff3b30;
+  --font:        'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --w:           460px;
+}
+
+html, body { background: transparent; overflow: hidden; user-select: none; }
+#scale-root { transform-origin: top left; display: inline-block; transition: opacity .3s ease; }
+#widget {
+  width: var(--w); background: var(--bg); display: flex; flex-direction: column;
+  font-family: var(--font); border-radius: 9px; overflow: hidden; color: var(--text);
+}
+
+/* header */
+#header { background: var(--bg-header); padding: 9px 12px 7px; border-bottom: 1px solid rgba(255,255,255,.08); }
+#title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+#title { font-size: 19px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#badge { font-size: 12px; font-weight: 800; letter-spacing: .1em; padding: 2px 8px; border-radius: 3px; background: #2a2d35; color: var(--text-dim); text-transform: uppercase; white-space: nowrap; }
+#badge.chase { background: var(--accent); color: #111; }
+#badge.live  { background: var(--live); color: #fff; animation: pulse 1.6s infinite; }
+@keyframes pulse { 50% { opacity: .65; } }
+#sub { margin-top: 2px; font-size: 14px; font-weight: 600; letter-spacing: .05em; color: var(--text-dim); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* column header + rows */
+.row { display: grid; align-items: center; height: 30px; padding: 0 10px 0 4px; grid-template-columns: 34px 24px 40px 1fr 62px 66px; column-gap: 4px; }
+.row.head { height: 22px; background: var(--bg-header); color: var(--text-dim); font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.row.body:nth-child(odd)  { background: var(--bg-row-odd); }
+.row.body:nth-child(even) { background: var(--bg-row-even); }
+.row.body.chase { box-shadow: inset 3px 0 0 var(--accent); }
+.row.body.out   { opacity: .62; }
+.c-pos  { text-align: center; font-size: 18px; font-weight: 800; }
+.c-delta{ text-align: center; font-size: 12px; font-weight: 800; }
+.c-delta.up { color: var(--green); } .c-delta.down { color: var(--red); }
+.c-num  { text-align: center; font-size: 17px; font-weight: 700; color: var(--accent); }
+.c-name { font-size: 18px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.c-pts  { text-align: right; font-size: 19px; font-weight: 800; }
+.c-gap  { text-align: right; font-size: 15px; font-weight: 600; color: var(--text-dim); }
+.c-gap.gain { color: var(--green); }
+
+.cut { height: 17px; display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 11px; font-weight: 800; letter-spacing: .14em; color: var(--accent); text-transform: uppercase; background: rgba(232,200,74,.08); border-top: 1px dashed var(--accent); border-bottom: 1px dashed var(--accent); }
+
+#footer { background: var(--bg-header); padding: 6px 12px; font-size: 13px; font-weight: 600; letter-spacing: .06em; color: var(--text-dim); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-top: 1px solid rgba(255,255,255,.08); }
+#empty { padding: 26px 16px; text-align: center; font-size: 17px; font-weight: 700; letter-spacing: .06em; color: var(--text-dim); text-transform: uppercase; }
+</style>
+</head>
+<body>
+<div id="scale-root">
+  <div id="widget">
+    <div id="header">
+      <div id="title-row"><div id="title">Season Standings</div><div id="badge">—</div></div>
+      <div id="sub">&nbsp;</div>
+    </div>
+    <div class="row head" id="colhead"><div style="text-align:center">POS</div><div></div><div style="text-align:center">#</div><div>DRIVER</div><div style="text-align:right">PTS</div><div style="text-align:right" id="gaphead">BEHIND</div></div>
+    <div id="rows"></div>
+    <div id="footer">&nbsp;</div>
+  </div>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const SCALE      = parseFloat(params.get('scale')   || window.__PSF?.scale   || 1) || 1;
+const OPACITY    = parseFloat(params.get('opacity') || window.__PSF?.opacity || 1) || 1;
+const ROWS       = Math.max(5, Math.min(40, parseInt(params.get('seasonrows') || '14', 10) || 14));
+let   MODE       = params.get('seasonmode') || 'auto';          // auto | standings | live
+let   VISIBILITY = params.get('visibilitymode') || 'at_track';
+const IS_HTTP    = location.protocol.startsWith('http');
+const SEASON_BASE = params.get('seasonbase') || (IS_HTTP ? '' : `http://127.0.0.1:${params.get('seasonport') || 8769}`);
+const WS_HOST    = params.get('host') || (IS_HTTP && location.hostname) || 'localhost';
+const WS_URL     = window.__PSF?.wsUrl || `ws://${WS_HOST}:${params.get('port') || 8765}`;
+
+const root = document.getElementById('scale-root');
+root.style.transform = `scale(${SCALE})`;
+document.documentElement.style.setProperty('--bg-a', OPACITY);
+
+let state = null;
+let atTrack = false, inCar = false;
+let everSawTelemetry = false;
+
+// ── visibility (same modes as the other overlays) ────────────────────────────
+window.addEventListener('message', e => {
+  if (typeof e.data !== 'string') return;
+  try {
+    const m = JSON.parse(e.data);
+    if (m._visibilityMode !== undefined) { VISIBILITY = m._visibilityMode; applyVisibility(); }
+  } catch (_) {}
+});
+function visible() {
+  if (!state || !state.season) return VISIBILITY === 'always' && !everSawTelemetry && false;
+  if (VISIBILITY === 'always') return true;
+  if (VISIBILITY === 'at_track') return atTrack;
+  return atTrack && inCar;
+}
+let hideTimer = null;
+function applyVisibility() {
+  const show = visible() || (VISIBILITY === 'always' && !everSawTelemetry && !state);
+  if (show) { clearTimeout(hideTimer); hideTimer = null; root.style.opacity = '1'; }
+  else if (!hideTimer) hideTimer = setTimeout(() => { root.style.opacity = '0'; hideTimer = null; }, 1000);
+}
+
+// ── rendering ────────────────────────────────────────────────────────────────
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function shortName(n) { return n; }
+
+const DEMO = (() => {
+  const names = ['Shane van Gisbergen', 'Carson Hocevar', 'Noah Gragson', 'Tyler Reddick', 'Ty Dillon', 'Austin Hill', 'Denny Hamlin', 'Riley Herbst', 'Todd Gilliland', 'Bubba Wallace', 'Alex Bowman', 'Chase Briscoe', 'Cody Ware', 'Joey Logano', 'Daniel Suarez', 'Ross Chastain'];
+  const rows = names.map((name, i) => ({ rank: i + 1, name, number: String([97, 77, 4, 45, 10, 33, 11, 35, 34, 23, 48, 19, 51, 22, 7, 1][i]), points: 740 - i * 23, behind: -i * 23, delta: i % 5 === 0 ? 1 : i % 7 === 0 ? -2 : 0, inChase: null, toCut: null }));
+  return { season: { name: 'Demo Season', series: 'cup' }, standings: { phase: 'regular', racesRun: 12, totalRaces: 36, regularRaces: 26, chaseRaces: 10, rows, cutPoints: null, chaseField: 16, chase: null }, live: null, races: [] };
+})();
+
+function render() {
+  const st = state && state.season ? state : (VISIBILITY === 'always' && !everSawTelemetry ? DEMO : null);
+  const rowsEl = document.getElementById('rows');
+  const titleEl = document.getElementById('title'), badgeEl = document.getElementById('badge');
+  const subEl = document.getElementById('sub'), footEl = document.getElementById('footer');
+  const gapHead = document.getElementById('gaphead');
+  if (!st) {
+    titleEl.textContent = 'Season Standings'; badgeEl.textContent = '—'; badgeEl.className = '';
+    subEl.innerHTML = '&nbsp;'; footEl.innerHTML = '&nbsp;'; rowsEl.innerHTML = '<div id="empty">No active season</div>';
+    return;
+  }
+  const s = st.standings || { rows: [] };
+  const live = st.live && st.live.rows && st.live.rows.length ? st.live : null;
+  const useLive = MODE === 'live' ? !!live : (MODE === 'standings' ? false : !!live);
+  const rows = (useLive ? live.rows : s.rows) || [];
+
+  titleEl.textContent = st.season.name;
+  const inChase = s.phase === 'chase' && s.chase;
+  if (useLive) {
+    badgeEl.textContent = 'LIVE POINTS'; badgeEl.className = 'live';
+    const lapTxt = live.lapsTotal ? `LAP ${live.lap}/${live.lapsTotal}` : '';
+    subEl.textContent = [live.track, lapTxt, inChase ? `CHASE RACE ${s.racesRun - s.regularRaces + 1}/${s.chaseRaces}` : `RACE ${s.racesRun + 1}/${s.totalRaces}`].filter(Boolean).join(' · ');
+    gapHead.textContent = 'RACE';
+  } else if (s.phase === 'complete') {
+    badgeEl.textContent = 'FINAL'; badgeEl.className = 'chase';
+    subEl.textContent = `${s.racesRun} OF ${s.totalRaces} RACES COMPLETE` + (s.champion ? ` · CHAMPION: ${s.champion.name}` : '');
+    gapHead.textContent = 'BEHIND';
+  } else if (inChase) {
+    badgeEl.textContent = 'THE CHASE'; badgeEl.className = 'chase';
+    subEl.textContent = `AFTER CHASE RACE ${s.racesRun - s.regularRaces} OF ${s.chaseRaces}`;
+    gapHead.textContent = 'BEHIND';
+  } else {
+    badgeEl.textContent = 'REG. SEASON'; badgeEl.className = '';
+    subEl.textContent = `AFTER ${s.racesRun} OF ${s.regularRaces} RACES` + (s.racesRun ? '' : ' — NO RACES YET');
+    gapHead.textContent = 'BEHIND';
+  }
+
+  const shown = rows.slice(0, ROWS);
+  const cutAfter = (!inChase && s.phase === 'regular' && s.chaseRaces) ? s.chaseField : 0;
+  let html = '';
+  shown.forEach((r, i) => {
+    const d = useLive ? (r.liveDelta || 0) : (r.delta || 0);
+    const dTxt = d > 0 ? '▲' + d : d < 0 ? '▼' + (-d) : '';
+    const gap = useLive ? (r.racePts ? '+' + r.racePts : '') : (r.rank === 1 ? '' : String(r.behind));
+    const cls = ['row body'];
+    if (inChase || s.phase === 'complete') { if (r.inChase) cls.push('chase'); else if (r.inChase === false) cls.push('out'); }
+    html += `<div class="${cls.join(' ')}"><div class="c-pos">${r.rank}</div><div class="c-delta ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${dTxt}</div>` +
+      `<div class="c-num">${esc(r.number)}</div><div class="c-name">${esc(shortName(r.name))}</div><div class="c-pts">${r.points}</div>` +
+      `<div class="c-gap ${useLive && r.racePts ? 'gain' : ''}">${esc(gap)}</div></div>`;
+    if (cutAfter && r.rank === cutAfter && i < shown.length - 1) {
+      html += `<div class="cut"><span>▼ CHASE CUT LINE · TOP ${cutAfter} ▼</span></div>`;
+    }
+  });
+  rowsEl.innerHTML = html || '<div id="empty">No results yet</div>';
+
+  // footer: last race winner / next race
+  const last = st.races && st.races.length ? st.races[st.races.length - 1] : null;
+  const leader = s.leader;
+  footEl.textContent = useLive
+    ? 'PROJECTED STANDINGS IF THE RACE ENDED NOW'
+    : (last ? `LAST RACE: ${last.track} — ${last.winner}` : (leader ? `LEADER: ${leader.name}` : 'READY'));
+}
+
+// ── data feeds ───────────────────────────────────────────────────────────────
+function setState(s) { state = s; render(); applyVisibility(); }
+
+function connectSeason() {
+  fetch(SEASON_BASE + '/season/state').then(r => r.json()).then(setState).catch(() => {});
+  try {
+    const es = new EventSource(SEASON_BASE + '/season/events');
+    es.addEventListener('state', e => { try { setState(JSON.parse(e.data)); } catch (_) {} });
+  } catch (_) { setInterval(() => fetch(SEASON_BASE + '/season/state').then(r => r.json()).then(setState).catch(() => {}), 3000); }
+}
+
+// Telemetry is only used for the at-track / in-car visibility rules.
+function connectTelemetry() {
+  let ws;
+  try { ws = new WebSocket(WS_URL); } catch (_) { setTimeout(connectTelemetry, 3000); return; }
+  ws.onmessage = ev => {
+    try {
+      const d = JSON.parse(ev.data);
+      everSawTelemetry = true;
+      atTrack = !!d.atTrack; inCar = !!(d.player && d.player.inCar);
+      applyVisibility();
+    } catch (_) {}
+  };
+  ws.onclose = () => setTimeout(connectTelemetry, 2000);
+  ws.onerror = () => ws.close();
+}
+
+render(); applyVisibility();
+connectSeason();
+if (VISIBILITY !== 'always') connectTelemetry();
+</script>
+</body>
+</html>

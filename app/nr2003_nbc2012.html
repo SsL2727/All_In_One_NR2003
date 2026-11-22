@@ -1,0 +1,1310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="perf-shim.js"></script>
+<script src="pp-view.js"></script>
+<meta charset="UTF-8">
+<title>NR2003 NBC 2012 Ticker</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Base canvas: 1920 x 532 = 72px of blue haze above + the 460px ticker area (everything sits inside #shift, 72px down).
+   Row 1 (y 21-72): LIVE · NBCSN logo · flag box · lap box · leader.   Series logo on the right (y 0-72).
+   Row 2 (y 74-120): INTERVALS bar, full width.  Under it: post-race top-5 cards (to y 162) and the live points column. */
+:root { --f: 'Bahnschrift SemiBold Condensed', 'Bahnschrift Condensed', 'Arial Narrow', 'Roboto Condensed', 'Helvetica Neue', Arial, sans-serif; }
+body {
+  background: transparent;
+  width: 1920px;
+  height: 532px;
+  overflow: hidden;
+  font-family: var(--f);
+  color: #ffffff;
+}
+#scale-root {
+  position: relative;
+  width: 1920px;
+  height: 532px;
+  transform-origin: top left;
+  visibility: hidden;
+}
+
+/* ── Background shapes ─────────────────────────────────────────────────────── */
+#shift { position: absolute; left: 0; top: 72px; width: 1920px; height: 460px; }
+#bg-layer { position: absolute; inset: 0; z-index: 1; opacity: 0; transition: opacity 0.2s ease; }
+.box { position: absolute; }
+/* Dark-blue haze: nearly black at the top, steel blue where it meets the bars, thin light line at its lower edge */
+#b-haze { left: 0; top: -72px; width: 1920px; height: 146px;
+          background:
+            radial-gradient(ellipse 340px 90px at 300px 84px, rgba(120,160,220,0.20), rgba(120,160,220,0) 100%),
+            linear-gradient(180deg, rgba(3,7,14,0.94) 0%, rgba(8,16,30,0.90) 30%, rgba(20,38,64,0.84) 68%, rgba(34,58,92,0.76) 100%);
+          box-shadow: inset 0 -1px 0 rgba(170,200,240,0.55); }
+/* Left part of the top row (LIVE + NBCSN) is a lighter blue-grey glass, the rest of the bar is black */
+#b-live { left: 253px; top: 21px; width: 303px; height: 51px;
+          background: linear-gradient(180deg, #5a6c8c 0%, #26364f 14%, #101c32 60%, #0a1324 100%);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.25); }
+#b-top    { left: 253px; top: 21px; width: 1107px; height: 51px;
+            background: linear-gradient(180deg, #4a4d52 0%, #15171a 9%, #060607 55%, #000 100%);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.22); }
+#b-laps   { left: 622px; top: 21px; width: 207px; height: 51px;
+            background: linear-gradient(180deg, #77797d 0%, #4a4c50 12%, #2e3033 55%, #1c1d20 100%);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.25); }
+#b-flag   { left: 556px; top: 24px; width: 66px; height: 45px; border-radius: 1px;
+            background: linear-gradient(180deg, #6df25a 0%, #27c21b 30%, #138a10 70%, #0b5a0a 100%);
+            box-shadow: inset 0 0 0 1px rgba(0,0,0,0.35), inset 0 2px 0 rgba(255,255,255,0.28); transition: background 0.2s; }
+#b-flag[data-mode="caution"]   { background: linear-gradient(180deg, #fff27a 0%, #f9d71c 35%, #d9b400 100%); }
+#b-flag[data-mode="white"]     { background: linear-gradient(180deg, #ffffff 0%, #eaeaea 60%, #c9c9c9 100%); }
+#b-flag[data-mode="checkered"] { background: #fff repeating-conic-gradient(#000 0% 25%, #fff 0% 50%) 0 0 / 22px 22px; }
+#b-flag[data-mode="red"]       { background: linear-gradient(180deg, #ff5a5a 0%, #e01616 40%, #8f0a0a 100%); }
+#b-series { left: 1369px; top: 0; width: 211px; height: 72px;
+            background: rgba(255,255,255,0.045);
+            border-left: 1px solid rgba(255,255,255,0.26); border-right: 1px solid rgba(255,255,255,0.26); }
+#b-bar    { left: 0; top: 74px; width: 1920px; height: 46px; transition: height 0.4s ease;
+            background: linear-gradient(180deg, #17181b 0%, #050506 22%, #000 100%);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.14); }
+#b-label  { left: 385px; top: 78px; width: 169px; height: 40px;
+            background: linear-gradient(180deg, #e4e4e4 0%, #c2c2c2 50%, #a4a4a4 100%);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.7); }
+
+/* ── Text / logo layer ─────────────────────────────────────────────────────── */
+#data-layer { position: absolute; inset: 0; z-index: 2; }
+#live-text { position: absolute; left: 262px; top: 21px; height: 51px; line-height: 51px;
+             font-size: 31px; font-weight: 700; letter-spacing: 0.01em; color: #fff; }
+#nbc-logo  { position: absolute; left: 351px; top: 26px; height: 40px; width: auto; }
+#lap-zone  { position: absolute; left: 622px; top: 21px; width: 207px; height: 51px;
+             display: flex; align-items: center; justify-content: center; overflow: hidden; }
+#lap-text  { font-size: 34px; font-weight: 600; letter-spacing: 0.01em; text-transform: uppercase;
+             color: #ffffff; white-space: nowrap; }
+#series-zone { position: absolute; left: 1369px; top: 0; width: 211px; height: 72px;
+               display: flex; align-items: center; justify-content: center; }
+#series-logo { display: none; max-width: 150px; max-height: 66px; object-fit: contain; }
+
+#leader-zone { position: absolute; left: 838px; top: 21px; width: 522px; height: 51px;
+               display: flex; align-items: center; padding-left: 4px; overflow: hidden; }
+#leader-content { display: flex; align-items: center; gap: 14px; flex-shrink: 0; transform-origin: left center; }
+#leader-label { font-size: 22px; font-weight: 700; color: #e6e6e6; white-space: nowrap; text-transform: uppercase; }
+#leader-name  { font-size: 36px; font-weight: 700; color: #ffffff; white-space: nowrap; text-transform: uppercase; }
+#leader-content.chase-leader #leader-label,
+#leader-content.chase-leader #leader-name { color: #f5d100; }
+
+/* ── Number box (leader, ticker entries, results, points) ────────────────── */
+.numbox {
+  position: relative; width: 48px; height: 38px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.numbox .nb-bg  { position: absolute; inset: 0; }
+.numbox .nb-img { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.numbox img { width: 100%; height: 100%; object-fit: contain; }
+.numbox .num-fallback {
+  display: none; font-weight: 800; font-style: italic; font-size: 24px; color: #fff; line-height: 1;
+}
+#leader-content .numbox { width: 56px; height: 41px; }
+#leader-content .numbox .num-fallback { font-size: 28px; }
+
+/* ── Interval bar ─────────────────────────────────────────────────────────── */
+#bar-label { position: absolute; left: 385px; top: 78px; width: 169px; height: 40px; display: flex;
+             align-items: center; justify-content: center; font-size: 29px; font-weight: 700;
+             letter-spacing: 0.01em; color: #1b1b1b; white-space: nowrap; text-transform: uppercase; }
+#ticker-wrap {
+  position: absolute; left: 554px; top: 74px; width: 1352px; height: 46px; overflow: hidden;
+}
+#ticker-track {
+  position: absolute; top: 0; left: 0; height: 46px; display: flex; align-items: center;
+  will-change: transform; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+}
+.t-entry {
+  position: relative; flex: 0 0 430px; width: 430px; height: 46px;
+  display: flex; align-items: center; padding-left: 6px;
+  border-left: 1px solid rgba(255,255,255,0.16);
+  transition: transform 0.75s cubic-bezier(0.65, 0, 0.35, 1);
+}
+/* Perf: a compositor layer per entry (x dozens of loop copies) is wasteful; promote only while animating */
+.t-entry.passing { z-index: 5; filter: drop-shadow(0 2px 5px rgba(0,0,0,0.7)); will-change: transform; }
+.t-entry.passed  { z-index: 1; will-change: transform; }
+.t-pos  { width: 44px; flex-shrink: 0; text-align: right; margin-right: 8px; color: #f6c62a;
+          font-size: 33px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.t-name { margin-left: 14px; font-size: 32px; font-weight: 700; white-space: nowrap; text-transform: uppercase; }
+.t-gap  { margin-left: auto; padding-right: 12px; font-size: 32px; font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#ticker-track.prac-qual .t-gap { color: #ffdd44; }
+
+/* Chase / Playoff highlight */
+.t-entry.chase::before {
+  content: ''; position: absolute; left: 112px; right: 6px; top: 6px; bottom: 6px;
+  background: #f5d100; z-index: -1;
+}
+#ticker-track .t-entry.chase .t-name,
+#ticker-track .t-entry.chase .t-gap { color: #111 !important; }
+
+/* ── Flag banner: replaces flag box + lap + leader in the top row (CAUTION / GREEN FLAG / FINAL LAP) ──── */
+#flag-banner {
+  position: absolute; left: 556px; top: 21px; width: 804px; height: 51px; z-index: 10;
+  display: flex; align-items: center; justify-content: center; overflow: hidden; pointer-events: none;
+  opacity: 0; visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0s linear 0.25s;
+  --c0: #16140a; --c1: #8a7d06; --c2: #e9d812; --c3: #f7ea2a;
+}
+#flag-banner.show { opacity: 1; visibility: visible; transition: opacity 0.25s ease, visibility 0s;
+                    animation: fbIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes fbIn   { from { clip-path: inset(0 50% 0 50%); } to { clip-path: inset(0 0 0 0); } }
+/* once the banner has opened, the letters zoom in */
+#flag-banner.show #fb-text { animation: fbZoom 0.4s cubic-bezier(0.2, 1.25, 0.3, 1) 0.32s both; }
+@keyframes fbZoom { from { transform: scale(0.55); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+#flag-banner[data-kind="green"] { --c0: #03140a; --c1: #0a6a1c; --c2: #1fae2c; --c3: #3bd940; }
+#flag-banner[data-kind="white"] { --c0: #2a2a2a; --c1: #9a9a9a; --c2: #f0f0f0; --c3: #ffffff; }
+#flag-banner::before { content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, var(--c0) 0%, var(--c1) 6%, var(--c2) 18%, var(--c3) 50%, var(--c2) 82%, var(--c1) 94%, var(--c0) 100%); }
+#flag-banner::after { content: ''; position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.38) 0%, rgba(0,0,0,0) 26%, rgba(0,0,0,0) 68%, rgba(0,0,0,0.32) 100%); }
+#fb-text { position: relative; z-index: 1; font-size: 44px; font-weight: 700; letter-spacing: 0.01em;
+           text-transform: uppercase; white-space: nowrap; color: #1a1a1a; }
+#flag-banner[data-kind="green"] #fb-text { color: #ffffff; text-shadow: 0 1px 4px rgba(0,0,0,0.55); }
+
+/* ── Top-5 results (shown 15 s after the race ends) ───────────────────────── */
+#scale-root.results-mode #b-bar { height: 88px; }
+#scale-root.results-mode #ticker-wrap, #scale-root.results-mode #bar-label, #scale-root.results-mode #b-label { display: none; }
+#results-wrap {
+  position: absolute; left: 14px; top: 74px; width: 1892px; height: 88px;
+  z-index: 3; display: none; overflow: hidden;
+}
+#scale-root.results-mode #results-wrap { display: flex; }
+.r-card {
+  position: relative; flex: 0 0 20%; width: 20%; height: 88px; overflow: hidden;
+  opacity: 0; transition: opacity 0.6s ease;
+  border-left: 2px solid rgba(255,255,255,0.10);
+}
+.r-card:first-child { border-left: 0; }
+.r-card.in { opacity: 1; }
+.r-card.instant { transition: none; }
+.r-card .numbox { position: absolute; left: 0; top: 0; width: 66px; height: 44px; }
+.r-card .numbox .num-fallback { font-size: 30px; }
+.r-photo {
+  position: absolute; left: 70px; top: 0; height: 88px; width: auto; max-width: 150px;
+  object-fit: contain; object-position: left top; opacity: 0; transition: opacity 0.4s ease;
+}
+.r-car {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 92px; max-height: 62px; object-fit: contain; object-position: center;
+  opacity: 0; transition: opacity 0.4s ease;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.65));
+}
+.r-info {
+  position: absolute; left: 0; right: auto; bottom: 0; z-index: 2; max-width: 100%;
+  display: flex; align-items: baseline; gap: 12px; white-space: nowrap;
+  padding: 3px 12px 4px 12px; border-radius: 0 6px 0 0;
+  background: rgba(0, 0, 0, 0.78); text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+}
+.r-pos  { font-size: 28px; font-weight: 700; color: #f6c62a; }
+.r-name { font-weight: 700; text-transform: uppercase; }
+/* Rookie tag */
+.rk { margin-left: 0.3em; font-weight: 600; }
+
+/* ── Live points column ("Points as they run") — drops out under the bar ─────── */
+#pp-wrap { position: absolute; left: 430px; top: 126px; width: 400px; height: 384px; z-index: 6;
+           display: none; pointer-events: none; transition: top 0.4s ease; }
+#scale-root.results-mode #pp-wrap { top: 168px; }
+#pp-title, .pp-row { position: absolute; left: 0; width: 400px; height: 45px; display: flex; align-items: center;
+                     background: #000;
+                     opacity: 0; transform: translateY(-14px);
+                     transition: opacity 0.25s ease, transform 0.3s ease; }
+#pp-title { top: 0; justify-content: center; font-size: 29px; font-weight: 700; letter-spacing: 0.01em;
+            text-transform: uppercase; white-space: nowrap; color: #1b1b1b;
+            background: linear-gradient(180deg, #e4e4e4 0%, #c2c2c2 50%, #a4a4a4 100%); }
+.pp-row { padding-left: 6px; }
+.pp-row.empty { background: none; }
+.pp-row .t-pos { width: 38px; margin-right: 8px; }
+.pp-row .t-name { margin-left: 14px; }
+.pp-gap { margin-left: auto; padding-right: 14px; font-size: 32px; font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pp-gap.pp-leader { font-size: 26px; }
+#pp-wrap.show #pp-title, #pp-wrap.show .pp-row { opacity: 1; transform: none;
+  transition: opacity 0.4s ease calc(var(--i, 0) * 0.08s), transform 0.45s cubic-bezier(0.22, 1, 0.36, 1) calc(var(--i, 0) * 0.08s); }
+#pp-wrap.show .pp-row.empty { opacity: 0; }
+</style>
+</head>
+<body>
+<div id="scale-root">
+<div id="shift">
+
+  <div id="bg-layer">
+    <div class="box" id="b-haze"></div>
+    <div class="box" id="b-top"></div>
+    <div class="box" id="b-live"></div>
+    <div class="box" id="b-flag" data-mode=""></div>
+    <div class="box" id="b-laps"></div>
+    <div class="box" id="b-series"></div>
+    <div class="box" id="b-bar"></div>
+    <div class="box" id="b-label"></div>
+  </div>
+
+  <div id="data-layer">
+    <span id="live-text">LIVE</span>
+    <img id="nbc-logo" src="" alt="NBCSN">
+
+    <div id="lap-zone"><span id="lap-text">--</span></div>
+
+    <div id="leader-zone">
+      <div id="leader-content">
+        <span id="leader-label">Leader</span>
+        <div class="numbox" id="leader-numbox">
+          <div class="nb-bg" id="leader-nb-bg"></div>
+          <div class="nb-img">
+            <img id="leader-num-img" src="" alt="" style="display:none">
+            <span id="leader-num-fallback" class="num-fallback"></span>
+          </div>
+        </div>
+        <span id="leader-name"></span>
+      </div>
+    </div>
+
+    <div id="series-zone"><img id="series-logo" src="" alt=""></div>
+
+    <div id="bar-label">INTERVALS</div>
+    <div id="ticker-wrap"><div id="ticker-track"></div></div>
+
+    <div id="results-wrap"></div>
+
+    <div id="pp-wrap">
+      <div id="pp-title" style="--i:0">Points as they run</div>
+    </div>
+
+    <div id="flag-banner" data-kind="yellow"><span id="fb-text">CAUTION</span></div>
+  </div>
+</div><!-- /shift -->
+</div>
+
+<script>
+// ── Chase highlight ─────────────────────────────────────────────────────────
+let _CHASE = new Set();
+const chaseKey = n => String(n == null ? '' : n).trim().replace(/"/g, '');
+const chaseCls = n => (_CHASE.size && _CHASE.has(chaseKey(n))) ? ' chase' : '';
+function _chasePass() {
+  document.querySelectorAll('[data-chase-num]').forEach(el =>
+    el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(el.dataset.chaseNum)));
+  applyLeaderChase();
+}
+function _setChase(list) {
+  _CHASE = new Set((Array.isArray(list) ? list : []).map(chaseKey));
+  _chasePass();
+}
+if (window.shl && window.shl.onChaseSet) {
+  window.shl.onChaseSet(_setChase);
+  if (window.shl.getChaseSet) window.shl.getChaseSet().then(_setChase).catch(() => {});
+}
+window.addEventListener('message', e => {      // layout-editor preview
+  if (typeof e.data !== 'string' || e.data.indexOf('"_chase"') < 0) return;
+  try { const m = JSON.parse(e.data); if (Array.isArray(m._chase)) _setChase(m._chase); } catch (x) {}
+});
+
+// ── PSF bootstrap ───────────────────────────────────────────────────────────
+const psf           = window.__PSF || {};
+const params        = new URLSearchParams(location.search);
+const INSTALL_DIR   = psf.installDir || params.get('installdir') || '';
+const SERIES_ID     = psf.series     || params.get('series')     || '';
+const SCALE         = parseFloat(psf.scale   || params.get('scale')   || '1');
+const OPACITY       = parseFloat(psf.opacity || params.get('opacity') || '1');
+const WS_URL        = psf.wsUrl || `ws://${location.hostname || 'localhost'}:8765`;
+let ROTATION_MS     = (parseInt(psf.sponsorrotationtime || params.get('sponsorrotationtime') || '10')) * 1000;
+let VISIBILITY_MODE = psf.visibilitymode || params.get('visibilitymode') || 'at_track';
+let SCROLL_SPEED    = parseFloat(psf.scrollspeed || params.get('scrollspeed') || '80');
+let DNF_DISPLAY     = psf.dnfdisplay || params.get('dnfdisplay') || 'reason';
+// Top-5 results: show the car picture (series/<id>/cars/<n>.png) next to the headshot
+let SHOW_CAR        = false;   // car picture removed from this skin (no option in Layout)
+
+// 'interval' = gap to the car ahead (ESPN "INTERVALS"); 'leader' = gap to the leader
+const GAP_MODE = 'interval';
+
+function assetPath(rel) {
+  if (psf.assetBase) return psf.assetBase + '/' + rel;
+  if (INSTALL_DIR) {
+    const enc = INSTALL_DIR.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+    return 'file:///' + enc + '/' + rel;
+  }
+  return rel;
+}
+const ESPN_BASE = assetPath('images/ESPN2017');
+
+// ── Scale ───────────────────────────────────────────────────────────────────
+const root = document.getElementById('scale-root');
+root.style.transform = `scale(${SCALE})`;
+document.body.style.width  = Math.round(1920 * SCALE) + 'px';
+document.body.style.height = Math.round(532  * SCALE) + 'px';
+
+const $ = id => document.getElementById(id);
+
+// ── NBCSN logo (embedded) ───────────────────────────────────────────────────
+$('nbc-logo').src = 'data:image/png;base64,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';
+
+// ── Visibility ──────────────────────────────────────────────────────────────
+let _preview = false;
+function checkVisibility(d) {
+  if (_preview) return true;
+  switch (VISIBILITY_MODE) {
+    case 'always':  return true;
+    case 'in_car':  return !!(d.atTrack && d.player?.inCar);
+    case 'at_track':
+    default:        return !!d.atTrack;
+  }
+}
+function setVisible(v) {
+  $('bg-layer').style.opacity      = v ? OPACITY : '0';
+  $('data-layer').style.visibility = v ? 'visible' : 'hidden';
+  root.style.visibility = v ? 'visible' : 'hidden';
+}
+
+// ── Rotating sponsor (left box) ─────────────────────────────────────────────
+let _sponsors = [], _sIdx = 0, _sFront = 'a', _sponsorTimer = null;
+
+function showSeriesLogo() {
+  const img = $('series-logo');
+  img.onload  = () => { img.style.display = 'block'; };
+  img.onerror = () => { img.style.display = 'none'; };
+  img.src = SERIES_ID ? assetPath(`series/${SERIES_ID}/serieslogo.png`) : assetPath('images/nr2003_logo.svg');
+}
+async function loadSponsors() {
+  const probes = [];
+  for (let i = 1; i <= 20; i++) {
+    probes.push(new Promise(res => {
+      const img = new Image();
+      const src = `${ESPN_BASE}/sponsors/sponsor${String(i).padStart(2, '0')}.png`;
+      img.onload  = () => res(src);
+      img.onerror = () => res(null);
+      img.src = src;
+    }));
+  }
+  _sponsors = (await Promise.all(probes)).filter(Boolean);
+  if (!_sponsors.length) { showSeriesLogo(); return; }
+  const a = $('sponsor-a');
+  a.src = _sponsors[0]; a.classList.add('on');
+  if (_sponsors.length > 1) startSponsorTimer();
+}
+function startSponsorTimer() {
+  if (_sponsorTimer) clearInterval(_sponsorTimer);
+  _sponsorTimer = setInterval(nextSponsor, ROTATION_MS);
+}
+function nextSponsor() {
+  _sIdx = (_sIdx + 1) % _sponsors.length;
+  const front  = $('sponsor-' + _sFront);
+  const backId = _sFront === 'a' ? 'b' : 'a';
+  const back   = $('sponsor-' + backId);
+  back.onload = () => { back.classList.add('on'); front.classList.remove('on'); _sFront = backId; back.onload = null; };
+  back.src = _sponsors[_sIdx];
+}
+
+// ── Names ───────────────────────────────────────────────────────────────────
+function titleCase(s) {
+  s = (s || '').trim();
+  if (!s) return s;
+  if (s !== s.toUpperCase() && s !== s.toLowerCase()) return s;   // already mixed case: leave it
+  return s.toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (m, a, b) => a + b.toUpperCase())
+    .replace(/\bMc([a-z])/g, (m, c) => 'Mc' + c.toUpperCase())
+    .replace(/\b(Ii|Iii|Iv)\b/g, x => x.toUpperCase());
+}
+const NAME_SUFFIX    = /^(jr\.?|sr\.?|ii|iii|iv)$/i;
+const NAME_PARTICLES = new Set(['van', 'von', 'de', 'di', 'da', 'del', 'della', 'du', 'le', 'la', 'der', 'den', 'ten', 'st', 'st.']);
+// The bridge appends a rookie marker to entry.name ("Alonso R", "Alonso (R)", ...).
+// lastName() used to keep only the final word, so rookies ended up shown as just "R".
+// splitRookie() peels the marker off first; the rookie flag is kept for a small tag.
+const ROOKIE_TAIL = /(?:\s*[\(\[]\s*R\s*[\)\]]|\s+[-\u2013*]?\s*R\*?|\s*\*)\s*$/i;
+function splitRookie(raw) {
+  let s = String(raw == null ? '' : raw).trim();
+  let rookie = false;
+  for (let k = 0; k < 2; k++) {                       // tolerate a doubled marker
+    const m = s.match(ROOKIE_TAIL);
+    if (!m || m.index === 0) break;                   // never strip the whole name
+    s = s.slice(0, m.index).trim(); rookie = true;
+  }
+  return { name: s, rookie };
+}
+function lastNameOnly(full) {
+  const t = titleCase(full).split(/\s+/).filter(Boolean);
+  if (t.length <= 1) return t[0] || '';
+  const suffix = [];
+  while (t.length > 1 && NAME_SUFFIX.test(t[t.length - 1])) suffix.unshift(t.pop());
+  let i = t.length - 1;
+  while (i > 0 && NAME_PARTICLES.has(t[i - 1].toLowerCase())) i--;
+  return t.slice(i).concat(suffix).join(' ');
+}
+// → { name, rookie } for a standings entry; falls back to fullName / number if the name was only "R"
+function entryName(s) {
+  let r = splitRookie(s.name);
+  if (r.name && /^[\(\[]?R[\)\]]?$/i.test(r.name) && s.fullName) {   // name was just the marker
+    const f = splitRookie(s.fullName);
+    if (f.name) r = { name: f.name, rookie: true };
+  }
+  let name = lastNameOnly(r.name) || lastNameOnly(splitRookie(s.fullName).name) || String(s.number || '?');
+  return { name, rookie: r.rookie };
+}
+const escHTML = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const rookieTag = r => r ? '<span class="rk">(R)</span>' : '';
+
+const _measureCtx   = document.createElement('canvas').getContext('2d');
+const NAME_MAX_W    = 205;
+const NAME_BASE     = 32;
+const NAME_MIN      = 18;
+const NAME_FONT     = "'Bahnschrift SemiBold Condensed', 'Bahnschrift Condensed', 'Arial Narrow', 'Roboto Condensed', 'Helvetica Neue', Arial, sans-serif";
+function fitNameFontSize(name, rookie) {
+  name = String(name).toUpperCase();
+  if (rookie) name += ' (R)';
+  let size = NAME_BASE;
+  _measureCtx.font = `700 ${size}px ${NAME_FONT}`;
+  while (_measureCtx.measureText(name).width > NAME_MAX_W && size > NAME_MIN) {
+    size -= 0.5;
+    _measureCtx.font = `700 ${size}px ${NAME_FONT}`;
+  }
+  return size;
+}
+
+// ── Number cells ────────────────────────────────────────────────────────────
+// Each car number is probed ONCE (image + corner colour) and cached; cells already on
+// screen are patched in place when a probe finishes, so the ticker never rebuilds for it.
+function numImgSrc(num) {
+  const n = (num || '').trim();
+  if (!n || !SERIES_ID) return '';
+  return assetPath(`series/${SERIES_ID}/numbers/${n}.png`);
+}
+function sampleBgColor(imgEl, callback) {
+  try {
+    const c = document.createElement('canvas');
+    c.width = imgEl.naturalWidth; c.height = imgEl.naturalHeight;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(imgEl, 0, 0);
+    const w = c.width, h = c.height, i = 3;
+    const px = [
+      ctx.getImageData(i,     i,     1, 1).data,
+      ctx.getImageData(w-i-1, i,     1, 1).data,
+      ctx.getImageData(i,     h-i-1, 1, 1).data,
+      ctx.getImageData(w-i-1, h-i-1, 1, 1).data,
+    ];
+    if (px.filter(p => p[3] < 32).length >= 2) { callback('transparent'); return; }
+    const opaque = px.filter(p => p[3] >= 32);
+    if (!opaque.length) { callback('transparent'); return; }
+    const avg = opaque.reduce((a, p) => [a[0]+p[0], a[1]+p[1], a[2]+p[2]], [0,0,0]).map(v => Math.round(v / opaque.length));
+    callback(`rgb(${avg[0]},${avg[1]},${avg[2]})`);
+  } catch (_) { callback('transparent'); }
+}
+let _driverColors = {};
+let _driverColorsSig = '';
+const _numInfo = {};   // num → { state: 'loading' | 'ok' | 'fail', src, color }
+
+const _ccCtx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+const _lumCache = {};
+function bgLuma(c) {
+  if (!c || c === 'transparent') return -1;
+  if (_lumCache[c] !== undefined) return _lumCache[c];
+  let v = -1;
+  try {
+    _ccCtx.clearRect(0, 0, 1, 1);
+    _ccCtx.fillStyle = '#000'; _ccCtx.fillStyle = c;
+    _ccCtx.fillRect(0, 0, 1, 1);
+    const d = _ccCtx.getImageData(0, 0, 1, 1).data;
+    if (d[3] >= 32) v = (0.299 * d[0] + 0.587 * d[1] + 0.114 * d[2]) / 255;
+  } catch (_) {}
+  return (_lumCache[c] = v);
+}
+function contrastText(bg) { return bgLuma(bg) > 0.6 ? '#111111' : '#ffffff'; }
+function numBg(num) {
+  const i = _numInfo[num];
+  return _driverColors[num] || (i && i.color) || 'transparent';
+}
+function loadNumber(num) {
+  if (_numInfo[num]) return;
+  const src = numImgSrc(num);
+  if (!src) { _numInfo[num] = { state: 'fail', color: null }; return; }
+  const n = _numInfo[num] = { state: 'loading', src, color: null };
+  const img = new Image();
+  img.onload  = () => sampleBgColor(img, c => { n.color = c; n.state = 'ok'; patchNumber(num); });
+  img.onerror = () => { n.state = 'fail'; patchNumber(num); };
+  img.src = src;
+}
+function numContentHTML(num) {
+  const i = _numInfo[num];
+  if (i && i.state === 'ok') return `<img src="${i.src}" alt="${num}">`;
+  const hide = (i && i.state === 'fail') ? '' : 'visibility:hidden;';
+  return `<span class="num-fallback" style="display:block;${hide}color:${contrastText(numBg(num))}">${num}</span>`;
+}
+function patchNumber(num) {
+  document.querySelectorAll('#ticker-track .numbox, #results-wrap .numbox, #pp-wrap .numbox').forEach(w => {
+    if (w.dataset.num !== num) return;
+    w.querySelector('.nb-img').innerHTML = numContentHTML(num);
+    w.querySelector('.nb-bg').style.background = numBg(num);
+  });
+  if (num === _leaderNum) renderLeaderNumber(num);
+}
+function resetNumberCache() {
+  Object.keys(_numInfo).forEach(k => { if (_numInfo[k].state !== 'ok') delete _numInfo[k]; });
+  _leaderShown = '';
+}
+
+// ── Lap / laps-to-go box ────────────────────────────────────────────────────
+let _lastLapText = '', _lastLapMode = '';
+function setLapBox(text, mode) {
+  if (mode !== _lastLapMode) {
+    _lastLapMode = mode;
+    $('b-flag').dataset.mode = mode || '';          // green by default; caution / white / checkered
+  }
+  if (text === _lastLapText) return;
+  _lastLapText = text;
+  const el = $('lap-text'), box = $('lap-zone');
+  el.textContent = text;
+  let size = 34;
+  el.style.fontSize = size + 'px';
+  while (el.scrollWidth > box.offsetWidth - 14 && size > 16) { size -= 0.5; el.style.fontSize = size + 'px'; }
+}
+function updateLap(d) {
+  const session = (d.session || '').toLowerCase();
+  const state   = (d.sessionState || '').toLowerCase();
+  const flag    = (d.sessionFlag  || '').toLowerCase();
+  const lc      = d.lapsComplete || 0;
+  const lt      = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  let text = '', mode = '';
+
+  if (session === 'race') {
+    const togo = lt > 0 ? lt - lc : 0;
+    if (state === 'checkered' || state === 'cool down') { text = 'FINISH'; mode = 'checkered'; }
+    else if (state === 'get in car')                    { text = 'GRIDDING'; }
+    else if (state === 'warmup' || state === 'parade laps') { text = 'PACE LAPS'; }
+    else if (lt > 0 && togo <= 1 && lc > 0)             { text = 'FINAL LAP'; mode = flag === 'yellow' ? 'caution' : 'white'; }
+    else if (lt > 0) {
+      // Until 3/4 of the race is done show "Lap X/Y"; after that, "N TO GO"
+      text = lc < lt * 0.75 ? `LAP ${lc + 1} / ${lt}` : `${Math.max(togo, 0)} TO GO`;
+      if (flag === 'yellow') mode = 'caution';
+    }
+    else                                                { text = `LAP ${lc + 1}`; if (flag === 'yellow') mode = 'caution'; }
+  } else if (session === 'qualifying') {
+    text = 'QUALIFYING';
+  } else {
+    const t = d.timeRemaining || 0;
+    if (t > 0) {
+      const m = Math.floor(t / 60), s = Math.floor(t % 60).toString().padStart(2, '0');
+      text = `${m}:${s}`;
+    } else text = 'PRACTICE';
+  }
+  setLapBox(text, mode);
+}
+
+// ── Gap formatting ──────────────────────────────────────────────────────────
+let underCaution = false;
+let _flagSeen = false;
+let _wasFinalLap = false, _finalSeen = false, _finalShown = false;
+let _session = '';
+
+function isDnf(s) {
+  const st = (s.status || '').toLowerCase();
+  return !!st && st !== 'running' && st !== 'pitting';
+}
+function fmtGap(i, list) {
+  const s = list[i];
+  if (isDnf(s)) return DNF_DISPLAY === 'out' ? 'OUT' : (s.status || '').toUpperCase().slice(0, 8);
+  if (_session === 'practice' || _session === 'qualifying' || _session === 'testing') {
+    const t = s.time || 0;
+    return t > 0 ? t.toFixed(3) : '';
+  }
+  if ((s.lapsDown || 0) > 0) return `-${s.lapsDown}L`;
+  if (underCaution || i === 0) return '';
+  const t = s.time || 0;
+  if (t <= 0) return '';
+  if (GAP_MODE === 'interval') {
+    const p  = list[i - 1];
+    const pt = (p && !(p.lapsDown > 0) && !isDnf(p)) ? (p.time || 0) : 0;
+    return `-${Math.max(t - pt, 0).toFixed(3)}`;
+  }
+  return `-${t.toFixed(3)}`;
+}
+
+// ── Ticker ──────────────────────────────────────────────────────────────────
+const ENTRY_W  = 430;
+const LABEL_W  = 0;           // the INTERVALS label is a fixed box, not part of the scrolling track
+const REGION_W = 1352;
+let _barLabel  = 'INTERVALS';
+let _standings = [];
+
+function setBarLabel(t) {
+  const el = $('bar-label');
+  el.textContent = t;
+  let size = 29;
+  _measureCtx.font = `700 ${size}px ${NAME_FONT}`;
+  while (_measureCtx.measureText(t.toUpperCase()).width > el.clientWidth - 14 && size > 16) {
+    size -= 0.5; _measureCtx.font = `700 ${size}px ${NAME_FONT}`;
+  }
+  el.style.fontSize = size + 'px';
+}
+
+function buildTickerHTML() {
+  if (!_standings.length) return '';
+  const entries = _standings.map((s, i) => {
+    const num  = (s.number || '??').trim();
+    const en   = entryName(s), name = escHTML(en.name);
+    loadNumber(num);
+    return `<div class="t-entry${chaseCls(num)}" data-caridx="${s.carIdx}" data-chase-num="${chaseKey(num)}">
+      <span class="t-pos">${i + 1}</span>
+      <div class="numbox" data-num="${num}">
+        <div class="nb-bg" style="background:${numBg(num)}"></div>
+        <div class="nb-img">${numContentHTML(num)}</div>
+      </div>
+      <span class="t-name" style="font-size:${fitNameFontSize(en.name, en.rookie)}px">${name}${rookieTag(en.rookie)}</span>
+      <span class="t-gap">${fmtGap(i, _standings)}</span>
+    </div>`;
+  }).join('');
+  return entries;
+}
+
+let scrollX = 0, loopWidth = 0, lastTs = null, scrollStarted = false;
+let _pendingGapUpdate = false;
+let _gapEls = [];            // cached .t-gap nodes (rebuilt in renderTicker)
+let _trackEl = null;
+
+function renderTicker() {
+  const track = $('ticker-track');
+  const html  = buildTickerHTML();
+  if (!html) { track.innerHTML = ''; _gapEls = []; loopWidth = 0; return; }
+  const single = _standings.length * ENTRY_W + LABEL_W;
+  const copies = Math.max(2, Math.ceil(REGION_W / single) + 1);
+  track.innerHTML = html.repeat(copies);
+  _gapEls = Array.from(track.querySelectorAll('.t-gap'));
+  const first = loopWidth === 0;
+  loopWidth = single;
+  if (first) scrollX = REGION_W;                       // leader enters from the right
+  else if (scrollX <= -loopWidth) scrollX = scrollX % loopWidth;
+  track.style.transform = `translate3d(${scrollX}px,0,0)`;
+}
+
+function applyPendingGaps() {
+  if (!_pendingGapUpdate) return;
+  _pendingGapUpdate = false;
+  const len = _standings.length;
+  if (!len) return;
+  if (_resultsShown) return;                       // ticker is hidden behind the results cards
+  // gaps only depend on the entry index: compute once per entry, not once per loop copy
+  const txt = new Array(len);
+  for (let i = 0; i < len; i++) txt[i] = fmtGap(i, _standings);
+  for (let k = 0; k < _gapEls.length; k++) {
+    const el = _gapEls[k], t = txt[k % len];
+    if (el.textContent !== t) el.textContent = t;
+  }
+}
+
+function startScroll() {
+  if (scrollStarted) return;
+  scrollStarted = true;
+  requestAnimationFrame(tickScroll);
+}
+function tickScroll(ts) {
+  requestAnimationFrame(tickScroll);
+  // Perf: nothing to draw while the overlay is hidden, empty, or covered by the top-5 results
+  if (_resultsShown || loopWidth <= 0 || root.style.visibility === 'hidden') { lastTs = null; return; }
+  const dt = lastTs ? Math.min((ts - lastTs) / 1000, 0.05) : 0;
+  scrollX -= SCROLL_SPEED * dt;
+  if (scrollX <= -loopWidth) scrollX += loopWidth;
+  applyPendingGaps();
+  (_trackEl || (_trackEl = $('ticker-track'))).style.transform = `translate3d(${scrollX}px,0,0)`;
+  lastTs = ts;
+}
+
+// ── FLIP pass animation ─────────────────────────────────────────────────────
+let _prevOrder = [];
+function detectAndAnimatePasses(newStandings) {
+  const newOrder = newStandings.map(s => s.carIdx);
+  if (!_prevOrder.length) { _prevOrder = newOrder; renderTicker(); return; }
+  animatePass(_prevOrder, newOrder);
+  _prevOrder = newOrder;
+}
+function animatePass(oldOrder, newOrder) {
+  const firstPos = new Map();
+  document.querySelectorAll('#ticker-track [data-caridx]').forEach(node => {
+    const ci = node.dataset.caridx;
+    if (firstPos.has(ci)) return;
+    const rect = node.getBoundingClientRect();
+    if (rect.right > 0 && rect.left < window.innerWidth) firstPos.set(ci, rect.left);
+  });
+  renderTicker();
+  requestAnimationFrame(() => {
+    const pending = [];
+    document.querySelectorAll('#ticker-track [data-caridx]').forEach(node => {
+      const ci = node.dataset.caridx;
+      const oldIdx = oldOrder.indexOf(Number(ci)), newIdx = newOrder.indexOf(Number(ci));
+      if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return;
+      if (!firstPos.has(ci)) return;
+      const newRect = node.getBoundingClientRect();
+      if (newRect.width === 0) return;
+      const dx = firstPos.get(ci) - newRect.left;
+      if (Math.abs(dx) < 1 || Math.abs(dx) > ENTRY_W * 4) return;
+      node.style.transition = 'none';
+      node.style.transform  = `translateX(${dx}px)`;
+      node.classList.add(newIdx < oldIdx ? 'passing' : 'passed');
+      void node.offsetWidth;
+      pending.push(node);
+    });
+    requestAnimationFrame(() => {
+      pending.forEach(n => { n.style.transition = 'transform 2.2s cubic-bezier(0.25, 0.1, 0.25, 1)'; n.style.transform = ''; });
+      setTimeout(() => pending.forEach(n => { n.classList.remove('passing', 'passed'); n.style.transition = ''; }), 2220);
+    });
+  });
+}
+
+// ── Leader box ──────────────────────────────────────────────────────────────
+let _leaderNum = '', _leaderShown = '', _leaderLabel = '', _leaderShownNum = '';
+function applyLeaderChase() {
+  const on = _CHASE.size > 0 && _CHASE.has(chaseKey(_leaderNum));
+  $('leader-content').classList.toggle('chase-leader', on);
+}
+function fitLeaderContent() {
+  const el = $('leader-content');
+  const safe = $('leader-zone').clientWidth - 4 - 14;
+  el.style.transform = 'scale(1)';
+  if (el.scrollWidth > safe) el.style.transform = `scale(${safe / el.scrollWidth})`;
+}
+function setLeaderLabel(text) {
+  if (text === _leaderLabel) return;
+  _leaderLabel = text;
+  $('leader-label').textContent = text;
+  requestAnimationFrame(fitLeaderContent);
+}
+function renderLeaderNumber(num) {
+  const i = _numInfo[num];
+  const bg = numBg(num);
+  const sig = `${num}|${i ? i.state : ''}|${bg}`;
+  if (sig === _leaderShown) return;
+  _leaderShown = sig;
+  const bgEl = $('leader-nb-bg'), imgEl = $('leader-num-img'), fbEl = $('leader-num-fallback');
+  bgEl.style.background = bg;
+  fbEl.textContent = num;
+  fbEl.style.color = contrastText(bg);
+  if (i && i.state === 'ok') {
+    if (imgEl.getAttribute('src') !== i.src) imgEl.src = i.src;
+    imgEl.style.display = 'block'; fbEl.style.display = 'none';
+  } else if (i && i.state === 'fail') {
+    imgEl.style.display = 'none'; fbEl.style.display = 'block';
+  } else {
+    imgEl.style.display = 'none'; fbEl.style.display = 'none';
+  }
+  requestAnimationFrame(fitLeaderContent);
+}
+// Full names by carIdx. fullName is not present in every list the bridge sends (liveStandings
+// often only has the short name), so remember the best one seen in any of them.
+let _fullNames = {};
+const _words = t => (t || '').split(/\s+/).filter(Boolean).length;
+function learnName(carIdx, raw) {
+  if (carIdx === undefined || carIdx === null || !raw) return;
+  const n = splitRookie(raw).name;
+  if (!n || /^[\(\[]?R[\)\]]?$/i.test(n)) return;
+  const cur = _fullNames[carIdx];
+  if (!cur || _words(n) >= _words(cur)) _fullNames[carIdx] = n;
+}
+function learnNames(d) {
+  for (const k of ['standings', 'liveStandings', 'computedStandings'])
+    if (Array.isArray(d[k])) for (const s of d[k]) learnName(s.carIdx, s.fullName);
+  for (const k of ['drivers', 'relative'])
+    if (Array.isArray(d[k])) for (const s of d[k]) learnName(s.carIdx, s.fullName || s.name);
+}
+function setLeader(entry) {
+  const num = (entry.number || '??').trim();
+  _leaderNum = num;
+  // Full name without the bridge's rookie marker; rookie flag comes from name OR fullName.
+  learnName(entry.carIdx, entry.fullName);
+  const known = _fullNames[entry.carIdx];
+  const fn = splitRookie(_words(known) > _words(splitRookie(entry.fullName).name) ? known : entry.fullName), sn = splitRookie(entry.name);
+  const isMarker = t => !t || /^[\(\[]?R[\)\]]?$/i.test(t);
+  let base = !isMarker(fn.name) ? fn.name : (!isMarker(sn.name) ? sn.name : '');
+  if (!base) base = entryName(entry).name;                      // name was only "R": last-resort fallback
+  if (isMarker(base)) base = num;
+  const rookie = fn.rookie || sn.rookie || isMarker(sn.name) && !!entry.name;
+  const nm = lastNameOnly(base || '?') + (rookie ? ' (R)' : '');
+  const ln = $('leader-name');
+  const changed = ln.textContent !== nm || _leaderNum !== _leaderShownNum;
+  if (ln.textContent !== nm) ln.textContent = nm;
+  loadNumber(num);
+  renderLeaderNumber(num);
+  if (changed) { _leaderShownNum = _leaderNum; requestAnimationFrame(fitLeaderContent); }
+  applyLeaderChase();
+}
+
+// ── Standings source ────────────────────────────────────────────────────────
+function getStandings(d) {
+  const state       = (d.sessionState || '').toLowerCase();
+  const flag        = (d.sessionFlag  || '').toLowerCase();
+  const liveEnabled = d.liveStandingsEnabled !== false;
+  const live        = d.liveStandings || d.standings || [];
+  if (state === 'cool down' || flag === 'yellow') return d.standings || [];
+  if (state === 'get in car' || state === 'warmup' || state === 'parade laps') return d.standings || [];
+  if (state === 'checkered' && liveEnabled && Array.isArray(d.computedStandings) && d.computedStandings.length)
+    return d.computedStandings;
+  return liveEnabled && live.length ? live : (d.standings || []);
+}
+
+// ── Flag banner ─────────────────────────────────────────────────────────────
+// CAUTION (yellow flag), GREEN FLAG (start / restart) and FINAL LAP stay up for FLAG_BANNER_MS; then the
+// normal lap + leader boxes come back. The banner opens, then its letters zoom in (see CSS).
+const FLAG_BANNER_MS = 5000;
+const BANNER_TEXT = { caution: 'CAUTION', green: 'GREEN FLAG', final: 'FINAL LAP' };
+const BANNER_KIND = { caution: 'yellow', green: 'green', final: 'white' };
+let _cautionTimer = null, _bannerKind = '';
+// kind given: hide only if that kind is the one on screen; no kind: hide whatever is showing
+function hideCautionBanner(kind) {
+  if (kind && _bannerKind !== kind) return;
+  clearTimeout(_cautionTimer); _cautionTimer = null; _bannerKind = '';
+  $('flag-banner').classList.remove('show');
+}
+function showBanner(kind) {
+  if (kind === 'final' && _bannerKind === 'caution') return;          // FINAL LAP never cuts a CAUTION banner short
+  const el = $('flag-banner');
+  clearTimeout(_cautionTimer);
+  el.classList.remove('show');
+  el.dataset.kind = BANNER_KIND[kind] || 'yellow';
+  $('fb-text').textContent = BANNER_TEXT[kind] || '';
+  void el.offsetWidth;                                                 // restart the open + zoom animations
+  el.classList.add('show');
+  _bannerKind = kind;
+  _cautionTimer = setTimeout(() => hideCautionBanner(), FLAG_BANNER_MS);
+}
+function showCautionBanner() { showBanner('caution'); }
+function showFinalLapBanner() { showBanner('final'); }
+// Called with every frame: CAUTION when the yellow flag comes out, GREEN FLAG on the start and on restarts
+let _fbSeen = false, _fbPrevRacing = false, _fbPrevYellow = false;
+function updateFlagBanner(session, state, flag) {
+  const racing = session === 'race' && state !== 'get in car' && state !== 'warmup' && state !== 'parade laps'
+              && state !== 'checkered' && state !== 'cool down';
+  const yellow = racing && flag === 'yellow';
+  if (_fbSeen) {
+    if (yellow && !_fbPrevYellow) showCautionBanner();
+    else if (racing && !yellow && flag !== 'red' && (!_fbPrevRacing || _fbPrevYellow)) showBanner('green');
+  }
+  _fbPrevRacing = racing; _fbPrevYellow = yellow; _fbSeen = true;
+}
+
+// ── Top-5 results (post-race) ───────────────────────────────────────────────
+const RESULTS_DELAY_MS   = 15000;   // wait after the race ends before showing the top 5
+const RESULTS_STAGGER_MS = 700;     // delay between each position fading in
+const RESULTS_COUNT      = 5;
+const RESULT_NAME_MAX_W  = 215;
+let _resultsTimer = null, _resultsShown = false, _resultsSig = '';
+let _wasRaceEnded = false, _endSeen = false, _resultsDone = false;
+
+function resultNameSize(name, rookie) {
+  if (rookie) name += ' (R)';
+  let size = 30;
+  _measureCtx.font = `600 ${size}px 'Helvetica Neue', Arial, sans-serif`;
+  while (_measureCtx.measureText(name).width > RESULT_NAME_MAX_W && size > 16) {
+    size -= 0.5;
+    _measureCtx.font = `600 ${size}px 'Helvetica Neue', Arial, sans-serif`;
+  }
+  return size;
+}
+const resultsTopList = () => _standings.slice(0, RESULTS_COUNT);
+const resultsSig     = list => list.map(s => s.carIdx + ':' + (s.number || '')).join(',');
+function buildResultsHTML(list) {
+  return list.map((s, i) => {
+    const num  = (s.number || '??').trim();
+    const en   = entryName(s), name = escHTML(en.name);
+    loadNumber(num);
+    const photo = SERIES_ID
+      ? `<img class="r-photo" src="${assetPath(`series/${SERIES_ID}/headshots/${num}.png`)}" alt="" onload="this.style.opacity=1" onerror="this.remove()">`
+      : '';
+    const car = (SERIES_ID && SHOW_CAR)
+      ? `<img class="r-car" src="${assetPath(`series/${SERIES_ID}/cars/${num}.png`)}" alt="" onload="this.style.opacity=1" onerror="this.remove()">`
+      : '';
+    return `<div class="r-card">
+      <div class="numbox" data-num="${num}">
+        <div class="nb-bg" style="background:${numBg(num)}"></div>
+        <div class="nb-img">${numContentHTML(num)}</div>
+      </div>
+      ${photo}
+      ${car}
+      <div class="r-info"><span class="r-pos">${i + 1}</span><span class="r-name" style="font-size:${resultNameSize(en.name, en.rookie)}px">${name}${rookieTag(en.rookie)}</span></div>
+    </div>`;
+  }).join('');
+}
+function showResults() {
+  _resultsTimer = null;
+  const list = resultsTopList();
+  if (!list.length) return;
+  const wrap = $('results-wrap');
+  wrap.innerHTML = buildResultsHTML(list);
+  _resultsSig = resultsSig(list); _resultsShown = true;
+  root.classList.add('results-mode');
+  const cards = Array.from(wrap.children);
+  cards.forEach((c, i) => { c.style.transitionDelay = (i * RESULTS_STAGGER_MS) + 'ms'; });
+  void wrap.offsetWidth;
+  requestAnimationFrame(() => cards.forEach(c => c.classList.add('in')));   // 1st → 5th, one fade each
+}
+// If the top 5 changes while the panel is up (late finishers, official results), update in place
+function refreshResults() {
+  if (!_resultsShown) return;
+  const list = resultsTopList();
+  if (!list.length) return;
+  const sig = resultsSig(list);
+  if (sig === _resultsSig) return;
+  _resultsSig = sig;
+  const wrap = $('results-wrap');
+  wrap.innerHTML = buildResultsHTML(list);
+  Array.from(wrap.children).forEach(c => c.classList.add('in', 'instant'));
+}
+function cancelResults() {
+  clearTimeout(_resultsTimer); _resultsTimer = null;
+  if (_resultsShown) {
+    _resultsShown = false; _resultsSig = '';
+    root.classList.remove('results-mode');
+    $('results-wrap').innerHTML = '';
+  }
+}
+
+// ── Main render ─────────────────────────────────────────────────────────────
+let _lastOrder = '';
+let _lastSessionNum = null, _lastSessionCookie = null;
+let _sessionChangePending = false;
+
+function clearTicker() {
+  _fullNames = {};
+  _lastOrder = ''; _prevOrder = []; _standings = [];
+  $('ticker-track').innerHTML = '';
+  _gapEls = []; loopWidth = 0; scrollX = 0;
+}
+
+function render(d) {
+  try { ppFeed(d); } catch (_) {}
+  if (!checkVisibility(d)) { setVisible(false); return; }
+  setVisible(true);
+
+  const session = (d.session || '').toLowerCase();
+  _session = session;
+  const state = (d.sessionState || '').toLowerCase();
+  const flag  = (d.sessionFlag  || '').toLowerCase();
+
+  if (d.driverColors) {
+    const sig = JSON.stringify(d.driverColors);
+    if (sig !== _driverColorsSig) {
+      _driverColorsSig = sig;
+      _driverColors = d.driverColors;
+      _leaderShown = '';
+      _lastOrder = '';
+    }
+  }
+
+  const isPracQual = session === 'practice' || session === 'qualifying' || session === 'testing';
+  $('ticker-track').classList.toggle('prac-qual', isPracQual);
+
+  const wasUnderCaution = underCaution;
+  underCaution = (flag === 'yellow');
+  if (underCaution !== wasUnderCaution) {
+    renderTicker();
+  }
+  _flagSeen = true;
+  updateFlagBanner(session, state, flag);
+
+  // Final lap banner: once per race, when the last lap starts (same condition as the lap box)
+  {
+    const lcN = d.lapsComplete || 0;
+    const ltN = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+    const racing = session === 'race' && state !== 'checkered' && state !== 'cool down'
+                && state !== 'get in car' && state !== 'warmup' && state !== 'parade laps';
+    const isFinalLap = racing && ltN > 0 && ltN - lcN <= 1 && lcN > 0;
+    if (isFinalLap && !_wasFinalLap && _finalSeen && !_finalShown) { _finalShown = true; showFinalLapBanner(); }
+    _wasFinalLap = isFinalLap;
+    _finalSeen = true;
+  }
+
+  // Top-5 results: RESULTS_DELAY_MS after the race ends (first checkered / cool down)
+  const raceEnded = session === 'race' && (state === 'checkered' || state === 'cool down');
+  if (raceEnded && !_wasRaceEnded && _endSeen && !_resultsDone) {
+    _resultsDone = true;
+    clearTimeout(_resultsTimer);
+    _resultsTimer = setTimeout(showResults, RESULTS_DELAY_MS);
+  } else if (!raceEnded && (_resultsTimer || _resultsShown)) {
+    cancelResults();
+  }
+  _wasRaceEnded = raceEnded; _endSeen = true;
+
+  const hadPrior = _lastSessionNum !== null && _lastSessionCookie !== null;
+  const sessionChanged = hadPrior && (d.sessionNum !== _lastSessionNum || d.sessionCookie !== _lastSessionCookie);
+  _lastSessionNum = d.sessionNum; _lastSessionCookie = d.sessionCookie;
+  if (sessionChanged) {
+    resetNumberCache();
+    clearTicker();
+    hideCautionBanner();
+    _wasFinalLap = false; _finalShown = false;
+    cancelResults(); _wasRaceEnded = raceEnded; _resultsDone = raceEnded;
+    _sessionChangePending = true;
+  }
+
+  updateLap(d);
+
+  // Leader label
+  let label = 'Leader';
+  if (session === 'race' && (state === 'checkered' || state === 'cool down')) label = 'Winner';
+  else if (session === 'qualifying') label = 'Pole';
+  else if (isPracQual) label = 'Fastest';
+  setLeaderLabel(label);
+  const bl = isPracQual ? 'BEST LAP' : (state === 'cool down' || state === 'checkered') ? 'RESULTS' : (underCaution && session === 'race') ? 'RUNNING ORDER' : 'INTERVALS';
+  if (bl !== _barLabel) {
+    _barLabel = bl;
+    setBarLabel(bl);
+  }
+
+  const standings = getStandings(d);
+  if (_sessionChangePending) {
+    if (!standings.length) return;
+    _sessionChangePending = false;
+  }
+  if (!standings.length) return;
+
+  learnNames(d);
+  setLeader(standings[0]);
+
+  const order = standings.map(s => s.carIdx).join(',');
+  if (order !== _lastOrder) {
+    _lastOrder = order;
+    _standings = standings;
+    detectAndAnimatePasses(standings);
+  } else {
+    _standings = standings;
+    _pendingGapUpdate = true;
+  }
+  refreshResults();
+}
+
+// ── Championship config + laps led (for the live points column) ─────────────
+let CFG = null;
+async function loadCfg() {
+  try {
+    if (window.shl && window.shl.getChampionship) {
+      const r = await window.shl.getChampionship(SERIES_ID);
+      CFG = (r && r.data) || null;
+      _ppKey = '';
+      if (_ppOn && _ppData) ppRender(_ppData);
+    }
+  } catch (e) {}
+}
+if (window.shl && window.shl.onChampionshipUpdated) window.shl.onChampionshipUpdated(loadCfg);
+loadCfg();
+
+// If this race's points were already added to the totals (and its session is still on
+// screen), take them back out so the live projection isn't counted twice.
+function ppEffectiveCfg(cfg, key) {
+  const la = cfg && cfg.lastApplied;
+  if (!la || !la.live || la.key !== key || !Array.isArray(la.deltas) || !la.deltas.length) return cfg;
+  const sub = new Map(la.deltas.map(x => [String(x.number).trim(), Number(x.pts) || 0]));
+  return { ...cfg, drivers: (cfg.drivers || []).map(x => {
+    const k = String(x.number).trim();
+    return sub.has(k) ? { ...x, points: (Number(x.points) || 0) - sub.get(k) } : x;
+  }) };
+}
+
+const normNum = n => String(n == null ? '' : n).trim();
+const LED_KEY = 'psf_nbc2012_led_v1';
+let LED = { cookie: null, track: null, lastLap: 0, counts: {} };
+try { const o = JSON.parse(localStorage.getItem(LED_KEY)); if (o && o.counts) LED = o; } catch (e) {}
+function saveLed() { try { localStorage.setItem(LED_KEY, JSON.stringify(LED)); } catch (e) {} }
+function trackLed(d) {
+  const session = (d.session || '').toLowerCase();
+  const state   = (d.sessionState || '').toLowerCase();
+  const off     = d.standings || [];
+  if (session !== 'race' || !off.length) return;
+  const cookie = d.sessionCookie != null ? String(d.sessionCookie) : null;
+  const track  = d.track || null;
+  // Same source as the race recorder (which decides the real points): live leader + best lap count
+  const lapsOf = s => { if (!s) return 0; const cl = (d.carLaps && s.carIdx !== undefined) ? Number(d.carLaps[s.carIdx]) : NaN;
+                        return Math.max(Number.isFinite(cl) ? cl : 0, Number(s.lap) || 0); };
+  const lead   = ((d.liveStandings && d.liveStandings.length) ? d.liveStandings : off)[0] || off[0];
+  const lap    = Math.max(Number(d.lapsComplete) || 0, lapsOf(lead), lapsOf(off[0]));
+  if (cookie !== LED.cookie || track !== LED.track || lap < LED.lastLap) {
+    LED = { cookie, track, lastLap: 0, counts: {} };
+    saveLed();
+  }
+  if (state !== 'racing' && state !== 'checkered') return;
+  if (lap > LED.lastLap) {
+    if (LED.lastLap === 0 && lap > 1) {
+      LED.lastLap = lap;                         // joined mid-race: earlier laps unknown
+    } else {
+      const k = normNum(lead.number);
+      if (k) LED.counts[k] = (LED.counts[k] || 0) + (lap - LED.lastLap);
+      LED.lastLap = lap;
+    }
+    saveLed();
+  }
+}
+function getLedCounts(d) {
+  const off = d.standings || [];
+  if (off.some(x => x.lapsLead !== undefined || x.leadLaps !== undefined)) {
+    const m = {};
+    off.forEach(x => { m[normNum(x.number)] = Number(x.lapsLead ?? x.leadLaps) || 0; });
+    return m;
+  }
+  return LED.counts;
+}
+
+// ── Live points column (toggled by the Points Table hotkey) ─────────────────
+// "Points as they run": top 5 of the championship with this race's points projected from the live
+// order (same maths as the Championship widget). It drops out as a column under the bar; the leader
+// shows "Leader", the rest the points gap to him.
+const PP_ROWS = 7, PP_PITCH = 48;   // up to 7 slots (the phone's Championship tab); 5 when nothing is chosen
+let _ppOn = false, _ppTimers = [], _ppKey = '', _ppPrev = new Map(), _ppData = null;
+(function ppInit() {
+  const wrap = document.getElementById('pp-wrap');
+  for (let i = 0; i < PP_ROWS; i++) {
+    const r = document.createElement('div');
+    r.className = 'pp-row'; r.id = 'pp-row-' + i;
+    r.style.setProperty('--i', i + 1);
+    r.style.top = (PP_PITCH + i * PP_PITCH) + 'px';
+    wrap.appendChild(r);
+  }
+})();
+
+function ppRows(d) {
+  const cfg0 = d && d._championship ? d._championship : CFG;
+  const cfg  = cfg0 ? ppEffectiveCfg(cfg0, String(d.sessionCookie) + '|' + String(d.track)) : null;
+  if (!cfg || !Array.isArray(cfg.drivers) || !cfg.drivers.length) return [];
+  const session = (d.session || '').toLowerCase(), state = (d.sessionState || '').toLowerCase();
+  const project = session === 'race' && (state === 'racing' || state === 'checkered' || state === 'cool down');
+  const table = Array.isArray(cfg.pointsTable) ? cfg.pointsTable : [];
+  const led = getLedCounts(d) || {};
+  const bLed = Number(cfg.bonusLedLap) || 0, bMost = Number(cfg.bonusMostLed) || 0;
+  let maxLed = 0; Object.keys(led).forEach(k => { if (led[k] > maxLed) maxLed = led[k]; });
+  const race = new Map();
+  getStandings(d).forEach((st, i) => { const k = normNum(st.number); if (!race.has(k)) race.set(k, { pos: i + 1, entry: st }); });
+  const stageMap = project ? stagePtsMap(d, cfg) : {};
+  const seen = new Set(), rows = [];
+  cfg.drivers.forEach((dr, idx) => {
+    const k = normNum(dr.number); if (seen.has(k)) return; seen.add(k);
+    const base = Number(dr.points) || 0, r = race.get(k), ledN = led[k] || 0;
+    const add = project ? ((r ? (Number(table[r.pos - 1]) || 0) : 0) + (ledN > 0 ? bLed : 0) + (ledN > 0 && ledN === maxLed ? bMost : 0) + (stageMap[k] || 0)) : 0;
+    const en = r ? entryName(r.entry) : { name: lastNameOnly(dr.name) || k, rookie: false };
+    rows.push({ number: k, en, base, total: base + add, idx, rpos: r ? r.pos : 0 });
+  });
+  rows.sort((a, b) => (b.total - a.total) || (b.base - a.base) || (a.idx - b.idx));
+  return PPV.pick(rows, 5);
+}
+
+function ppRender(d) {
+  if (!d) return;
+  const rows = ppRows(d);
+  const key = rows.map(r => r.number + ':' + r.en.name + ':' + r.total).join('|') + '|' + PPV.key();
+  if (key === _ppKey) return;
+  _ppKey = key;
+  const lead = rows.length ? rows[0].total : 0, fmt = v => Math.round(v * 100) / 100;
+  const moved = [], newPrev = new Map();
+  for (let i = 0; i < PP_ROWS; i++) {
+    const el = document.getElementById('pp-row-' + i), r = rows[i];
+    if (!r) { el.innerHTML = ''; el.classList.add('empty'); continue; }
+    el.classList.remove('empty');
+    loadNumber(r.number);
+    el.innerHTML = `<span class="t-pos">${PPV.pos(r, i + 1)}</span>
+      <div class="numbox" data-num="${r.number}">
+        <div class="nb-bg" style="background:${numBg(r.number)}"></div>
+        <div class="nb-img">${numContentHTML(r.number)}</div>
+      </div>
+      <span class="t-name" style="font-size:${fitNameFontSize(r.en.name, r.en.rookie)}px">${escHTML(r.en.name)}${rookieTag(r.en.rookie)}</span>
+      <span class="pp-gap${PPV.isDefault() && r.cpos === 1 ? ' pp-leader' : ''}">${PPV.val(r, r.cpos === 1 ? 'Leader' : '-' + fmt(r.lead - r.total))}</span>`;
+    newPrev.set(r.number, i);
+    const p = _ppPrev.get(r.number);
+    if (_ppOn && p !== undefined && p !== i) {          // a driver changes place: glide to the new row
+      el.style.transition = 'none';
+      el.style.transform = `translateY(${(p - i) * PP_PITCH}px)`;
+      el.style.zIndex = p > i ? '3' : '2';
+      moved.push(el);
+    }
+  }
+  _ppPrev = newPrev;
+  if (moved.length) {
+    void document.getElementById('pp-wrap').offsetWidth;
+    moved.forEach(el => { el.style.transition = 'transform .7s cubic-bezier(.65,0,.35,1)'; el.style.transform = 'translateY(0)'; });
+    setTimeout(() => moved.forEach(el => { el.style.transition = ''; el.style.transform = ''; el.style.zIndex = ''; }), 760);
+  }
+}
+
+// Called with every data frame, whether or not the overlay is currently visible
+function ppFeed(d) {
+  trackLed(d);
+  _ppData = d;
+  if (_ppOn) ppRender(d);
+}
+
+function ppToggle() {
+  const wrap = document.getElementById('pp-wrap');
+  _ppTimers.forEach(clearTimeout); _ppTimers = [];
+  if (!_ppOn) {                                            // ── enter: title and rows drop out one after another
+    _ppOn = true; _ppKey = ''; _ppPrev = new Map();
+    wrap.style.display = 'block';
+    ppRender(_ppData || {});
+    void wrap.offsetWidth;
+    _ppTimers.push(setTimeout(() => { if (_ppOn) wrap.classList.add('show'); }, 30));
+  } else {                                                 // ── exit
+    _ppOn = false;
+    wrap.classList.remove('show');
+    _ppTimers.push(setTimeout(() => { if (!_ppOn) wrap.style.display = 'none'; }, 700));
+  }
+}
+window.__togglePoints = ppToggle;
+PPV.onChange(() => { _ppKey = ''; if (_ppOn && _ppData) ppRender(_ppData); });
+if (window.shl && window.shl.onPointsToggle) window.shl.onPointsToggle(ppToggle);
+
+// ── WebSocket ───────────────────────────────────────────────────────────────
+let _ws = null;
+function connect() {
+  _ws = new WebSocket(WS_URL);
+  _ws.onmessage = e => {
+    if (_preview) return;
+    try {
+      const d = JSON.parse(e.data);
+      if (d.reset) {
+        setVisible(false);
+        hideCautionBanner();
+        _flagSeen = false; _wasFinalLap = false; _finalSeen = false; _finalShown = false;
+        cancelResults(); _wasRaceEnded = false; _endSeen = false; _resultsDone = false;
+        resetNumberCache();
+        _lastSessionNum = null; _lastSessionCookie = null;
+        _sessionChangePending = false;
+        clearTicker();
+        return;
+      }
+      render(d);
+    } catch (_) {}
+  };
+  _ws.onclose = () => { if (!_preview) setTimeout(connect, 2000); };
+  _ws.onerror = () => _ws.close();
+}
+
+// ── Layout editor preview ───────────────────────────────────────────────────
+window.addEventListener('message', e => {
+  if (typeof e.data !== 'string') return;
+  try {
+    const m = JSON.parse(e.data);
+    if (m.reset) return;
+    if (m._pointsToggle) { ppToggle(); return; }
+    if (!_preview) { _preview = true; if (_ws) { _ws.onclose = null; _ws.close(); } }
+    if (m._visibilityMode !== undefined) VISIBILITY_MODE = m._visibilityMode;
+    if (m._dnfDisplay     !== undefined) { DNF_DISPLAY = m._dnfDisplay; _lastOrder = ''; }
+    if (m._scrollSpeed    !== undefined) SCROLL_SPEED = parseFloat(m._scrollSpeed);
+    if (m._showCar        !== undefined) { SHOW_CAR = !!m._showCar; _resultsSig = ''; refreshResults(); }
+    if (m._sponsorRotationTime !== undefined) {
+      ROTATION_MS = Math.max(2, parseInt(m._sponsorRotationTime) || 10) * 1000;
+      if (_sponsors.length > 1) startSponsorTimer();
+    }
+    if (m.atTrack !== undefined || m.standings !== undefined) render(m);
+    else setVisible(true);
+  } catch (_) {}
+});
+
+// ── Boot ────────────────────────────────────────────────────────────────────
+showSeriesLogo();
+startScroll();
+connect();
+
+// Stage points earned so far this race, per car number: the bridge's stageWinners (stage, pos, carIdx)
+// scored with the Championship window's stage table.
+function stagePtsMap(d, cfg) {
+  const t = (cfg && Array.isArray(cfg.stagePointsTable)) ? cfg.stagePointsTable : [10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+  const m = {};
+  if (!d || String(d.session || '').toLowerCase() !== 'race' || !Array.isArray(d.stageWinners)) return m;
+  const srcs = [d.liveStandings, d.standings, d.drivers], done = new Set();
+  d.stageWinners.forEach(w => {
+    if (!w || !(w.pos >= 1)) return;
+    const key = w.stage + ':' + w.pos; if (done.has(key)) return; done.add(key);
+    let e = null;
+    for (const s of srcs) { if (Array.isArray(s)) { e = s.find(x => x && x.carIdx === w.carIdx); if (e) break; } }
+    if (!e) return;
+    const k = String(e.number == null ? '' : e.number).trim();
+    m[k] = (m[k] || 0) + (Number(t[w.pos - 1]) || 0);
+  });
+  return m;
+}
+</script>
+</body>
+</html>

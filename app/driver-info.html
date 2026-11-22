@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PSF — Driver Info</title>
+<style>
+:root {
+  --bg:       #0e1014;
+  --card:     #13161a;
+  --card2:    #181c22;
+  --border:   #1e2229;
+  --border2:  #252a33;
+  --text:     #e8e8ec;
+  --text-dim: #6a7080;
+  --text-mid: #9099a8;
+  --gold:     #c8a800;
+  --gold-dim: rgba(200,168,0,0.15);
+  --blue:     #2980b9;
+  --green:    #2ecc71;
+  --font:     'Barlow Condensed', 'Segoe UI', Arial, sans-serif;
+  --f:        'NBC2016', 'Bahnschrift SemiBold Condensed', 'Bahnschrift Condensed', 'Arial Narrow', 'Roboto Condensed', 'Helvetica Neue', Arial, sans-serif;
+  --radius:   4px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { height:100%; background:var(--bg); color:var(--text); font-family:var(--font); font-size:13px; }
+#app { display:flex; flex-direction:column; min-height:100%; }
+
+#topbar { display:flex; align-items:center; gap:10px; padding:10px 16px; background:#0b0d10; border-bottom:1px solid var(--border); flex-shrink:0; }
+#topbar h1 { font-size:15px; font-weight:700; letter-spacing:1px; color:var(--gold); text-transform:uppercase; flex:1; }
+#status { font-size:12px; color:var(--text-dim); letter-spacing:.5px; transition:color .2s; }
+#status.ok { color:var(--green); }
+
+#main { padding:16px; display:flex; flex-direction:column; gap:14px; max-width:860px; width:100%; margin:0 auto; }
+.card { background:var(--card); border:1px solid var(--border); border-radius:8px; }
+.card-title { font-size:11px; color:var(--text-dim); letter-spacing:.8px; text-transform:uppercase; padding:12px 16px 0; }
+
+#pv-stage { padding:52px 24px 28px; display:flex; justify-content:center; overflow:hidden; background:var(--card2); border-radius:0 0 8px 8px; margin-top:10px; }
+#pv-fit { width:700px; flex:none; font-family:var(--f); font-weight:700; color:#fff; }
+#pv-empty { display:none; padding:34px 16px; text-align:center; color:var(--text-dim); font-size:14px; line-height:1.5; }
+
+/* --- banner: same rules as the overlay (copied from nr2003_nbc2017shart.html) --- */
+#pv-fit.sk-nbc #di-wrap { position: absolute; left: 4px; top: 130px; width: 700px; transform-origin: 0 0; z-index: 40; pointer-events: none; display: none; opacity: 0; transition: opacity .6s ease; }
+#pv-fit.sk-nbc #di-tab { position: absolute; right: 8px; top: -26px; height: 26px; padding: 0 16px; display: none; align-items: center; border-radius: 5px 5px 0 0;
+          background: linear-gradient(180deg, #1c2330 0%, #0b0f16 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 0 0 1px rgba(150,158,168,.6);
+          font-size: 19px; font-weight: 700; color: #fff; letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; }
+#pv-fit.sk-nbc #di-box { position: relative; height: 80px; display: flex; overflow: hidden; border-radius: 5px; background: var(--di-bg, linear-gradient(180deg, #2b4b8f 0%, #16357a 36%, #08194a 70%, #040c2b 100%)); color: var(--di-fg, #fff);
+          box-shadow: 0 0 0 2px #8f979f, 0 0 0 3px rgba(0,0,0,.6), 0 4px 10px rgba(0,0,0,.55); }
+#pv-fit.sk-nbc #di-box::after { content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none;
+                 background: linear-gradient(180deg, rgba(255,255,255,.30) 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,.30) 100%); }
+#pv-fit.sk-nbc #di-box > div { position: relative; z-index: 1; display: flex; align-items: center; height: 100%; }
+#pv-fit.sk-nbc #di-box > div + div { box-shadow: inset 1px 0 0 rgba(0,0,0,.4), inset 2px 0 0 rgba(255,255,255,.18); }
+#pv-fit.sk-nbc #di-num { width: 170px; flex: none; justify-content: center; }
+#pv-fit.sk-nbc #di-num .np { width: 140px; height: 66px; background: none; }
+#pv-fit.sk-nbc #di-num .np-c { display: none; }
+#pv-fit.sk-nbc #di-num .np img { inset: auto; left: 0; top: 0; width: 100%; height: 100%; object-fit: contain; }
+#pv-fit.sk-nbc #di-num .np .np-t { left: 0; right: 0; font-size: 56px; font-style: italic; }
+#pv-fit.sk-nbc #di-manu { width: 110px; flex: none; justify-content: center; }
+#pv-fit.sk-nbc #di-manu img { max-width: 86px; max-height: 60px; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,.45)); }
+#pv-fit.sk-nbc #di-name { flex: 1; min-width: 0; flex-direction: column; align-items: flex-start !important; justify-content: center; padding: 0 22px; line-height: 1; text-transform: uppercase; white-space: nowrap; }
+#pv-fit.sk-nbc #di-name .f { font-size: 26px; font-weight: 600; opacity: .95; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+#pv-fit.sk-nbc #di-name .l { font-size: 38px; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,.4); margin-top: 2px; }
+#pv-fit.sk-nbc #di-r { flex: none; width: 232px; overflow: hidden; flex-direction: column; align-items: flex-start !important; justify-content: center; padding: 0 18px; line-height: 1.15; white-space: nowrap; }
+#pv-fit.sk-nbc #di-r .a { font-size: 28px; font-weight: 600; }
+#pv-fit.sk-nbc #di-r .b { font-size: 21px; font-weight: 700; color: var(--di-accent, #ffd21f); text-transform: uppercase; display: flex; align-items: center; gap: 7px; }
+#pv-fit.sk-nbc #di-r .b .ar { flex: none; }
+#pv-fit.sk-nbc #di-num .np .np-t { color: var(--di-fg, #fff) !important; }
+
+.np { position: relative; width: 38px; height: 27px; overflow: hidden; background: #3b3f47; flex: none; }
+.np-c { position: absolute; inset: 0; }
+.np img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.np .np-t { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 21px; font-style: italic; font-weight: 800; letter-spacing: -.5px; }
+/* Driver Info preview in the style of the active ticker: Fox 2010 banner */
+#pv-fit.sk-fox #di-wrap { position: absolute; left: 4px; top: 190px; width: 1060px; transform-origin: 0 0; z-index: 40; pointer-events: none; display: none; opacity: 0;
+           transition: opacity .6s ease; font-family: 'D-DIN Condensed Bold', 'Arial Narrow', Impact, sans-serif; color: #fff; filter: drop-shadow(0 4px 8px rgba(0,0,0,.55)); }
+#pv-fit.sk-fox #di-top { position: relative; height: 58px; display: flex; align-items: center; gap: 8px; padding-right: 9px; border-radius: 9px 9px 0 0;
+          background: linear-gradient(180deg, #3a3c41 0%, #1b1c1f 48%, #0c0d0f 100%);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.6), inset 0 0 0 1px rgba(170,176,186,.55); }
+#pv-fit.sk-fox #di-hatch { flex: 0 0 222px; height: 30px; margin-left: 3px; border-radius: 4px 0 0 4px; border: 1px solid #70757c; border-right: 0;
+            background: repeating-linear-gradient(135deg, rgba(255,255,255,.55) 0 3px, rgba(255,255,255,0) 3px 7px), linear-gradient(#dfe1e4, #a9adb3);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 -2px 3px rgba(0,0,0,.25); }
+#pv-fit.sk-fox #di-num { position: relative; flex: 0 0 126px; height: 44px; border-radius: 7px; border: 2px solid var(--di-acc, #1e90d8); overflow: hidden;
+          display: flex; align-items: center; justify-content: center; background: var(--di-nbg, #3b3f47);
+          box-shadow: inset 0 0 0 1px rgba(0,0,0,.65), 0 0 0 1px rgba(0,0,0,.55); }
+#pv-fit.sk-fox #di-num::after { content: ''; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+                 background: linear-gradient(180deg, rgba(255,255,255,.30) 0%, rgba(255,255,255,0) 52%, rgba(0,0,0,.28) 100%); }
+#pv-fit.sk-fox #di-num img { position: relative; z-index: 1; height: calc(100% - 4px); max-width: calc(100% - 8px); object-fit: contain; display: block; }
+#pv-fit.sk-fox #di-num .nf { position: relative; z-index: 1; font-size: 38px; line-height: 1; font-style: italic; transform: skewX(-8deg); letter-spacing: .01em; }
+#pv-fit.sk-fox #di-name { flex: 1; min-width: 0; height: 44px; border-radius: 7px; border: 2px solid var(--di-acc, #1e90d8); display: flex; align-items: center; padding: 0 16px; overflow: hidden;
+           background: linear-gradient(180deg, #25272b 0%, #0f1012 55%, #050506 100%); box-shadow: inset 0 0 0 1px rgba(0,0,0,.65), 0 0 0 1px rgba(0,0,0,.55); }
+#pv-fit.sk-fox #di-nm { font-size: 38px; line-height: 1; text-transform: uppercase; white-space: nowrap; letter-spacing: .02em; color: #fff; text-shadow: 0 2px 2px rgba(0,0,0,.6); }
+#pv-fit.sk-fox #di-logo { flex: 0 0 130px; height: 38px; display: none; align-items: center; justify-content: center; border-radius: 4px; border: 1px solid #8a9098; overflow: hidden;
+           background: linear-gradient(180deg, #2c2e33, #0b0c0e); box-shadow: inset 0 0 0 1px rgba(0,0,0,.6); }
+#pv-fit.sk-fox #di-logo img { max-width: 118px; max-height: 30px; object-fit: contain; display: block; }
+#pv-fit.sk-fox #di-sep { height: 7px; background: linear-gradient(180deg, #f4f5f7 0%, #bcc0c6 50%, #7d828a 100%); box-shadow: 0 1px 0 rgba(0,0,0,.55); }
+#pv-fit.sk-fox #di-low { position: relative; height: 64px; display: flex; align-items: center; padding-left: 388px; overflow: hidden;
+          background: repeating-linear-gradient(135deg, rgba(255,255,255,.07) 0 2px, rgba(255,255,255,0) 2px 6px), linear-gradient(180deg, #303236 0%, #1c1d20 55%, #101113 100%); }
+#pv-fit.sk-fox #di-low::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 372px; clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+                  background: repeating-linear-gradient(135deg, rgba(255,255,255,.2) 0 3px, rgba(255,255,255,0) 3px 7px), linear-gradient(180deg, #5d6065 0%, #3a3c40 100%); }
+#pv-fit.sk-fox #di-r { position: relative; z-index: 1; flex: 1; min-width: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; padding-right: 18px; line-height: 1.04; white-space: nowrap; }
+#pv-fit.sk-fox #di-r .a, #pv-fit.sk-fox #di-r .b { font-size: 28px; text-transform: uppercase; letter-spacing: .02em; color: #fff; text-shadow: 0 2px 2px rgba(0,0,0,.55); }
+#pv-fit.sk-fox #di-r .b { display: flex; align-items: center; gap: 9px; }
+#pv-fit.sk-fox #di-r .b .ar { flex: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
+#pv-fit.sk-fox #di-base { position: relative; height: 15px; background: linear-gradient(180deg, #f4f5f7 0 2px, #b3b7bd 2px 6px, rgba(0,0,0,0) 6px); border-radius: 0 0 6px 6px; }
+#pv-fit.sk-fox #di-base i { position: absolute; left: 356px; width: 612px; top: 4px; height: 11px; background: linear-gradient(180deg, var(--di-acc-hi, #46b4f2) 0%, var(--di-acc-mid, #1f8fd8) 55%, var(--di-acc-lo, #0c5fa0) 100%);
+             clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 100%, 10px 100%); }
+#pv-fit.sk-fox { width: 1060px; font-weight: normal; }
+#pv-fit.sk-nbc #di-wrap, #pv-fit.sk-fox #di-wrap { position: relative; left: 0; top: 0; display: block; opacity: 1; transition: none; }
+/* ── Driver Info preview: ESPN 2017 look — [NAME | CURRENTLY: pos] tab over [number | oval headshot | Info 1 / Info 2] ── */
+#pv-fit.sk-espn #di-wrap { position: absolute; left: 0; top: 150px; width: max-content; transform-origin: 0 0; z-index: 40; pointer-events: none; display: none; opacity: 0;
+           transition: opacity .6s ease; font-family: 'Helvetica Neue', 'Univers', Arial, sans-serif; font-weight: 700; color: #262626; filter: drop-shadow(0 4px 10px rgba(0,0,0,.45)); }
+#pv-fit.sk-espn #di-tab { display: flex; align-items: stretch; height: 46px; margin-left: 20px; width: max-content; }
+#pv-fit.sk-espn #di-name { display: flex; align-items: center; max-width: 640px; padding: 0 20px; overflow: hidden; background: linear-gradient(180deg, #f3f3f3 0%, #dcdcdc 100%); color: #2a2a2a; }
+#pv-fit.sk-espn #di-nm { font-size: 36px; line-height: 1; text-transform: uppercase; white-space: nowrap; letter-spacing: .01em; }
+#pv-fit.sk-espn #di-cur { display: none; align-items: center; padding: 0 22px; background: rgba(40,40,40,.95); color: #fff; font-size: 36px; line-height: 1; white-space: nowrap; letter-spacing: .01em; }
+#pv-fit.sk-espn #di-box { position: relative; display: flex; height: 132px; padding: 5px; background: #e2e2e2; border: 3px solid #f6f6f6;
+          box-shadow: 0 0 0 1px rgba(0,0,0,.4), inset 0 0 0 1px rgba(0,0,0,.2); }
+#pv-fit.sk-espn #di-num { position: relative; flex: 0 0 172px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--di-nbg, #3b3f47); }
+#pv-fit.sk-espn #di-num::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(255,255,255,.22) 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,.18) 100%); }
+#pv-fit.sk-espn #di-num img { position: relative; z-index: 1; height: 84%; max-width: 92%; object-fit: contain; display: block; }
+#pv-fit.sk-espn #di-num .nf { position: relative; z-index: 1; font-size: 84px; line-height: 1; font-style: italic; font-weight: 900; letter-spacing: -.02em; }
+/* oval headshot in its own cell next to the number: it never covers the number */
+#pv-fit.sk-espn #di-photo { position: relative; flex: 0 0 122px; display: none; align-items: center; justify-content: center; background: var(--di-nbg, #3b3f47); }
+#pv-fit.sk-espn #di-photo.on { display: flex; }
+#pv-fit.sk-espn #di-photo::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(255,255,255,.22) 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,.18) 100%); }
+#pv-fit.sk-espn #di-photo img { position: relative; z-index: 1; width: 92px; height: 112px; border-radius: 50%; object-fit: cover; object-position: 50% 22%; background: #cfcfcf;
+                box-shadow: 0 0 0 3px rgba(255,255,255,.92), 0 2px 6px rgba(0,0,0,.45); }
+#pv-fit.sk-espn #di-r { flex: 0 1 auto; min-width: 560px; max-width: 700px; overflow: hidden; display: grid; grid-template-columns: max-content max-content; justify-content: start; align-content: center;
+        column-gap: 34px; padding: 0 26px 0 22px; font-size: 44px; line-height: 1.12; white-space: nowrap; color: #2b2b2b; background: linear-gradient(180deg, #f7f7f7 0%, #e4e4e4 100%);
+        box-shadow: inset 0 0 0 1px #b9b9b9; }
+#pv-fit.sk-espn #di-r .w { grid-column: 1 / -1; }
+/* no Info lines: the car picture (series/<id>/cars/<n>.png) fills the rest of the box; with no picture either the box shrinks to its content */
+#pv-fit.sk-espn #di-car { flex: 1 1 auto; min-width: 380px; display: none; align-items: center; justify-content: center; overflow: hidden;
+          background: linear-gradient(180deg, #f7f7f7 0%, #e4e4e4 100%); box-shadow: inset 0 0 0 1px #b9b9b9; }
+#pv-fit.sk-espn #di-car.on { display: flex; }
+#pv-fit.sk-espn #di-car img { max-height: 118px; max-width: 94%; object-fit: contain; filter: drop-shadow(0 3px 4px rgba(0,0,0,.45)); }
+#pv-fit.sk-espn #di-box.tight { width: max-content; }
+#pv-fit.sk-espn { width: 790px; font-weight: 700; }
+#pv-fit.sk-espn #di-wrap { position: relative; left: 0; top: 0; display: block; opacity: 1; transition: none; filter: none; }
+/* ── Driver Info preview: Prime look — [oval headshot | number + make | NAME | Info 1 / Info 2] ── */
+#pv-fit.sk-prime #di-wrap {position: absolute; left: 0; top: 0; width: max-content; transform-origin: 0 0; z-index: 60; pointer-events: none;
+           display: none; opacity: 0; transition: opacity .6s ease; color: #fff;
+           font-family: 'HalyardTextMedium', 'Segoe UI', Arial, sans-serif; filter: drop-shadow(0 4px 10px rgba(0,0,0,.5)); }
+#pv-fit.sk-prime #di-tab {position: absolute; right: 10px; top: -30px; height: 30px; padding: 0 24px; display: none; align-items: center; border-radius: 5px 5px 0 0;
+          background: linear-gradient(180deg, #2b57d8 0%, #1a3cae 100%); box-shadow: inset 0 0 0 2px rgba(255,255,255,.88);
+          font-size: 19px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; color: #fff; }
+#pv-fit.sk-prime #di-box {position: relative; display: flex; align-items: stretch; width: 860px; height: 102px; overflow: hidden; border-radius: 8px;
+          background: var(--di-bg, linear-gradient(90deg, #1d44b8 0%, #1a3aa4 38%, #142f8c 100%)); }
+#pv-fit.sk-prime #di-box::before {content: ''; position: absolute; inset: 0; pointer-events: none;
+          background: linear-gradient(112deg, rgba(255,255,255,.17) 0 20%, rgba(255,255,255,0) 20% 100%), linear-gradient(180deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 45%, rgba(0,0,0,.2) 100%); }
+#pv-fit.sk-prime #di-box::after {content: ''; position: absolute; right: 0; bottom: 0; width: 30px; height: 30px; pointer-events: none; background: linear-gradient(135deg, rgba(0,0,0,0) 50%, #e4202f 50%); }
+#pv-fit.sk-prime #di-box > div {position: relative; z-index: 1; }
+#pv-fit.sk-prime #di-box.tight {width: max-content; min-width: 520px; }
+#pv-fit.sk-prime #di-photo {flex: 0 0 112px; display: none; align-items: center; justify-content: center; }
+#pv-fit.sk-prime #di-photo.on {display: flex; }
+#pv-fit.sk-prime #di-photo img {width: 82px; height: 94px; border-radius: 50%; object-fit: cover; object-position: 50% 20%; background: rgba(255,255,255,.2);
+                box-shadow: 0 0 0 3px rgba(255,255,255,.92), 0 2px 8px rgba(0,0,0,.5); }
+#pv-fit.sk-prime #di-num {flex: 0 0 auto; align-self: center; width: 78px; height: 84px; margin: 0 8px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; overflow: hidden;
+          background: var(--di-nbg, #0a0a0e); box-shadow: inset 0 0 0 1px rgba(255,255,255,.14); }
+#pv-fit.sk-prime #di-num::after {content: ''; position: absolute; right: 0; bottom: 0; width: 15px; height: 15px; background: linear-gradient(135deg, rgba(0,0,0,0) 50%, #e4202f 50%); }
+#pv-fit.sk-prime #di-num .nn {display: flex; align-items: center; justify-content: center; height: 48px; max-width: 70px; }
+#pv-fit.sk-prime #di-num .nn img {max-height: 48px; max-width: 70px; object-fit: contain; display: block; }
+#pv-fit.sk-prime #di-num .nn span {font-family: 'RacerItalic', 'HalyardTextMedium', Impact, sans-serif; font-style: italic; font-size: 50px; line-height: 1; color: var(--di-nfg, #fff); }
+#pv-fit.sk-prime #di-manu {display: flex; align-items: center; justify-content: center; height: 24px; }
+#pv-fit.sk-prime #di-manu img {max-height: 24px; max-width: 56px; object-fit: contain; display: block; }
+#pv-fit.sk-prime #di-name {flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 0 16px 0 10px;
+           line-height: 1; text-transform: uppercase; white-space: nowrap; font-family: 'RacerItalic', 'HalyardTextMedium', Impact, sans-serif; font-style: italic; overflow: hidden; }
+#pv-fit.sk-prime #di-name .f {font-size: 28px; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.45); }
+#pv-fit.sk-prime #di-name .l {font-size: 36px; margin-top: 3px; color: #ff2d3b; text-shadow: 0 1px 3px rgba(0,0,0,.5); }
+#pv-fit.sk-prime #di-r {flex: 0 0 410px; margin: 0 16px 0 0; display: flex; flex-direction: column; justify-content: center; gap: 7px; min-width: 0; }
+#pv-fit.sk-prime #di-r .a {height: 56px; display: flex; align-items: center; justify-content: center; padding: 0 16px; border-radius: 7px; white-space: nowrap; overflow: hidden;
+           font-size: 32px; font-weight: 600; background: rgba(6,10,44,.88); box-shadow: inset 0 0 0 2px rgba(255,255,255,.14); }
+#pv-fit.sk-prime #di-r .b {display: flex; align-items: center; justify-content: center; gap: 9px; white-space: nowrap; overflow: hidden; font-size: 22px; font-weight: 600; }
+#pv-fit.sk-prime #di-r .b .ic {flex: none; width: 17px; height: 17px; border-radius: 50%; background: #e4202f; display: flex; align-items: center; justify-content: center; }
+#pv-fit.sk-prime #di-r .b .ic::after {content: ''; margin-left: 2px; border-left: 6px solid #fff; border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
+#pv-fit.sk-prime #di-box.tight #di-name {flex: 0 0 auto; padding-right: 44px; }
+#pv-fit.sk-prime #di-wrap { position: relative; left: 0; top: 0; display: block; opacity: 1; transition: none; transform: none; }
+#pv-fit.sk-prime { width: 860px; padding-top: 34px; }
+#pv-fit.sk-prime #di-tab { top: -30px; }
+
+#pv-warn { display: none; margin: 10px 16px 0; padding: 8px 12px; border-radius: var(--radius); border: 1px solid #b8860b; background: rgba(200,168,0,.12); color: #f0c64a; font-size: 13px; line-height: 1.4; }
+
+
+#form { padding:16px; display:flex; flex-direction:column; gap:12px; }
+.row { display:flex; align-items:center; gap:14px; }
+.row label { width:110px; flex:none; font-size:12px; color:var(--text-mid); letter-spacing:.8px; text-transform:uppercase; }
+.row select, .row input {
+  flex:1; min-width:0; background:var(--bg); border:1px solid var(--border2); border-radius:var(--radius);
+  color:var(--text); padding:7px 10px; font-size:14px; font-family:var(--font);
+}
+.row select { cursor:pointer; }
+.row select:focus, .row input:focus { outline:none; border-color:var(--gold); }
+.row input:disabled, .row select:disabled { opacity:.45; cursor:not-allowed; }
+.row input.num { flex:0 0 150px; }
+.actions { display:flex; justify-content:flex-end; gap:8px; }
+.btn { background:none; border:1px solid var(--border2); border-radius:var(--radius); color:var(--text-mid); padding:5px 12px; font-size:12px; font-family:var(--font); font-weight:600; letter-spacing:.5px; cursor:pointer; transition:color .15s, border-color .15s; }
+.btn:hover:not(:disabled) { color:var(--text); border-color:var(--text-mid); }
+.btn:disabled { opacity:.4; cursor:not-allowed; }
+.hint { font-size:12px; color:var(--text-dim); line-height:1.5; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar"><h1>Driver Info</h1><span id="status"></span></div>
+  <div id="main">
+    <div class="card">
+      <div class="card-title">Preview</div>
+      <div id="pv-warn"></div>
+      <div id="pv-empty"></div>
+      <div id="pv-stage">
+        <div id="pv-fit" class="sk-nbc"></div>
+      </div>
+    </div>
+    <div class="card" id="form">
+      <div class="row"><label for="sel">Select Driver</label><select id="sel"></select></div>
+      <div class="row"><label for="follow">Follow camera</label><input id="follow" type="checkbox" checked style="flex:0 0 auto;width:auto" title="Select the driver whose car is on screen in NR2003"><span style="opacity:.7;font-size:12px">Selects the driver shown by the in-game camera</span></div>
+      <div class="row"><label for="k1">Info 1</label><select id="k1"></select><input id="c1" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="e.g. Crashed on lap 142" style="display:none"><input id="n1" class="num" type="number" min="1" max="99" step="1" placeholder="Last Y races" title="Y = number of races to look back" style="display:none"></div>
+      <div class="row"><label for="k2">Info 2</label><select id="k2"></select><input id="c2" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="e.g. 11th DNF this season" style="display:none"><input id="n2" class="num" type="number" min="1" max="99" step="1" placeholder="Last Y races" title="Y = number of races to look back" style="display:none"></div>
+      <div class="actions"><button class="btn" id="clear" type="button">Clear info</button><button class="btn" id="clearAll" type="button">Clear info (all drivers)</button></div>
+      <div class="hint">Pick what Info 1 and Info 2 show for this driver. The values (laps led, points, lap times...) are filled in live by the overlay; the preview uses X / Y as placeholders. Choices are saved automatically and appear in the driver banner (right-hand block) whenever this driver is shown. The list shows the drivers that have a name and number in the Series Editor.</div>
+    </div>
+  </div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const params   = new URLSearchParams(location.search);
+const SERIES   = params.get('series') || 'default';
+const INSTALL  = params.get('installdir') || '';
+const SERIES_NAME = params.get('seriesname') || '';
+function assetPath(rel) {
+  if (INSTALL) {
+    const enc = INSTALL.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+    return 'file:///' + enc + '/' + rel;
+  }
+  return rel;
+}
+(function () {
+  const el = document.createElement('style');
+  el.textContent = `@font-face { font-family:'NBC2016'; src:url('${assetPath('images/NBC2016/font.ttf')}') format('truetype'); font-weight:700; font-display:swap; }`;
+  document.head.appendChild(el);
+})();
+
+
+
+
+const SUFFIX = /^(JR\.?|SR\.?|II|III|IV)$/;
+const NAME_PARTICLES = new Set(['VAN','VON','DE','DER','DEN','DI','DA','DEL','DELLA','LA','LE','ST.','ST']);
+function lastNameOf(full) {
+  const t = String(full || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+  if (t.length <= 1) return t[0] || '';
+  const suffix = [];
+  while (t.length > 1 && SUFFIX.test(t[t.length - 1])) suffix.unshift(t.pop());
+  let i = t.length - 1;
+  while (i > 0 && NAME_PARTICLES.has(t[i - 1])) i--;
+  return t.slice(i).concat(suffix).join(' ');
+}
+
+const FB_DEFAULT_BG = '#3b3f47';
+const _ccCtx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+const _lumCache = {};
+function bgLuma(c) {
+  if (!c || c === 'transparent') return -1;
+  if (_lumCache[c] !== undefined) return _lumCache[c];
+  let v = -1;
+  try {
+    _ccCtx.clearRect(0, 0, 1, 1); _ccCtx.fillStyle = '#000'; _ccCtx.fillStyle = c; _ccCtx.fillRect(0, 0, 1, 1);
+    const d = _ccCtx.getImageData(0, 0, 1, 1).data;
+    if (d[3] >= 32) v = (0.299 * d[0] + 0.587 * d[1] + 0.114 * d[2]) / 255;
+  } catch (_) {}
+  return (_lumCache[c] = v);
+}
+function sampleCorners(img) {
+  try {
+    const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+    const w = c.width, h = c.height, i = 3;
+    const px = [g.getImageData(i, i, 1, 1).data, g.getImageData(w - i - 1, i, 1, 1).data,
+                g.getImageData(i, h - i - 1, 1, 1).data, g.getImageData(w - i - 1, h - i - 1, 1, 1).data];
+    const op = px.filter(p => p[3] >= 32);
+    if (op.length < 3) return null;
+    const a = op.reduce((t, p) => [t[0] + p[0], t[1] + p[1], t[2] + p[2]], [0, 0, 0]).map(v => Math.round(v / op.length));
+    return `rgb(${a[0]},${a[1]},${a[2]})`;
+  } catch (_) { return null; }
+}
+// crop the empty margin of the number PNG so the digits fill the plate
+function trimNumber(img, bgCss) {
+  try {
+    const w = img.naturalWidth, h = img.naturalHeight; if (!w || !h) return null;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+    const data = g.getImageData(0, 0, w, h).data;
+    let bg = null;
+    if (bgCss) { const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(bgCss); if (m) bg = [+m[1], +m[2], +m[3]]; }
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (data[i + 3] < 40) continue;
+      if (bg && Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1]) + Math.abs(data[i + 2] - bg[2]) < 60) continue;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+    if (x1 < x0 || y1 < y0) return null;
+    const tw = x1 - x0 + 1, th = y1 - y0 + 1;
+    if (tw >= w - 1 && th >= h - 1) return null;
+    const o = document.createElement('canvas'); o.width = tw; o.height = th;
+    o.getContext('2d').drawImage(c, x0, y0, tw, th, 0, 0, tw, th);
+    return o.toDataURL('image/png');
+  } catch (_) { return null; }
+}
+
+// Info 1 / Info 2 choices: [value, dropdown label, banner text template]
+const KINDS = [
+  ['',          '— None —',                '' ],
+  ['ledToday',  'Laps Led Today',          'Has led X of Y laps'],
+  ['ledSeason', 'Laps Led All Season',     'Has led X laps all season'],
+  ['champPos',  'Championship position',   'Is Xth in standings'],
+  ['champPts',  'Points in championship',  'Has scored X points'],
+  ['winsSeason','Wins this season',        'Has won X races this season'],
+  ['top5Season','Top 5 this season',       'Has finished X times in the top 5 this season'],
+  ['top10Season','Top 10 this season',     'Has finished X times in the top 10 this season'],
+  ['wins',      'Wins in the last races',  'Has won X of the last Y races'],
+  ['dnfSeason', 'DNF this season',         'Has not finished in X races this season'],
+  ['dnfLast',   'DNF in the last races',   'Has not finished in X of the last Y races'],
+  ['startPos',  'Start position',          'Started Xth today'],
+  ['curPos',    'Current position',        'Current position: Xth'],
+  ['lastLap',   'Last lap time',           'Last Lap: 00.000s'],
+  ['bestLap',   'Best lap time',           'Best Lap: 00.000s'],
+  ['fastestLap','Fastest lap of the race',  'Fastest Lap: 00.000s (Surname)'],
+  ['liveChampPos','Live Championship Position','Is Xth in championship as it stands'],
+  ['cutoffPts', 'Points to the Cutoff Line', 'Is X points above the cutoff line'],
+  ['lastPit',   'Last pit stop',           'Last pitted on lap X'],
+  ['pitCount',  'Pit stop count',          'Has pitted X times'],
+  ['custom',    'Custom',                  ''],
+];
+const KIND_SET = new Set(KINDS.map(k => k[0]));
+const clampN = v => { const n = parseInt(v, 10); return (Number.isFinite(n) && n >= 1) ? Math.min(99, n) : 5; };
+function previewText(kind, custom, n) {
+  if (kind === 'custom') return custom;
+  const k = KINDS.find(x => x[0] === kind);
+  if (!k || !k[2]) return '';
+  return (kind === 'wins' || kind === 'dnfLast') ? k[2].replace('Y', String(clampN(n))) : k[2];
+}
+
+function diRightHTML(l1, l2) {
+  return (l1 ? '<div class="a">' + esc(l1) + '</div>' : '') +
+         (l2 ? '<div class="b"><svg class="ar" viewBox="0 0 24 16" width="22" height="15" aria-hidden="true"><path fill="currentColor" d="M0 8L9 0V5H24V11H9V16Z"/></svg><span>' + esc(l2) + '</span></div>' : '');
+}
+
+function diFitNbc() {
+  const nm = $('di-name'), max = nm.clientWidth - 44;
+  const els = Array.from(nm.querySelectorAll('.f, .l'));
+  // one pass: set base sizes, measure all, then shrink proportionally (no layout thrash inside a loop)
+  const base = els.map(el => { const sz = el.classList.contains('l') ? 38 : 26; el.style.fontSize = sz + 'px'; return sz; });
+  const widths = els.map(el => el.scrollWidth);
+  els.forEach((el, i) => { if (widths[i] > max) el.style.fontSize = Math.max(14, Math.floor(base[i] * max / widths[i])) + 'px'; });
+  els.forEach((el, i) => { let sz = parseInt(el.style.fontSize, 10); while (el.scrollWidth > max && sz > 14) { sz -= 1; el.style.fontSize = sz + 'px'; } });
+  const rr = $('di-r');
+  if (rr && rr.style.display !== 'none') {
+    const mx = rr.clientWidth - 36;
+    rr.querySelectorAll('.a, .b').forEach(el => {
+      const base = el.classList.contains('a') ? 28 : 21; let sz = base; el.style.fontSize = sz + 'px';
+      while (el.scrollWidth > mx && sz > 7) { sz -= 1; el.style.fontSize = sz + 'px'; }
+    });
+  }
+}
+
+
+
+// ---- Preview in the style of the active ticker ----------------------------------------------------------------
+// NBC 2016 and NBC 2017 share the same banner; Fox (2010) has its own. Any other ticker has no driver banner:
+// the preview falls back to NBC 2017 and a warning is shown.
+const DI_SKIN_STYLE = { nbc2017shart: 'nbc', nbc2016: 'nbc', fox2010: 'fox', espn2017: 'espn', prime: 'prime' };
+const TICKER_LABELS = { ticker: 'Scrolling Ticker', cw_overlay: 'CW Overlay', floracing: 'FloRacing', espn2010: 'ESPN 2010', espn2011: 'ESPN 2011', espn2017: 'ESPN 2017',
+  nbc2014: 'NBC 2014', nbc2016: 'NBC 2016', nbc2017shart: 'NBC 2017', fox2010: 'Fox (2010)', fox2016: 'Fox 2016', fox2004: 'Fox (2004)', prime: 'Prime' };
+const NBC_HTML = "<div id=\"di-wrap\"> <div id=\"di-tab\"></div> <div id=\"di-box\"> <div id=\"di-num\"></div> <div id=\"di-manu\"></div> <div id=\"di-name\"></div> <div id=\"di-r\" style=\"display:none\"></div> </div> </div>";
+const FOX_HTML = "<div id=\"di-wrap\"> <svg width=\"0\" height=\"0\" style=\"position:absolute\" aria-hidden=\"true\"><defs><linearGradient id=\"di-yel\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffe680\"/><stop offset=\".5\" stop-color=\"#ffbf1f\"/><stop offset=\"1\" stop-color=\"#d48a00\"/></linearGradient></defs></svg> <div id=\"di-top\"> <div id=\"di-hatch\"></div> <div id=\"di-num\"></div> <div id=\"di-name\"></div> <div id=\"di-logo\"><img id=\"di-logo-img\" alt=\"\"></div> </div> <div id=\"di-sep\"></div> <div id=\"di-low\"><div id=\"di-r\"></div></div> <div id=\"di-base\"><i></i></div> </div>";
+const ESPN_HTML = "<div id=\"di-wrap\"> <div id=\"di-tab\"><div id=\"di-name\"><span id=\"di-nm\"></span></div><div id=\"di-cur\"></div></div> <div id=\"di-box\"> <div id=\"di-num\"></div> <div id=\"di-photo\"></div> <div id=\"di-car\"></div> <div id=\"di-r\"></div> </div> </div>";
+const PRIME_HTML = "<div id=\"di-wrap\"> <div id=\"di-tab\"></div> <div id=\"di-box\"> <div id=\"di-photo\"></div> <div id=\"di-num\"></div> <div id=\"di-name\"></div> <div id=\"di-r\" style=\"display:none\"></div> </div> </div>";
+(function () {   // the Prime banner fonts (same files the overlay loads)
+  const el = document.createElement('style');
+  el.textContent = "@font-face { font-family:'HalyardTextMedium'; src:url('" + assetPath('fonts/halyard-text-medium.otf') + "') format('opentype'); font-weight:500; font-style:normal; font-display:swap; } @font-face { font-family:'RacerItalic'; src:url('" + assetPath('fonts/Racer Pro Italic.otf') + "') format('opentype'); font-weight:400; font-style:italic; font-display:swap; }";
+  document.head.appendChild(el);
+})();
+const FOX_ARROW = '<svg class="ar" viewBox="0 0 34 24" width="33" height="23" aria-hidden="true"><path fill="url(#di-yel)" d="M0 0H8L20 12L8 24H0L12 12Z"/><path fill="url(#di-yel)" d="M13 0H21L33 12L21 24H13L25 12Z"/></svg>';
+let pvStyle = '';
+(function () {   // the Fox banner font (same file the overlay loads)
+  const el = document.createElement('style');
+  el.textContent = "@font-face { font-family:'D-DIN Condensed Bold'; src:url('" + assetPath('images/ticker/DIN Condensed Bold.ttf') + "') format('truetype'); font-weight:bold; font-style:normal; font-display:swap; }";
+  document.head.appendChild(el);
+})();
+function setPreviewStyle(style) {
+  if (pvStyle === style) return false;
+  pvStyle = style;
+  const f = $('pv-fit'); f.className = 'sk-' + style;
+  f.innerHTML = style === 'fox' ? FOX_HTML : (style === 'espn' ? ESPN_HTML : (style === 'prime' ? PRIME_HTML : NBC_HTML));
+  if (style === 'fox') {   // logo plate on the right: the series logo, else the default logo; hidden if neither exists
+    const im = $('di-logo-img'), box = $('di-logo');
+    const cands = [assetPath('series/' + SERIES + '/serieslogo.png'), assetPath('images/nr2003_logo.svg')]; let k = 0;
+    im.onload = () => { box.style.display = 'flex'; };
+    im.onerror = () => { if (++k < cands.length) im.src = cands[k]; else box.style.display = 'none'; };
+    im.src = cands[0];
+  }
+  return true;
+}
+async function loadSkin() {
+  let r = null;
+  try { r = await window.shl.getDriverInfoSkin(); } catch (e) {}
+  const skin = (r && r.skin) || '', warn = $('pv-warn');
+  const style = DI_SKIN_STYLE[skin] || 'nbc';
+  if (skin && !DI_SKIN_STYLE[skin]) {
+    warn.textContent = 'The active ticker (' + (TICKER_LABELS[skin] || skin) + ') is not compatible with Driver Info. The preview shows NBC 2017 instead.';
+    warn.style.display = 'block';
+  } else warn.style.display = 'none';
+  if (setPreviewStyle(style) && typeof cur !== 'undefined' && cur) render();
+}
+const _acCtx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+function accentShades(c) {   // light / mid / dark shades of the driver colour for the blue parts of the Fox banner; null = keep the default blue
+  if (!c || c === 'transparent') return null;
+  try {
+    _acCtx.clearRect(0, 0, 1, 1); _acCtx.fillStyle = '#000'; _acCtx.fillStyle = c; _acCtx.fillRect(0, 0, 1, 1);
+    const p = _acCtx.getImageData(0, 0, 1, 1).data; if (p[3] < 32) return null;
+    const mix = (t, k) => 'rgb(' + [0, 1, 2].map(i => Math.round(p[i] + (t - p[i]) * k)).join(',') + ')';
+    return { hi: mix(255, .35), mid: 'rgb(' + p[0] + ',' + p[1] + ',' + p[2] + ')', lo: mix(0, .4) };
+  } catch (_) { return null; }
+}
+function foxRightHTML(l1, l2) {
+  return (l1 ? '<div class="a">' + esc(l1) + '</div>' : '') + (l2 ? '<div class="b">' + FOX_ARROW + '<span>' + esc(l2) + '</span></div>' : '');
+}
+function foxNumHTML(n, bg) {
+  loadNum(n);
+  const o = _num[n];
+  if (o && o.state === 'ok') return '<img src="' + o.src + '" alt="' + esc(n) + '">';
+  const hide = (o && o.state === 'fail') ? '' : 'visibility:hidden;';
+  return '<span class="nf" style="' + hide + 'color:' + (bgLuma(bg) > 0.6 ? '#111' : '#fff') + '">' + esc(n) + '</span>';
+}
+function diFitFox() {
+  const nm = $('di-nm');
+  if (nm) {
+    const max = $('di-name').clientWidth - 36; let sz = 38; nm.style.fontSize = sz + 'px';
+    while (nm.scrollWidth > max && sz > 14) { sz -= 1; nm.style.fontSize = sz + 'px'; }
+  }
+  if ($('di-low').style.display !== 'none') {
+    $('di-r').querySelectorAll('.a, .b').forEach(el => {
+      let sz = 28; el.style.fontSize = sz + 'px';
+      while (el.scrollWidth > el.clientWidth + 1 && sz > 10) { sz -= 1; el.style.fontSize = sz + 'px'; }
+    });
+  }
+}
+function diFitEspn() {
+  const name = $('di-name'), nm = $('di-nm');
+  if (name && nm) { let sz = 36; nm.style.fontSize = sz + 'px'; while (name.scrollWidth > name.clientWidth + 1 && sz > 14) { sz -= 1; nm.style.fontSize = sz + 'px'; } }
+  const r = $('di-r');
+  if (r && r.style.display !== 'none') { let sz = 44; r.style.fontSize = sz + 'px'; while (r.scrollWidth > r.clientWidth + 1 && sz > 12) { sz -= 1; r.style.fontSize = sz + 'px'; } }
+}
+function espnRightHTML(l1, l2) {   // same split as the overlay: "Label: value" in two aligned columns, anything else across the full width
+  return [l1, l2].filter(Boolean).map(t => {
+    const m = /^([^:]{1,30}:)\s*(.+)$/.exec(t);
+    return m ? '<span class="l">' + esc(m[1]) + '</span><span class="v">' + esc(m[2]) + '</span>' : '<span class="w">' + esc(t) + '</span>';
+  }).join('');
+}
+function primeNumHTML(n) {
+  loadNum(n);
+  const o = _num[n];
+  if (o && o.state === 'ok') return '<div class="nn"><img src="' + o.src + '" alt="' + esc(n) + '"></div>';
+  const hide = (o && o.state === 'fail') ? '' : 'visibility:hidden;';
+  return '<div class="nn"><span style="' + hide + '">' + esc(n) + '</span></div>';
+}
+function primeRightHTML(l1, l2) {
+  return (l1 ? '<div class="a"><span>' + esc(l1) + '</span></div>' : '') + (l2 ? '<div class="b"><span class="ic"></span><span>' + esc(l2) + '</span></div>' : '');
+}
+function diFitPrime() {
+  const nm = $('di-name'), max = nm.clientWidth - 26;
+  const els = Array.from(nm.querySelectorAll('.f, .l'));
+  const base = els.map(el => { const sz = el.classList.contains('l') ? 36 : 28; el.style.fontSize = sz + 'px'; return sz; });
+  const widths = els.map(el => el.scrollWidth);
+  els.forEach((el, i) => { if (widths[i] > max && max > 0) el.style.fontSize = Math.max(14, Math.floor(base[i] * max / widths[i])) + 'px'; });
+  els.forEach(el => { let sz = parseInt(el.style.fontSize, 10); while (el.scrollWidth > max && max > 0 && sz > 14) { sz -= 1; el.style.fontSize = sz + 'px'; } });
+  const rr = $('di-r');
+  if (rr && rr.style.display !== 'none') {
+    rr.querySelectorAll('.a, .b').forEach(el => {
+      const t = el.querySelector('span:last-child'); if (!t) return;
+      const isA = el.classList.contains('a'), avail = el.clientWidth - (isA ? 36 : 62);
+      let sz = isA ? 32 : 22; el.style.fontSize = sz + 'px';
+      while (t.offsetWidth > avail && avail > 0 && sz > 9) { sz -= 1; el.style.fontSize = sz + 'px'; }
+    });
+  }
+}
+function diFit() { if (pvStyle === 'fox') diFitFox(); else if (pvStyle === 'espn') diFitEspn(); else if (pvStyle === 'prime') diFitPrime(); else diFitNbc(); }
+
+const sel = $('sel'), clearBtn = $('clear'), statusEl = $('status');
+const F = [null, { k: $('k1'), c: $('c1'), n: $('n1') }, { k: $('k2'), c: $('c2'), n: $('n2') }];
+F[1].k.innerHTML = F[2].k.innerHTML = KINDS.map(k => `<option value="${k[0]}">${esc(k[1])}</option>`).join('');
+// "Points to the Cutoff Line" is only offered while the cutoff line is on in the Championship screen (a driver that already has it saved keeps seeing it)
+let CUT_ON = false;
+function applyCut() {
+  [1, 2].forEach(i => {
+    const o = Array.from(F[i].k.options).find(x => x.value === 'cutoffPts');
+    if (o) o.hidden = o.disabled = !(CUT_ON || F[i].k.value === 'cutoffPts');
+  });
+}
+async function loadCut() {
+  try {
+    const cfg = await window.shl.getConfig(); const r = await window.shl.getChampionship((cfg && cfg.series) || 'default');
+    const c = (r && r.data) || {}; CUT_ON = c.cutoffEnabled === true && c.cutoffPos >= 1; applyCut();
+  } catch (e) {}
+}
+try { if (window.shl.onChampionshipUpdated) window.shl.onChampionshipUpdated(loadCut); } catch (e) {}
+loadCut();
+function syncExtra(i) {
+  const f = F[i], kind = f.k.value;
+  f.c.style.display = kind === 'custom' ? '' : 'none';
+  f.n.style.display = (kind === 'wins' || kind === 'dnfLast') ? '' : 'none';
+}
+function lineText(i) { const f = F[i]; return previewText(f.k.value, f.c.value.trim(), f.n.value); }
+let list = [], info = {}, cur = null, saveT = null, dirty = false, lastLocalSave = 0;
+
+function setStatus(t, ok) { statusEl.textContent = t || ''; statusEl.className = ok ? 'ok' : ''; }
+
+// car number PNG (trimmed exactly like the overlay does it)
+const _num = {};
+function loadNum(n) {
+  if (_num[n]) return;
+  const src = assetPath(`series/${SERIES}/numbers/${encodeURIComponent(n)}.png`);
+  const o = _num[n] = { state: 'loading', src };
+  const img = new Image();
+  img.onload = () => { o.color = sampleCorners(img); const t = trimNumber(img, o.color); if (t) o.src = t; o.state = 'ok'; render(); };
+  img.onerror = () => { o.state = 'fail'; render(); };
+  img.src = src;
+}
+function numHTML(n) {
+  loadNum(n);
+  const o = _num[n];
+  if (o && o.state === 'ok') return `<div class="np"><span class="np-c"></span><img src="${o.src}" alt="${esc(n)}"></div>`;
+  const hide = (o && o.state === 'fail') ? '' : 'visibility:hidden;';
+  return `<div class="np"><span class="np-c"></span><span class="np-t" style="${hide}color:#fff">${esc(n)}</span></div>`;
+}
+function manuHTML(n) {
+  const u = assetPath(`series/${SERIES}/manufacturers/${encodeURIComponent(n)}.png`);
+  return '<img src="' + esc(u) + '" alt="" onerror="var p=this.parentNode;this.remove();if(p)p.style.display=\'none\'">';
+}
+
+function fitPreview() {
+  const w = $('pv-stage').clientWidth - 48;
+  $('pv-fit').style.zoom = String(Math.min(1, Math.max(0.4, w / (pvStyle === 'fox' ? 1060 : (pvStyle === 'espn' ? 790 : (pvStyle === 'prime' ? 860 : 700))))));
+}
+
+function render() {
+  const has = !!cur;
+  $('pv-stage').style.display = has ? 'flex' : 'none';
+  const empty = $('pv-empty');
+  empty.style.display = has ? 'none' : 'block';
+  if (!has) { empty.innerHTML = 'No drivers with a name and number yet.<br>Add them in the Series Editor (Name override) and they will show up here.'; return; }
+  const num = String(cur.number);
+  const full = (String(cur.first || '') + ' ' + String(cur.last || '')).trim().toUpperCase() || num;
+  if (!pvStyle) setPreviewStyle('nbc');
+  if (pvStyle === 'fox') {
+    const bg = cur.color || (_num[num] && _num[num].color) || '#3b3f47', wrap = $('di-wrap');
+    const acc = accentShades(cur.color);      // colour assigned in the Series Editor; none = the default blue
+    ['--di-acc', '--di-acc-hi', '--di-acc-mid', '--di-acc-lo'].forEach(v => wrap.style.removeProperty(v));
+    if (acc) { wrap.style.setProperty('--di-acc', acc.mid); wrap.style.setProperty('--di-acc-hi', acc.hi); wrap.style.setProperty('--di-acc-mid', acc.mid); wrap.style.setProperty('--di-acc-lo', acc.lo); }
+    const numEl = $('di-num'); numEl.style.setProperty('--di-nbg', bg); numEl.innerHTML = foxNumHTML(num, bg);
+    $('di-name').innerHTML = '<span id="di-nm">' + esc(full) + '</span>';
+    const low = $('di-low'), html = foxRightHTML(lineText(1), lineText(2));
+    if (html) { $('di-r').innerHTML = html; low.style.display = ''; } else { $('di-r').innerHTML = ''; low.style.display = 'none'; }
+    fitPreview(); diFit();
+    return;
+  }
+  if (pvStyle === 'espn') {
+    const bg = cur.color || (_num[num] && _num[num].color) || '#3b3f47', wrap = $('di-wrap');
+    wrap.style.setProperty('--di-nbg', (bg && bg !== 'transparent') ? bg : '#3b3f47');
+    $('di-num').innerHTML = foxNumHTML(num, bg);
+    $('di-nm').textContent = full;
+    const c = $('di-cur'); c.textContent = 'CURRENTLY: 2nd'; c.style.display = 'flex';
+    const ph = $('di-photo');
+    if (ph.dataset.num !== num) {
+      ph.dataset.num = num; ph.classList.remove('on');
+      ph.innerHTML = '<img alt="" src="' + esc(assetPath('series/' + SERIES + '/headshots/' + encodeURIComponent(num) + '.png')) + '" onload="this.parentNode.classList.add(\'on\')" onerror="this.parentNode.classList.remove(\'on\');this.remove()">';
+    }
+    const r = $('di-r'), box = $('di-box'), car = $('di-car'), html = espnRightHTML(lineText(1), lineText(2));
+    if (html) { r.innerHTML = html; r.style.display = ''; car.classList.remove('on'); car.innerHTML = ''; car.dataset.num = ''; box.classList.remove('tight'); }
+    else {                                           // no Info lines: the car picture fills the box (as in the overlay)
+      r.innerHTML = ''; r.style.display = 'none';
+      if (car.dataset.num !== num) {
+        car.dataset.num = num; car.classList.remove('on'); box.classList.add('tight');
+        car.innerHTML = '<img alt="" src="' + esc(assetPath('series/' + SERIES + '/cars/' + encodeURIComponent(num) + '.png')) + '" onload="this.parentNode.classList.add(\'on\');document.getElementById(\'di-box\').classList.remove(\'tight\')" onerror="this.remove()">';
+      }
+    }
+    fitPreview(); diFit();
+    return;
+  }
+  if (pvStyle === 'prime') {
+    const lastP = lastNameOf(full), firstP = (lastP && full.endsWith(lastP)) ? full.slice(0, full.length - lastP.length).trim() : '';
+    const pbox = $('di-box'), col = cur.color || '';
+    if (col) pbox.style.setProperty('--di-bg', 'linear-gradient(90deg, ' + col + ' 0%, ' + col + ' 100%)'); else pbox.style.removeProperty('--di-bg');
+    $('di-num').innerHTML = primeNumHTML(num) + '<div id="di-manu">' + manuHTML(num) + '</div>';
+    $('di-name').innerHTML = (firstP ? '<div class="f">' + esc(firstP) + '</div>' : '') + '<div class="l">' + esc(lastP || full) + '</div>';
+    const ph = $('di-photo');
+    if (ph.dataset.num !== num) {          // oval headshot (series headshot, else the default one)
+      ph.dataset.num = num; ph.classList.remove('on');
+      ph.innerHTML = '<img alt="" src="' + esc(assetPath('series/' + SERIES + '/headshots/' + encodeURIComponent(num) + '.png')) + '" data-d="' + esc(assetPath('images/defaultheadshot.png')) + '" onload="this.parentNode.classList.add(\'on\')" onerror="var d=this.dataset.d;if(d){this.dataset.d=\'\';this.src=d}else{this.parentNode.classList.remove(\'on\');this.remove()}">';
+    }
+    const ptab = $('di-tab'); ptab.textContent = SERIES_NAME; ptab.style.display = SERIES_NAME ? 'flex' : 'none';
+    const pr = $('di-r'), phtml = primeRightHTML(lineText(1), lineText(2));
+    if (phtml) { pr.innerHTML = phtml; pr.style.display = ''; pbox.classList.remove('tight'); } else { pr.innerHTML = ''; pr.style.display = 'none'; pbox.classList.add('tight'); }
+    fitPreview(); diFit();
+    return;
+  }
+  const last = lastNameOf(full), first = (last && full.endsWith(last)) ? full.slice(0, full.length - last.length).trim() : '';
+  $('di-num').innerHTML  = numHTML(num);
+  $('di-manu').innerHTML = manuHTML(num);
+  $('di-manu').style.display = '';
+  $('di-name').innerHTML = (first ? '<div class="f">' + esc(first) + '</div>' : '') + '<div class="l">' + esc(last || full) + '</div>';
+  const col = cur.color || '', box = $('di-box');   // colour assigned in the Series Editor: banner background
+  if (col) { box.style.setProperty('--di-bg', col); box.style.setProperty('--di-fg', bgLuma(col) > 0.6 ? '#111' : '#fff'); box.style.setProperty('--di-accent', bgLuma(col) > 0.45 ? '#111' : '#ffd21f'); }
+  else { box.style.removeProperty('--di-bg'); box.style.removeProperty('--di-fg'); box.style.removeProperty('--di-accent'); }
+  const tabEl = $('di-tab'); tabEl.textContent = SERIES_NAME; tabEl.style.display = SERIES_NAME ? 'flex' : 'none';
+  const r = $('di-r'), html = diRightHTML(lineText(1), lineText(2));
+  if (html) { r.innerHTML = html; r.style.display = ''; } else { r.innerHTML = ''; r.style.display = 'none'; }
+  fitPreview();
+  diFit();
+}
+
+async function flush() {
+  clearTimeout(saveT); saveT = null;
+  if (!dirty || !cur) return;
+  dirty = false;
+  const data = { k1: F[1].k.value, k2: F[2].k.value, line1: F[1].c.value.trim(), line2: F[2].c.value.trim(), n1: clampN(F[1].n.value), n2: clampN(F[2].n.value) };
+  try {
+    lastLocalSave = Date.now();
+    await window.shl.saveDriverInfo(String(cur.number), data);
+    lastLocalSave = Date.now();
+    if ((data.k1 && (data.k1 !== 'custom' || data.line1)) || (data.k2 && (data.k2 !== 'custom' || data.line2))) info[cur.number] = data; else delete info[cur.number];
+    setStatus('Saved', true); setTimeout(() => { if (statusEl.textContent === 'Saved') setStatus(''); }, 1500);
+  } catch (e) { setStatus('Could not save', false); }
+}
+function onEdit() { dirty = true; setStatus('Editing…'); render(); clearTimeout(saveT); saveT = setTimeout(flush, 350); }
+
+function pick(number) {
+  cur = list.find(d => String(d.number) === String(number)) || null;
+  const v = (cur && info[cur.number]) || {};
+  [1, 2].forEach(i => {
+    const f = F[i];
+    let kind = v['k' + i] || '';
+    if (!KIND_SET.has(kind)) kind = '';
+    if (!kind && v['line' + i]) kind = 'custom';          // text saved by an older version = custom text
+    f.k.value = kind; f.c.value = v['line' + i] || ''; f.n.value = v['n' + i] || 5;
+    syncExtra(i);
+  });
+  applyCut();
+  const on = !!cur;
+  [1, 2].forEach(i => { F[i].k.disabled = F[i].c.disabled = F[i].n.disabled = !on; });
+  clearBtn.disabled = !on;
+  render();
+}
+
+async function load(keep) {
+  list = await window.shl.getDriverInfoList() || [];
+  info = await window.shl.getDriverInfo() || {};
+  sel.innerHTML = list.map(d => {
+    const nm = (String(d.first || '') + ' ' + String(d.last || '')).trim();
+    return `<option value="${esc(d.number)}">#${esc(d.number)} — ${esc(nm)}</option>`;
+  }).join('');
+  sel.disabled = !list.length;
+  if (!list.length) sel.innerHTML = '<option>No drivers with name &amp; number</option>';
+  const want = list.some(d => String(d.number) === String(keep)) ? keep : (list[0] && list[0].number);
+  if (want !== undefined) sel.value = want;
+  pick(want);
+  if (typeof followCam === 'function' && !dirty) followCam();
+}
+
+sel.addEventListener('change', async () => { await flush(); pick(sel.value); const f = $('follow'); if (f && f.checked) { f.checked = false; try { localStorage.setItem('psf_di_follow', '0'); } catch (e) {} } });
+// Follow camera: the editor selects the driver whose car is on screen in NR2003 (number reported by the app from the telemetry + camera reader)
+const followEl = $('follow');
+try { followEl.checked = localStorage.getItem('psf_di_follow') !== '0'; } catch (e) {}
+let _camNum = '';
+async function followCam(num) {
+  if (typeof num === 'string') _camNum = num;
+  if (!followEl.checked || !_camNum || !list.some(d => String(d.number) === _camNum)) return;
+  if (cur && String(cur.number) === _camNum) return;
+  await flush(); sel.value = _camNum; pick(_camNum);
+}
+followEl.addEventListener('change', () => { try { localStorage.setItem('psf_di_follow', followEl.checked ? '1' : '0'); } catch (e) {} if (followEl.checked) followCam(); });
+if (window.shl && window.shl.onCam) window.shl.onCam(v => { if (v) followCam(String(v.num || '')); });
+if (window.shl && window.shl.getCam) window.shl.getCam().then(v => { if (v) followCam(String(v.num || '')); }).catch(() => {});
+[1, 2].forEach(i => {
+  F[i].k.addEventListener('change', () => { syncExtra(i); onEdit(); });
+  F[i].c.addEventListener('input', onEdit);
+  F[i].n.addEventListener('input', onEdit);
+});
+clearBtn.addEventListener('click', () => { [1, 2].forEach(i => { F[i].k.value = ''; F[i].c.value = ''; F[i].n.value = 5; syncExtra(i); }); onEdit(); flush(); });
+$('clearAll').addEventListener('click', async () => {
+  if (!confirm('Clear Info 1 and Info 2 of ALL drivers?')) return;
+  clearTimeout(saveT); saveT = null; dirty = false;
+  try {
+    lastLocalSave = Date.now();
+    await window.shl.clearAllDriverInfo();
+    lastLocalSave = Date.now();
+    info = {};
+    pick(cur && cur.number);
+    setStatus('All info cleared', true); setTimeout(() => { if (statusEl.textContent === 'All info cleared') setStatus(''); }, 1800);
+  } catch (e) { setStatus('Could not clear', false); }
+});
+
+// changes made from the phone (or anywhere else) show up here too
+if (window.shl && window.shl.onDriverInfoChanged) window.shl.onDriverInfoChanged(m => {
+  if (dirty || Date.now() - lastLocalSave < 700) return;
+  info = (m && typeof m === 'object') ? m : {};
+  pick(cur && cur.number);
+});
+window.addEventListener('resize', fitPreview);
+window.addEventListener('focus', async () => { await loadSkin(); if (!dirty) await load(cur && cur.number); });
+window.addEventListener('beforeunload', () => { flush(); });
+loadSkin().then(() => load());
+</script>
+</body>
+</html>

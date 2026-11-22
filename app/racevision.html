@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src http://127.0.0.1:* http://localhost:*">
+<title>RaceVision</title>
+<style>
+:root { --bg:#0e1014; --card:#13161a; --border:#1e2229; --border2:#252a33; --text:#e0e4ec; --dim:#7d8594; --accent:#ffc400; --green:#2ecc71; --orange:#f0a030; --red:#ff7d72; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.45 'Segoe UI', Arial, sans-serif; }
+button, select, input, textarea { font: inherit; color: var(--text); }
+button { background: #1a1e26; border: 1px solid var(--border2); border-radius: 4px; padding: 6px 12px; cursor: pointer; }
+button:hover:not(:disabled) { border-color: #3a4150; background: #1f242d; }
+button:disabled { opacity: .45; cursor: default; }
+button.go { border-color: #1e6b3d; color: var(--green); font-weight: 700; } button.stop { border-color: #6b2c2c; color: var(--red); }
+input[type=number], input[type=text], select { background: #0b0d11; border: 1px solid var(--border2); border-radius: 4px; padding: 5px 8px; }
+input[type=number] { width: 84px; } input[type=text] { width: 100%; }
+input[type=checkbox] { accent-color: var(--green); width: 15px; height: 15px; vertical-align: -2px; }
+#app { height: 100%; display: grid; grid-template-rows: auto 1fr; }
+header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--card); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+header h1 { margin: 0; font-size: 16px; letter-spacing: .08em; text-transform: uppercase; }
+header h1 b { color: var(--accent); }
+.chip { display: inline-flex; padding: 3px 10px; border-radius: 12px; background: #1a1e26; border: 1px solid var(--border2); font-size: 12px; }
+.chip.ok { color: var(--green); border-color: #1e4630; } .chip.warn { color: var(--orange); border-color: #5a4010; } .chip.bad { color: var(--red); border-color: #5a2a2a; }
+.spacer { flex: 1; }
+.layout { display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
+#stage { position: relative; min-height: 0; background: #0b0c10; }
+#stage iframe { width: 100%; height: 100%; border: 0; display: block; }
+#empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; color: var(--dim); }
+#side { overflow: auto; padding: 12px; border-left: 1px solid var(--border); background: var(--card); }
+.box { background: #101319; border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; }
+.box h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 7px 0; }
+.muted { color: var(--dim); } .small { font-size: 12px; }
+label.l { color: #c5cad6; }
+#toast { position: fixed; right: 14px; bottom: 14px; background: #1d3a2a; border: 1px solid #2c6b46; padding: 8px 12px; border-radius: 6px; max-width: 420px; display: none; }
+#toast.err { background: #3a1d1d; border-color: #6b2c2c; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>🎥 Race<b>Vision</b></h1>
+    <span class="chip" id="chip-run">checking…</span>
+    <span class="chip" id="chip-fix">MPH fix: —</span>
+    <span class="spacer"></span>
+    <button id="launch" class="go">Start RaceVision</button>
+    <button id="stopbtn" class="stop">Stop</button>
+    <button id="folder">Open folder</button>
+    <button id="log">Log</button>
+  </header>
+  <div class="layout">
+    <div id="stage">
+      <iframe id="frame" title="RaceVision remote"></iframe>
+      <div id="empty"><div id="empty-title" style="font-size:16px;color:var(--text)">RaceVision isn't running</div><div id="empty-text" class="small"></div></div>
+    </div>
+    <div id="side">
+      <div class="box">
+        <h3>RaceVision with All In One NR2003</h3>
+        <div class="row"><label class="l"><input type="checkbox" id="enabled"> Manage RaceVision from All In One NR2003</label></div>
+        <div class="muted small" style="margin:-2px 0 6px">Uses the supplied RaceVision 1.1 beta 2 unless you selected another copy. Its crash replays and live camera editor are available in the embedded remote. Switches on the live view here, the extra options below and stage sync.</div>
+        <div class="row"><label class="l"><input type="checkbox" id="autostart"> Start RaceVision with NR2003</label></div>
+        <div class="row"><label class="l"><input type="checkbox" id="usefixed"> Run the MPH-fixed copy</label></div>
+        <div class="muted small" id="fixnote"></div>
+        <div class="row"><button id="browse">Find RaceVision.exe…</button><span class="muted small" id="exe"></span></div>
+      </div>
+      <div class="box">
+        <h3>More options</h3>
+        <div class="row"><label class="l">Favourite drivers</label></div>
+        <input type="text" id="favs" placeholder="car numbers: 24, 48, 5">
+        <div class="row"><label class="l">When a favourite is in…</label>
+          <select id="favmode"><option value="off">nothing special (off)</option><option value="events">a battle, pass, pit stop or incident: put them on TV</option></select></div>
+        <div class="row"><label class="l">At most one favourite cut every (s)</label><input type="number" id="favgap" min="5" max="600"></div>
+        <div class="muted small">Never while you picked a car yourself or the director is paused; RaceVision holds the pick for its <i>Hands off after your pick</i> time.</div>
+        <div class="row" style="margin-top:12px"><label class="l"><input type="checkbox" id="ovrace"> Overlays only in the race</label></div>
+        <div class="muted small" style="margin:-2px 0 6px">On when a race starts, off when it ends (only on those changes, so your own Ctrl+F9 sticks).</div>
+        <div class="row"><label class="l"><input type="checkbox" id="stages"> Follow All In One NR2003's stages</label></div>
+        <div class="muted small">Keeps RaceVision's <i>Stage end laps</i> in step with the Stage Racing plan, including a stage a caution ended early; cleared when Stages are off. Overwrites that setting.</div>
+      </div>
+      <div class="box">
+        <h3>Live</h3>
+        <div class="small" id="live">—</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+<script>
+const $ = id => document.getElementById(id);
+const rv = window.shl.racevision, ext = window.shl.extmods;
+let frameUrl = '', st = null;
+const toast = (m, err) => { const t = $('toast'); t.textContent = m; t.className = err ? 'err' : ''; t.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = 'none', 3500); };
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function fill(id, v) { const el = $(id); if (document.activeElement === el) return; if (el.type === 'checkbox') el.checked = !!v; else el.value = v == null ? '' : v; }
+
+$('launch').addEventListener('click', async () => {
+  $('launch').disabled = true; toast('Starting RaceVision — Windows will ask for administrator rights…');
+  const r = await rv.launch(); $('launch').disabled = false;
+  if (!r.ok) toast(r.error || 'could not start', true); else toast(r.already ? 'RaceVision is already running.' : (r.fixed ? 'RaceVision started (MPH-fixed copy).' : 'RaceVision started.' + (r.note ? ' Fix not applied: ' + r.note : '')));
+  refresh();
+});
+$('stopbtn').addEventListener('click', async () => { await rv.stop(); toast('RaceVision stopped.'); setTimeout(refresh, 600); });
+$('folder').addEventListener('click', () => rv.openFolder());
+$('log').addEventListener('click', () => rv.openLog());
+$('browse').addEventListener('click', async () => { await ext.browse('raceVision'); refresh(); });
+$('autostart').addEventListener('change', () => ext.setAutoStart('raceVision', $('autostart').checked));
+const cfg = patch => rv.setConfig(patch).then(paint);
+$('enabled').addEventListener('change', () => cfg({ enabled: $('enabled').checked }));
+$('usefixed').addEventListener('change', () => cfg({ useFixed: $('usefixed').checked }));
+const ex = (k, v) => cfg({ extras: { [k]: v } });
+$('favs').addEventListener('change', () => ex('favorites', $('favs').value));
+$('favmode').addEventListener('change', () => ex('favMode', $('favmode').value));
+$('favgap').addEventListener('change', () => ex('favGapSec', parseInt($('favgap').value, 10) || 40));
+$('ovrace').addEventListener('change', () => ex('overlaysOnlyRace', $('ovrace').checked));
+$('stages').addEventListener('change', () => ex('syncStages', $('stages').checked));
+
+function paint(s) {
+  if (!s) return; st = s;
+  const c = s.config, e = c.extras;
+  fill('enabled', c.enabled); fill('usefixed', c.useFixed);
+  fill('favs', e.favorites); fill('favmode', e.favMode); fill('favgap', e.favGapSec); fill('ovrace', e.overlaysOnlyRace); fill('stages', e.syncStages);
+  let run = 'RaceVision not found', cls = 'chip bad';
+  if (s.installed) {
+    if (s.reachable) { run = 'RaceVision: connected' + (s.live && s.live.attached ? ' to NR2003' : ' · waiting for NR2003'); cls = 'chip ok'; }
+    else if (s.running) { run = 'RaceVision: running' + (c.enabled ? ' · remote not answering' : ''); cls = 'chip warn'; }
+    else { run = 'RaceVision: not running'; cls = 'chip'; }
+  }
+  $('chip-run').textContent = run; $('chip-run').className = cls;
+  const f = s.fix || {};
+  const fixTxt = { applied: 'MPH fix: applied', ready: 'MPH fix: ready', unsupported: 'MPH fix: not for this build', off: 'MPH fix: off', missing: 'MPH fix: —', error: 'MPH fix: error' }[f.state] || 'MPH fix: —';
+  $('chip-fix').textContent = fixTxt; $('chip-fix').className = 'chip ' + (f.state === 'applied' ? 'ok' : (f.state === 'unsupported' || f.state === 'error' ? 'warn' : ''));
+  $('fixnote').textContent = f.state === 'applied' ? 'The on-board speed is the car\'s real speed (it used to show the wheel speed in rad/s as mph). Copy: RaceVision_mphfix.exe next to RaceVision.exe.'
+    : (f.reason || '');
+  $('exe').textContent = s.exe || ''; $('launch').disabled = !s.installed; $('stopbtn').disabled = !s.running;
+  // the live remote page
+  const show = s.installed && s.running && c.enabled && s.reachable;
+  if (show && frameUrl !== s.remoteUrl) { frameUrl = s.remoteUrl; $('frame').src = frameUrl; }
+  if (!show) frameUrl = '';
+  $('frame').style.visibility = show ? 'visible' : 'hidden';
+  $('empty').style.display = show ? 'none' : 'flex';
+  $('empty-title').textContent = !s.installed ? 'RaceVision.exe was not found' : (!c.enabled ? 'Manage RaceVision from All In One NR2003 is off' : (!s.running ? "RaceVision isn't running" : "RaceVision's remote isn't answering"));
+  $('empty-text').innerHTML = !s.installed ? 'Use <b>Find RaceVision.exe…</b> (right) to point All In One NR2003 at it.'
+    : (!c.enabled ? 'Tick <b>Manage RaceVision from All In One NR2003</b> (right) to see it here and use the extra options.'
+    : (!s.running ? 'Press <b>Start RaceVision</b> (Windows asks for administrator rights, as NR2003 does).'
+    : 'RaceVision\'s phone remote has to be on (<code>remote = 1</code> in racevision.ini). ' + esc(s.error || '') + '<br><br><button id="mkremote">Turn the remote on</button>'));
+  const mk = $('mkremote'); if (mk) mk.onclick = async () => { const r = await rv.ensureRemote(); toast(r.changed && r.changed.length ? 'Remote settings written — restart RaceVision.' : 'Remote is already set up.'); };
+  const l = s.live;
+  $('live').innerHTML = l ? (l.race ? `Lap ${l.lap}${l.laps > 0 ? ' / ' + l.laps : ''} · ${esc(l.flag || '')}<br>` : 'Not a race session<br>')
+      + (l.on ? `On TV: P${l.on.pos} #${esc(l.on.num)} ${esc(l.on.name)} <span class="muted">(${esc(String(l.on.kind || '').toLowerCase())}${l.on.manual ? ', your pick' : ''})</span><br>` : '')
+      + `Camera ${l.cam} · overlays ${l.overlays ? 'on' : 'off'}${l.paused ? ' · director paused' : ''}` : '<span class="muted">—</span>';
+}
+async function refresh() {
+  paint(await rv.getState());
+  const m = await ext.get().catch(() => null);
+  if (m && m.raceVision) fill('autostart', m.raceVision.autoStart);
+}
+refresh(); setInterval(refresh, 1500);
+</script>
+</body>
+</html>

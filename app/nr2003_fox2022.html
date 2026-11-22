@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="stage_shim.js"></script>
+<script src="perf-shim.js"></script>
+<meta charset="UTF-8">
+<title>NR2003 Fox 2022 Standings</title>
+<style>
+/* Chase highlight — drivers in the chase get a yellow name background */
+.chase { background: #f5d100 !important; color: #111 !important; text-shadow: none !important;
+         box-shadow: -3px 0 0 #f5d100, 3px 0 0 #f5d100; }
+@font-face {
+  font-family: 'AuthorityRounded';
+  src: local('AuthorityRounded');  /* overridden by JS injection */
+}
+@font-face {
+  font-family: 'AuthorityRoundedItalic';
+  src: local('AuthorityRoundedItalic');
+}
+@font-face {
+  font-family: 'StainlessCondBlack';
+  src: local('StainlessCondBlack');
+}
+@font-face {
+  font-family: 'GladiusRegular';
+  src: local('GladiusRegular');
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: transparent;
+  overflow: hidden;
+  width: 409px;
+  height: 1080px;
+}
+
+#scale-root {
+  position: relative;
+  width: 409px;
+  height: 1080px;
+  transform-origin: top left;
+}
+
+/* Opacity applied to overlay chrome only — sponsors and data always full opacity */
+#sponsor-layer,
+#header-data,
+#standings-data {
+  opacity: 1;
+  visibility: hidden;
+}
+
+#overlay-top, #overlay-bottom {
+  transition: opacity 0.2s ease;
+}
+
+/* ── Layer 1: Sponsors ───────────────────────────────────────────── */
+#sponsor-layer {
+  position: absolute;
+  inset: 0;
+  width: 409px;
+  height: 1080px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+#sponsor-img {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: none;
+  object-position: top left;
+  transition: opacity 0.8s ease-in-out;
+}
+
+#sponsor-img-next {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: none;
+  object-position: top left;
+  opacity: 0;
+  transition: opacity 0.8s ease-in-out;
+}
+
+/* ── Layer 2: Overlay chrome ─────────────────────────────────────── */
+#overlay-layer {
+  position: absolute;
+  inset: 0;
+  width: 409px;
+  height: 1080px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ── Layer 3: Data ───────────────────────────────────────────────── */
+#header-data, #standings-data {
+  position: absolute;
+  inset: 0;
+  width: 409px;
+  height: 1080px;
+  z-index: 3;
+}
+
+/* Header — race name */
+#race-name-row {
+  position: absolute;
+  left: 56px; right: 60px;
+  top: 107px; height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#race-name-text {
+  flex: 1;
+  min-width: 0;
+  font-family: 'StainlessCondBlack', Impact, sans-serif;
+  font-size: 27px;
+  font-weight: normal;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+
+#flag-dot {
+  width: 21px; height: 21px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+/* Header — lap row */
+#lap-row {
+  position: absolute;
+  left: 56px; right: 62px;
+  top: 154px; height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#lap-label {
+  font-family: 'AuthorityRoundedItalic', Impact, sans-serif;
+  font-size: 26px;
+  font-weight: normal;
+  color: #aaaaaa;
+  letter-spacing: 0.04em;
+}
+
+#lap-value {
+  font-family: 'AuthorityRoundedItalic', Impact, sans-serif;
+  font-size: 28px;
+  font-weight: normal;
+  color: #ffffff;
+  letter-spacing: 0.02em;
+}
+
+/* ── Standings rows ──────────────────────────────────────────────── */
+.s-row {
+  position: absolute;
+  left: 0; right: 0;
+  overflow: hidden;
+}
+
+.s-pos {
+  position: absolute;
+  left: 45px; width: 23px;
+  text-align: right;
+  font-family: 'AuthorityRounded', Impact, sans-serif;
+  font-size: 20px;
+  font-weight: 400;
+  color: #ffffff;
+  text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
+  top: 50%; transform: translateY(-50%);
+  line-height: 1;
+}
+
+.s-num-wrap {
+  position: absolute;
+  left: 70px; width: 58px;
+  top: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.s-num-bg {
+  display: flex; align-items: center; justify-content: center;
+  padding: 3px 5px; border-radius: 4px;
+  line-height: 0;
+}
+
+.s-num-img {
+  max-width: 54px; max-height: 26px;
+  width: auto; height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+.s-num-text {
+  font-family: Verdana, sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  font-style: italic;
+  color: #ffffff;
+  text-align: center;
+  line-height: 1;
+  display: none;
+}
+
+.s-name {
+  position: absolute;
+  left: 139px; right: 130px;
+  font-family: 'GladiusRegular', Impact, sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  font-style: italic;
+  color: #ffffff;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  top: 50%; transform: translateY(-50%);
+  line-height: 1;
+}
+
+.s-gap {
+  position: absolute;
+  right: 8px;
+  width: 118px;
+  text-align: left;
+  font-family: 'GladiusRegular', Impact, sans-serif;
+  font-size: 19px;
+  font-weight: 900;
+  font-style: italic;
+  color: #ffffff;
+  letter-spacing: 0.02em;
+  top: 50%; transform: translateY(-50%);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+#rows-bottom {
+  position: absolute;
+  inset: 0;
+  transition: opacity 0.25s ease;
+}
+#rows-bottom.fading { opacity: 0; }
+  font-size: 14px;
+  margin-left: 4px;
+  vertical-align: middle;
+  opacity: 1;
+  transition: opacity 2.5s ease-out;
+}
+.s-name .s-arrow         { color: #ffffff; }
+.s-name .s-arrow.gained  { color: #2ecc40 !important; }
+.s-name .s-arrow.lost    { color: #e84444 !important; }
+.s-arrow.fade            { opacity: 0; }
+.is-player .s-pos,
+.is-player .s-name,
+.is-player .s-gap {
+  color: #f5d100;
+  -webkit-text-stroke: 0;
+}
+</style>
+</head>
+<body>
+<div id="scale-root">
+
+  <!-- Layer 1: Sponsors -->
+  <div id="sponsor-layer">
+    <img id="sponsor-img"      src="" alt="">
+    <img id="sponsor-img-next" src="" alt="">
+  </div>
+
+  <!-- Layer 2: Overlay chrome — split top/bottom for independent visibility -->
+  <img id="overlay-top"    src="" alt="" style="position:absolute;inset:0;width:409px;height:1080px;pointer-events:none;clip-path:inset(0 0 879px 0);opacity:0;transition:opacity 0.2s ease;">
+  <img id="overlay-bottom" src="" alt="" style="position:absolute;inset:0;width:409px;height:1080px;pointer-events:none;clip-path:inset(201px 0 0 0);opacity:0;transition:opacity 0.2s ease;">
+
+  <!-- Layer 3: Data — split header/standings for independent visibility -->
+  <div id="header-data" style="position:absolute;inset:0;visibility:hidden;">
+    <div id="race-name-row">
+      <span id="race-name-text"></span>
+      <span id="stage-to-go" style="display:none;font-family:'StainlessCondBlack',Impact,sans-serif;font-size:22px;color:#ffffff;white-space:nowrap;flex-shrink:0;padding-right:6px;"></span>
+      <img id="flag-dot" src="" alt="">
+    </div>
+    <div id="lap-row">
+      <span id="lap-label">LAP</span>
+      <span id="lap-value">—</span>
+    </div>
+  </div>
+
+  <div id="standings-data" style="position:absolute;inset:0;visibility:hidden;">
+    <!-- 20 standings rows — pixel-precise positions from mockup -->
+    <div class="s-row" id="row-1"  style="top:206px; height:47px;"></div>
+    <div class="s-row" id="row-2"  style="top:253px; height:41px;"></div>
+    <div class="s-row" id="row-3"  style="top:294px; height:41px;"></div>
+    <div class="s-row" id="row-4"  style="top:335px; height:41px;"></div>
+    <div class="s-row" id="row-5"  style="top:376px; height:41px;"></div>
+    <div class="s-row" id="row-6"  style="top:417px; height:41px;"></div>
+    <div class="s-row" id="row-7"  style="top:458px; height:41px;"></div>
+    <div class="s-row" id="row-8"  style="top:499px; height:41px;"></div>
+    <div class="s-row" id="row-9"  style="top:540px; height:41px;"></div>
+    <div class="s-row" id="row-10" style="top:581px; height:41px;"></div>
+
+    <!-- Bottom 10 rotating container -->
+    <div id="rows-bottom">
+      <div class="s-row" id="row-11" style="top:622px; height:41px;"></div>
+      <div class="s-row" id="row-12" style="top:663px; height:41px;"></div>
+      <div class="s-row" id="row-13" style="top:704px; height:41px;"></div>
+      <div class="s-row" id="row-14" style="top:745px; height:41px;"></div>
+      <div class="s-row" id="row-15" style="top:786px; height:41px;"></div>
+      <div class="s-row" id="row-16" style="top:827px; height:41px;"></div>
+      <div class="s-row" id="row-17" style="top:868px; height:41px;"></div>
+      <div class="s-row" id="row-18" style="top:911px; height:41px;"></div>
+      <div class="s-row" id="row-19" style="top:952px; height:41px;"></div>
+      <div class="s-row" id="row-20" style="top:993px; height:50px;"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Chase highlight ─────────────────────────────────────────────────────────
+// The main process tells every overlay which car numbers are in the chase
+// (empty list = feature off). Name elements carry data-chase-num; the class
+// is toggled here so it updates instantly, without waiting for a re-render.
+let _CHASE = new Set();
+const chaseKey = n => String(n == null ? '' : n).trim().replace(/"/g, '');
+const chaseCls = n => (_CHASE.size && _CHASE.has(chaseKey(n))) ? ' chase' : '';
+function chaseMark(el, n) {
+  if (!el) return;
+  const k = chaseKey(n);
+  el.dataset.chaseNum = k;
+  el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(k));
+}
+function _chasePass() {
+  document.querySelectorAll('[data-chase-num]').forEach(el =>
+    el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(el.dataset.chaseNum)));
+}
+function _setChase(list) {
+  _CHASE = new Set((Array.isArray(list) ? list : []).map(chaseKey));
+  _chasePass();
+}
+if (window.shl && window.shl.onChaseSet) {
+  window.shl.onChaseSet(_setChase);
+  if (window.shl.getChaseSet) window.shl.getChaseSet().then(_setChase).catch(() => {});
+}
+window.addEventListener('message', e => {      // layout-editor preview
+  if (typeof e.data !== 'string' || e.data.indexOf('"_chase"') < 0) return;
+  try { const m = JSON.parse(e.data); if (Array.isArray(m._chase)) _setChase(m._chase); } catch (x) {}
+});
+// ── PSF bootstrap ─────────────────────────────────────────────────────────
+const psf         = window.__PSF || {};
+const params      = new URLSearchParams(location.search);
+const INSTALL_DIR = psf.installDir || params.get('installdir') || '';
+const SERIES_ID   = psf.series || params.get('series') || 'default';
+const IS_DEFAULT  = !SERIES_ID || SERIES_ID === 'default';
+const SCALE       = Math.max(0.1, Math.min(4.0, parseFloat(psf.scale   || params.get('scale')   || '1.0')));
+const OPACITY     = Math.max(0.0, Math.min(1.0, parseFloat(psf.opacity || params.get('opacity') || '1.0')));
+const WS_URL      = psf.wsUrl || `ws://${location.hostname || 'localhost'}:8765`;
+const HTTP_BASE   = psf.assetBase ? psf.assetBase.replace(/\/assets$/, '') : `http://${location.hostname || 'localhost'}:8766`;
+
+let _driverColors = {};
+let DNF_DISPLAY = (window.__PSF?.dnfdisplay || new URLSearchParams(location.search).get('dnfdisplay') || 'reason');
+
+function displayName(entry) {
+  const raw = entry.name || '?';
+  // Title case — "Gordon", "Van Gisbergen", "J. Gordon"
+  return raw.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+let VISIBILITY_MODE       = psf.visibilitymode || params.get('visibilitymode') || 'at_track';
+let SPONSOR_ROTATION_MS   = (parseInt(psf.sponsorrotationtime || params.get('sponsorrotationtime') || '10') * 1000) || 10000;
+let customName            = psf.customname ? decodeURIComponent(psf.customname) : (params.get('customname') ? decodeURIComponent(params.get('customname')) : '');
+
+function assetPath(rel) {
+  if (psf.assetBase) return psf.assetBase + '/' + rel;
+  if (INSTALL_DIR) {
+    const enc = INSTALL_DIR.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+    return 'file:///' + enc + '/' + rel;
+  }
+  return rel;
+}
+
+const FOX_BASE = assetPath('images/Fox2022');
+
+// ── Font injection — @font-face src can't reference JS, inject as <style> ─
+(function injectFonts() {
+  const fonts = [
+    { family: 'AuthorityRounded',       file: 'authority-rounded.ttf',         fmt: 'truetype' },
+    { family: 'AuthorityRoundedItalic', file: 'authority-rounded-italic.ttf',   fmt: 'truetype' },
+    { family: 'StainlessCondBlack',     file: 'STAINLESSCOND-BLACK.OTF',         fmt: 'opentype' },
+    { family: 'GladiusRegular',         file: 'Gladius-Regular.otf',             fmt: 'opentype' },
+  ];
+  const css = fonts.map(f =>
+    `@font-face { font-family: '${f.family}'; src: url('${assetPath('fonts/' + f.file)}') format('${f.fmt}'); font-weight: normal; font-style: normal; font-display: swap; }`
+  ).join('\n');
+  const el = document.createElement('style');
+  el.textContent = css;
+  document.head.appendChild(el);
+})();
+
+// ── Scale ─────────────────────────────────────────────────────────────────
+const root = document.getElementById('scale-root');
+root.style.transform = `scale(${SCALE})`;
+document.body.style.width  = Math.round(409 * SCALE) + 'px';
+document.body.style.height = Math.round(1080 * SCALE) + 'px';
+
+// ── Overlay chrome ────────────────────────────────────────────────────────
+const _overlaySrc = FOX_BASE + '/overlay.png';
+document.getElementById('overlay-top').src    = _overlaySrc;
+document.getElementById('overlay-bottom').src = _overlaySrc;
+
+// ── Visibility ────────────────────────────────────────────────────────────
+let _preview = false;
+
+function checkVisibility(d) {
+  if (_preview) return true;
+  switch (VISIBILITY_MODE) {
+    case 'always':   return true;
+    case 'in_car':   return !!(d.atTrack && d.player?.inCar);
+    case 'at_track':
+    default:         return !!d.atTrack;
+  }
+}
+
+function setHeaderVisible(v) {
+  document.getElementById('sponsor-layer').style.visibility  = v ? 'visible' : 'hidden';
+  document.getElementById('overlay-top').style.opacity       = v ? OPACITY   : '0';
+  document.getElementById('header-data').style.visibility    = v ? 'visible' : 'hidden';
+}
+
+function setStandingsVisible(v) {
+  document.getElementById('overlay-bottom').style.opacity    = v ? OPACITY   : '0';
+  document.getElementById('standings-data').style.visibility = v ? 'visible' : 'hidden';
+}
+
+function setVisible(v) {
+  setHeaderVisible(v);
+  setStandingsVisible(v);
+}
+
+// ── Race name auto-fit via canvas measureText ─────────────────────────────
+const _rnCanvas = document.createElement('canvas');
+const _rnCtx    = _rnCanvas.getContext('2d');
+
+function measureText(text, sizePx) {
+  _rnCtx.font = `normal ${sizePx}px 'StainlessCondBlack', Impact, sans-serif`;
+  return _rnCtx.measureText(text.toUpperCase()).width;
+}
+
+function updateRaceName(name) {
+  const el = document.getElementById('race-name-text');
+  el.textContent = name;
+  const available = el.offsetWidth - 8;
+  if (available <= 0) return;
+  const MAX_SIZE = 27, MIN_SIZE = 10;
+  let size = MAX_SIZE;
+  while (size > MIN_SIZE && measureText(name, size) > available) size -= 0.5;
+  el.style.fontSize = size + 'px';
+}
+
+// ── Flag dot ──────────────────────────────────────────────────────────────
+let _lastFlag = '';
+function updateFlag(d) {
+  const state          = (d.sessionState || '').toLowerCase();
+  const session        = (d.session      || '').toLowerCase();
+  const flag           = (d.sessionFlag  || '').toLowerCase();
+  const lapsRem        = d.lapsRemaining || 0;
+  const stageActive    = !!d.stageRacingActive;
+  const stageComplete  = !!d.stageCompleteActive;
+  const stageFinal     = !!d.stageFinalStage;
+
+  let name;
+  if (state === 'checkered' || state === 'cool down') {
+    name = 'checkered';
+  } else if (stageActive && !stageFinal && stageComplete) {
+    // Stage just completed — stage.png for one lap, then back to yellow/green
+    name = 'stage';
+  } else if (lapsRem === 1 && session === 'race' && state === 'racing') {
+    name = 'white';
+  } else {
+    switch (flag) {
+      case 'yellow': name = 'yellow'; break;
+      case 'red':    name = 'red';    break;
+      default:       name = 'green';  break;
+    }
+  }
+  if (name === _lastFlag) return;
+  _lastFlag = name;
+  document.getElementById('flag-dot').src = `${FOX_BASE}/flags/${name}.png`;
+}
+
+// ── Lap / header display ──────────────────────────────────────────────────
+function updateLap(d) {
+  const session        = (d.session      || '').toLowerCase();
+  const state          = (d.sessionState || '').toLowerCase();
+  const flag           = (d.sessionFlag  || '').toLowerCase();
+  const lapsComp       = d.lapsComplete  || 0;
+  const lapsRem        = d.lapsRemaining || 0;
+  const lapsTotal      = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  const lapNum         = lapsComp + 1;
+  const isYellow       = flag === 'yellow';
+  const isRace         = session === 'race';
+  const stageActive    = !!d.stageRacingActive;
+  const stageFinal     = !!d.stageFinalStage;
+  const stageComplete  = !!d.stageCompleteActive;
+  const stageNum       = d.stageNum       || 0;
+  const stageCompNum   = d.stageCompleteNum || 0;
+  const stageLap       = d.stageLap       || 0;
+  const stageTotalLaps = d.stageTotalLaps  || 0;
+  const stageRem       = Math.max(0, stageTotalLaps - stageLap);
+
+  const raceNameEl = document.getElementById('race-name-text');
+  const labelEl    = document.getElementById('lap-label');
+  const valueEl    = document.getElementById('lap-value');
+
+  // Reset colors and race name visibility
+  labelEl.style.color  = '#aaaaaa';
+  valueEl.style.color  = '#ffffff';
+  raceNameEl.style.display = '';
+
+  // Reset stage-to-go span when not in mid-stage green
+  const toGoElReset = document.getElementById('stage-to-go');
+  if (toGoElReset) toGoElReset.style.display = 'none';
+
+  if (!isRace) {
+    raceNameEl.style.display = '';
+    const timeRem = d.timeRemaining || -1;
+    if (session === 'practice' && timeRem >= 0) {
+      const mins = Math.floor(timeRem / 60);
+      const secs = Math.floor(timeRem % 60);
+      labelEl.textContent = 'PRACTICE';
+      valueEl.textContent = `${mins}:${String(secs).padStart(2, '0')}`;
+    } else {
+      labelEl.textContent = session === 'qualifying' ? 'QUALIFYING' : session === 'testing' ? 'TESTING' : 'PRACTICE';
+      valueEl.textContent = '';
+    }
+    return;
+  }
+
+  // State overrides (apply to all modes)
+  if (state === 'get in car')                        { labelEl.textContent = 'GRIDDING';   valueEl.textContent = ''; return; }
+  if (state === 'warmup' || state === 'parade laps') { labelEl.textContent = 'PACING';     valueEl.textContent = ''; return; }
+  if (state === 'cool down')                         { labelEl.textContent = 'RESULTS';    valueEl.textContent = ''; return; }
+  if (state === 'checkered')                         { labelEl.textContent = 'CHECKERED';  valueEl.textContent = ''; return; }
+
+  // ── Non-final stage racing ────────────────────────────────────────────
+  if (stageActive && !stageFinal) {
+    raceNameEl.style.display = 'none'; // hide race name — use stage info in row 1
+
+    // Stage complete
+    if (stageComplete) {
+      // Row 1: "STAGE X COMPLETE" via the race name row repurposed
+      raceNameEl.style.display = '';
+      requestAnimationFrame(() => updateRaceName(`STAGE ${stageCompNum} COMPLETE`));
+
+      // Row 2: blank green, caution yellow
+      if (isYellow) {
+        labelEl.style.color = '#ffdc00';
+        valueEl.style.color = '#ffdc00';
+        labelEl.textContent = 'CAUTION';
+        valueEl.textContent = lapsTotal > 0 ? `LAP ${lapNum} | ${lapsTotal}` : `LAP ${lapNum}`;
+      } else {
+        labelEl.textContent = '';
+        valueEl.textContent = '';
+      }
+      return;
+    }
+
+    // Mid-stage under caution
+    if (isYellow) {
+      raceNameEl.style.display = '';
+      const rnElC   = document.getElementById('race-name-text');
+      const toGoElC = document.getElementById('stage-to-go');
+      rnElC.style.fontSize  = '22px';
+      rnElC.textContent     = `STAGE ${stageNum}`;
+      toGoElC.textContent   = `${stageRem} TO GO`;
+      toGoElC.style.display = '';
+      labelEl.style.color = '#ffdc00';
+      valueEl.style.color = '#ffdc00';
+      labelEl.textContent = 'CAUTION';
+      valueEl.textContent = lapsTotal > 0 ? `LAP ${lapNum} | ${lapsTotal}` : `LAP ${lapNum}`;
+      return;
+    }
+
+    // Mid-stage green — STAGE X left, XX TO GO right, flag dot rightmost
+    raceNameEl.style.display = '';
+    const rnEl   = document.getElementById('race-name-text');
+    const toGoEl = document.getElementById('stage-to-go');
+    rnEl.style.fontSize     = '22px';
+    rnEl.textContent        = `STAGE ${stageNum}`;
+    toGoEl.textContent      = `${stageRem} TO GO`;
+    toGoEl.style.display    = '';
+
+    labelEl.textContent = 'LAP';
+    valueEl.textContent = lapsTotal > 0 ? `${lapNum} | ${lapsTotal}` : `${lapNum}`;
+    return;
+  }
+
+  // ── Final stage or no stage racing — existing logic ───────────────────
+  if (isYellow) {
+    const lapStr = lapsTotal > 0 && lapsComp >= Math.floor(lapsTotal / 2)
+      ? `${lapsRem} TO GO`
+      : (lapsTotal > 0 ? `LAP ${lapNum} OF ${lapsTotal}` : `LAP ${lapNum}`);
+    labelEl.style.color = '#ffdc00';
+    valueEl.style.color = '#ffdc00';
+    labelEl.textContent = 'CAUTION';
+    valueEl.textContent = lapStr;
+    return;
+  }
+
+  if (lapsTotal <= 0) {
+    labelEl.textContent = 'LAP';
+    valueEl.textContent = lapNum > 0 ? `${lapNum}` : '—';
+    return;
+  }
+
+  if (lapsRem <= 1 && lapsComp > 0) {
+    labelEl.textContent = 'FINAL LAP';
+    valueEl.textContent = '';
+    return;
+  }
+
+  const halfway = Math.floor(lapsTotal / 2);
+  if (lapsComp >= halfway) {
+    labelEl.textContent = '';
+    valueEl.textContent = `${lapsRem} TO GO`;
+  } else {
+    labelEl.textContent = 'LAP';
+    valueEl.textContent = `${lapNum} | ${lapsTotal}`;
+  }
+}
+
+// ── Number image ──────────────────────────────────────────────────────────
+function numImgSrc(num) {
+  const n = (num || '').trim();
+  if (!n || n === '??' || IS_DEFAULT) return '';
+  return assetPath(`series/${SERIES_ID}/numbers/${n}.png`);
+}
+
+// ── Gap formatting ────────────────────────────────────────────────────────
+function fmtGap(entry, isLeader, session) {
+  const lapsDown = entry.lapsDown || 0;
+  const status   = (entry.status || '').toLowerCase();
+  const t        = entry.time || 0;
+  const isPQ     = session === 'practice' || session === 'qualifying' || session === 'testing';
+
+  if (status && status !== 'running') return DNF_DISPLAY === 'out' ? 'OUT' : status.toUpperCase().slice(0, 8);
+  if (isPQ) return t > 0 ? t.toFixed(3) : '';
+  if (lapsDown > 0) return `-${lapsDown}L`;
+  if (isLeader) return '';
+  return t > 0 ? `-${t.toFixed(2)}` : '';
+}
+
+// ── Build a single row ────────────────────────────────────────────────────
+function buildRow(el, entry, displayPos, session, playerCarIdx) {
+  if (!entry) { el.innerHTML = ''; el.className = 's-row'; return; }
+
+  const isPlayer = entry.carIdx === playerCarIdx;
+  el.className   = 's-row' + (isPlayer ? ' is-player' : '');
+
+  const isLeader = displayPos === 1;
+  const gap      = fmtGap(entry, isLeader, session);
+  const numSrc   = numImgSrc(entry.number);
+  const name     = displayName(entry);
+
+  const numColor = _driverColors[(entry.number || '').trim()] || '';
+  const numBg    = numColor ? `background:${numColor}` : '';
+  const numHtml = numSrc
+    ? `<div class="s-num-wrap"><div class="s-num-bg" style="${numBg}">
+         <img class="s-num-img" src="${numSrc}"
+              onerror="this.style.display='none';this.nextElementSibling.style.display='block';" alt="${entry.number}">
+         <span class="s-num-text">${entry.number || ''}</span>
+       </div></div>`
+    : `<div class="s-num-wrap"><div class="s-num-bg" style="${numBg}"><span class="s-num-text" style="display:block">${entry.number || ''}</span></div></div>`;
+
+  el.innerHTML = `
+    <span class="s-pos">${displayPos}</span>
+    ${numHtml}
+    <span class="s-name${chaseCls(entry.number)}" data-chase-num="${chaseKey(entry.number)}">${name}</span>
+    ${gap ? `<span class="s-gap">${gap}</span>` : ''}
+  `;
+
+  // Shrink name font if it overflows its cell
+  const nameEl = el.querySelector('.s-name');
+  if (nameEl) {
+    let size = 22;
+    nameEl.style.fontSize = '';
+    while (nameEl.scrollWidth > nameEl.offsetWidth && size > 12) {
+      size -= 0.5;
+      nameEl.style.fontSize = size + 'px';
+    }
+  }
+}
+
+// ── Bottom-half rotation ──────────────────────────────────────────────────
+let _rotGroupIdx = 0;
+let _rotTimer    = null;
+const BOTTOM_GROUP_SIZE = 10;
+
+function renderBottom(standings, session, playerCarIdx) {
+  const rest       = standings.slice(10);
+  const groupStart = _rotGroupIdx * BOTTOM_GROUP_SIZE;
+
+  for (let i = 0; i < BOTTOM_GROUP_SIZE; i++) {
+    const rowEl  = document.getElementById(`row-${11 + i}`);
+    const entry  = rest[groupStart + i] || null;
+    const absPos = entry ? (11 + groupStart + i) : null;
+    buildRow(rowEl, entry, absPos, session, playerCarIdx);
+    if (rowEl) rowEl.dataset.caridx = entry ? entry.carIdx : '';
+  }
+}
+
+// ── Position change tracking ───────────────────────────────────────────────
+let _prevOrder = [];  // carIdx array of previous top-10 order
+
+function renderStandings(standings, session, playerCarIdx) {
+  const top10 = standings.slice(0, 10);
+
+  // FLIP — snapshot current row top positions before rebuild
+  const firstPos = new Map();
+  const oldOrder = _prevOrder.slice();
+  const newOrder = top10.map(s => s.carIdx);
+
+  for (let i = 0; i < 10; i++) {
+    const el = document.getElementById(`row-${i + 1}`);
+    // Store which carIdx is currently in this row via data attribute
+    const ci = el ? parseInt(el.dataset.caridx || '-1') : -1;
+    if (ci >= 0) firstPos.set(ci, el.offsetTop);
+  }
+
+  // Rebuild top 10
+  top10.forEach((entry, i) => {
+    const el = document.getElementById(`row-${i + 1}`);
+    buildRow(el, entry, i + 1, session, playerCarIdx);
+    el.dataset.caridx = entry.carIdx;
+  });
+  for (let i = top10.length; i < 10; i++) {
+    const el = document.getElementById(`row-${i + 1}`);
+    el.innerHTML = ''; el.className = 's-row'; el.dataset.caridx = '';
+  }
+
+  // FLIP — animate from old Y to new Y, add arrow on driver name
+  if (oldOrder.length > 0) {
+    requestAnimationFrame(() => {
+      const pending = [];
+      for (let i = 0; i < top10.length; i++) {
+        const ci    = top10[i].carIdx;
+        const el    = document.getElementById(`row-${i + 1}`);
+        const oldTop = firstPos.get(ci);
+        if (oldTop === undefined) continue;
+        const dy = oldTop - el.offsetTop;
+        if (Math.abs(dy) < 1) continue;
+
+        const oldIdx = oldOrder.indexOf(ci);
+        const newIdx = newOrder.indexOf(ci);
+        const gained = newIdx < oldIdx;
+
+        // Slide animation
+        el.style.transition = 'none';
+        el.style.transform  = `translateY(${dy}px)`;
+        void el.offsetWidth;
+        pending.push({ el, gained });
+
+        // Arrow on driver name
+        const nameEl = el.querySelector('.s-name');
+        if (nameEl) {
+          // Remove any existing arrow
+          const existing = nameEl.querySelector('.s-arrow');
+          if (existing) existing.remove();
+          const arrow = document.createElement('span');
+          arrow.className = `s-arrow ${gained ? 'gained' : 'lost'}`;
+          arrow.textContent = gained ? ' ▲' : ' ▼';
+          nameEl.appendChild(arrow);
+          // Fade out after 0.5s
+          setTimeout(() => arrow.classList.add('fade'), 500);
+          setTimeout(() => arrow.remove(), 3000);
+        }
+      }
+      requestAnimationFrame(() => {
+        pending.forEach(({ el }) => {
+          el.style.transition = 'transform 0.75s cubic-bezier(0.65, 0, 0.35, 1), opacity 0.3s ease';
+          el.style.transform  = '';
+        });
+        setTimeout(() => pending.forEach(({ el }) => {
+          el.style.transition = '';
+          el.style.transform  = '';
+        }), 800);
+      });
+    });
+  }
+
+  _prevOrder = newOrder;
+
+  // Bottom 10 — render current group with FLIP animation
+  const rest       = standings.slice(10);
+  const groupStart = _rotGroupIdx * BOTTOM_GROUP_SIZE;
+
+  // Snapshot bottom row positions and carIdxs before rebuild
+  const bottomFirst = new Map();
+  const prevBottom  = [];
+  for (let i = 0; i < BOTTOM_GROUP_SIZE; i++) {
+    const el = document.getElementById(`row-${11 + i}`);
+    if (!el) continue;
+    const ci = parseInt(el.dataset.caridx || '-1');
+    if (ci >= 0) { bottomFirst.set(ci, el.offsetTop); }
+    prevBottom.push(ci);
+  }
+
+  renderBottom(standings, session, playerCarIdx);
+
+  // FLIP for bottom rows — only animate cars visible in both old and new view
+  if (prevBottom.some(ci => ci >= 0)) {
+    requestAnimationFrame(() => {
+      const pending = [];
+      for (let i = 0; i < BOTTOM_GROUP_SIZE; i++) {
+        const el    = document.getElementById(`row-${11 + i}`);
+        const entry = rest[groupStart + i];
+        if (!el || !entry) continue;
+        const ci     = entry.carIdx;
+        const oldTop = bottomFirst.get(ci);
+        if (oldTop === undefined) continue;
+        const dy = oldTop - el.offsetTop;
+        if (Math.abs(dy) < 1) continue;
+
+        const oldIdx = prevBottom.indexOf(ci);
+        const newIdx = i;
+        const gained = newIdx < oldIdx;
+
+        el.style.transition = 'none';
+        el.style.transform  = `translateY(${dy}px)`;
+        void el.offsetWidth;
+        pending.push({ el, gained, ci });
+
+        const nameEl = el.querySelector('.s-name');
+        if (nameEl) {
+          const existing = nameEl.querySelector('.s-arrow');
+          if (existing) existing.remove();
+          const arrow = document.createElement('span');
+          arrow.className   = `s-arrow ${gained ? 'gained' : 'lost'}`;
+          arrow.textContent = gained ? ' \u25b2' : ' \u25bc';
+          nameEl.appendChild(arrow);
+          setTimeout(() => arrow.classList.add('fade'), 500);
+          setTimeout(() => arrow.remove(), 3000);
+        }
+      }
+      requestAnimationFrame(() => {
+        pending.forEach(({ el }) => {
+          el.style.transition = 'transform 0.75s cubic-bezier(0.65, 0, 0.35, 1), opacity 0.3s ease';
+          el.style.transform  = '';
+        });
+        setTimeout(() => pending.forEach(({ el }) => {
+          el.style.transition = '';
+          el.style.transform  = '';
+        }), 800);
+      });
+    });
+  }
+}
+
+function startRotation() {
+  if (_rotTimer) clearInterval(_rotTimer);
+
+  _rotTimer = setInterval(() => {
+    if (!_latestData) return;
+    const src  = getStandings(_latestData);
+    const rest = src.slice(10);
+    if (rest.length <= BOTTOM_GROUP_SIZE) return;
+
+    const sess     = (_latestData.session || '').toLowerCase();
+    const pid      = _latestData.playerCarIdx ?? -1;
+    const maxGroup = Math.ceil(rest.length / BOTTOM_GROUP_SIZE);
+
+    // Snapshot current bottom carIdxs for arrow detection
+    const prevBottomOrder = [];
+    for (let i = 0; i < BOTTOM_GROUP_SIZE; i++) {
+      const el = document.getElementById(`row-${11 + i}`);
+      prevBottomOrder.push(el ? parseInt(el.dataset.caridx || '-1') : -1);
+    }
+
+    const bottomEl = document.getElementById('rows-bottom');
+
+    // Fade out container
+    bottomEl.classList.add('fading');
+
+    setTimeout(() => {
+      _rotGroupIdx = (_rotGroupIdx + 1) % maxGroup;
+      const newGroupStart = _rotGroupIdx * BOTTOM_GROUP_SIZE;
+      renderBottom(src, sess, pid);
+
+      // Add arrows for cars that changed slot within the visible group
+      for (let i = 0; i < BOTTOM_GROUP_SIZE; i++) {
+        const el    = document.getElementById(`row-${11 + i}`);
+        const entry = rest[newGroupStart + i];
+        if (!el || !entry) continue;
+        const ci      = entry.carIdx;
+        const prevIdx = prevBottomOrder.indexOf(ci);
+        if (prevIdx === -1 || prevIdx === i) continue;
+        const gained  = i < prevIdx;
+        const nameEl  = el.querySelector('.s-name');
+        if (nameEl) {
+          const existing = nameEl.querySelector('.s-arrow');
+          if (existing) existing.remove();
+          const arrow = document.createElement('span');
+          arrow.className   = `s-arrow ${gained ? 'gained' : 'lost'}`;
+          arrow.textContent = gained ? ' \u25b2' : ' \u25bc';
+          nameEl.appendChild(arrow);
+          setTimeout(() => arrow.classList.add('fade'), 500);
+          setTimeout(() => arrow.remove(), 3000);
+        }
+        el.dataset.caridx = ci;
+      }
+
+      // Fade back in
+      bottomEl.classList.remove('fading');
+    }, 280);
+  }, SPONSOR_ROTATION_MS);
+}
+
+// ── Sponsor rotation ──────────────────────────────────────────────────────
+let sponsorFiles    = [];
+let sponsorIndex    = 0;
+let _sponsorTimer   = null;
+
+async function loadSponsors() {
+  // Try bridge endpoint first (efficient), fall back to client-side probing
+  let count = 0;
+  try {
+    const r = await fetch(`${HTTP_BASE}/fox-sponsor-count?base=Fox2022`);
+    if (r.ok) {
+      const j = await r.json();
+      count = j.count || 0;
+    }
+  } catch(_) {}
+
+  if (count > 0) {
+    sponsorFiles = [];
+    for (let i = 1; i <= count; i++) {
+      sponsorFiles.push(`${FOX_BASE}/sponsors/sponsor${String(i).padStart(2,'0')}.png`);
+    }
+  } else {
+    // Client-side probe fallback
+    const probes = [];
+    for (let i = 1; i <= 20; i++) {
+      probes.push(new Promise(res => {
+        const img = new Image();
+        const src = `${FOX_BASE}/sponsors/sponsor${String(i).padStart(2,'0')}.png`;
+        img.onload  = () => res(src);
+        img.onerror = () => res(null);
+        img.src = src;
+      }));
+    }
+    sponsorFiles = (await Promise.all(probes)).filter(Boolean);
+  }
+
+  if (sponsorFiles.length > 0) {
+    document.getElementById('sponsor-img').src = sponsorFiles[0];
+    if (sponsorFiles.length > 1) startSponsorRotation();
+  }
+}
+
+function startSponsorRotation() {
+  if (_sponsorTimer) clearInterval(_sponsorTimer);
+  let curr = document.getElementById('sponsor-img');
+  let next = document.getElementById('sponsor-img-next');
+
+  _sponsorTimer = setInterval(() => {
+    if (sponsorFiles.length < 2) return;
+    sponsorIndex = (sponsorIndex + 1) % sponsorFiles.length;
+
+    // Pre-load into next (already opacity 0), then cross-fade
+    next.src = sponsorFiles[sponsorIndex];
+    next.onload = () => {
+      // Fade next in, curr out simultaneously
+      next.style.transition = 'opacity 0.8s ease-in-out';
+      curr.style.transition = 'opacity 0.8s ease-in-out';
+      next.style.opacity = '1';
+      curr.style.opacity = '0';
+
+      // After transition, swap roles — no src changes, no opacity resets
+      setTimeout(() => {
+        // Swap references so "curr" is always the visible one
+        [curr, next] = [next, curr];
+        // Silently reset the now-hidden layer's transition so next swap is clean
+        next.style.transition = 'none';
+      }, 850);
+    };
+  }, SPONSOR_ROTATION_MS);
+}
+
+// ── Standings source selection ────────────────────────────────────────────
+function getStandings(d) {
+  const state       = (d.sessionState || '').toLowerCase();
+  const liveEnabled = d.liveStandingsEnabled !== false;
+  const live        = d.liveStandings || d.standings || [];
+  if (state === 'cool down' || state === 'get in car' || state === 'warmup' || state === 'parade laps') return d.standings || [];
+  if (state === 'checkered' && liveEnabled && Array.isArray(d.computedStandings) && d.computedStandings.length)
+    return d.computedStandings;
+  return liveEnabled && live.length ? live : (d.standings || []);
+}
+
+// ── Fast gap update — no DOM rebuild ─────────────────────────────────────
+function updateGaps(standings, session, playerCarIdx) {
+  standings.slice(0, 10).forEach((entry, i) => {
+    const el  = document.getElementById(`row-${i + 1}`);
+    const gap = el?.querySelector('.s-gap');
+    if (gap) gap.textContent = fmtGap(entry, i === 0, session);
+  });
+
+  const rest       = standings.slice(10);
+  const groupStart = _rotGroupIdx * BOTTOM_GROUP_SIZE;
+  for (let i = 0; i < BOTTOM_GROUP_SIZE; i++) {
+    const el    = document.getElementById(`row-${11 + i}`);
+    const entry = rest[groupStart + i] || null;
+    const gap   = el?.querySelector('.s-gap');
+    if (gap && entry) gap.textContent = fmtGap(entry, false, session);
+  }
+}
+
+// ── Main data handler ─────────────────────────────────────────────────────
+let _latestData = null;
+let _lastStandingsKey = '';
+
+function handleData(d) {
+  _latestData = d;
+
+  if (!checkVisibility(d)) { setVisible(false); return; }
+
+  // Header always visible when visibility condition met
+  setHeaderVisible(true);
+
+  const session      = (d.session || '').toLowerCase();
+  const playerCarIdx = d.playerCarIdx ?? -1;
+  const standings    = getStandings(d);
+  if (d.driverColors) _driverColors = d.driverColors;
+
+  // Race name
+  const stageActive = !!d.stageRacingActive;
+  const stageFinal  = !!d.stageFinalStage;
+  if (!stageActive || stageFinal) {
+    const rnEl = document.getElementById('race-name-text');
+    if (rnEl.innerHTML !== rnEl.textContent) rnEl.innerHTML = '';
+    rnEl.style.fontSize = '';
+    const trackName = customName || d.trackNameShort || d.track || '—';
+    requestAnimationFrame(() => updateRaceName(trackName));
+  }
+
+  // Flag and lap always update
+  updateFlag(d);
+  updateLap(d);
+
+  // Standings only visible once data arrives
+  if (!standings.length) { setStandingsVisible(false); return; }
+  setStandingsVisible(true);
+
+  // Standings — full re-render on order change, gap-only update every tick
+  const key = standings.map(s => s.carIdx).join(',');
+  if (key !== _lastStandingsKey) {
+    _lastStandingsKey = key;
+    renderStandings(standings, session, playerCarIdx);
+  } else {
+    updateGaps(standings, session, playerCarIdx);
+  }
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────
+let _ws = null;
+
+function connect() {
+  _ws = new WebSocket(WS_URL);
+  _ws.onmessage = e => { try { handleData(JSON.parse(e.data)); } catch(_) {} };
+  _ws.onclose   = () => { if (!_preview) setTimeout(connect, 2000); };
+  _ws.onerror   = () => _ws.close();
+}
+
+// ── Layout editor preview ─────────────────────────────────────────────────
+window.addEventListener('message', e => {
+  if (typeof e.data !== 'string') return;
+  try {
+    const m = JSON.parse(e.data);
+    if (m.reset) return;
+    _preview = true;
+    if (m._visibilityMode !== undefined) VISIBILITY_MODE = m._visibilityMode;
+    if (m._dnfDisplay     !== undefined) { DNF_DISPLAY = m._dnfDisplay; _lastStandingsKey = ''; }
+    if (m._customName     !== undefined) {
+      customName = m._customName;
+      if (_latestData) requestAnimationFrame(() => updateRaceName(customName || _latestData.trackNameShort || _latestData.track || '—'));
+    }
+    if (m._sponsorRotationTime !== undefined) {
+      SPONSOR_ROTATION_MS = parseInt(m._sponsorRotationTime) * 1000;
+    }
+    handleData(m);
+  } catch(_) {}
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+loadSponsors();
+startRotation();
+connect();
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+{
+  "description": "Puts everything back to how the track loaded - exactly what the Reset button on the Presets tab does.\n\nEvery papy_ai.ini and track.ini setting goes back to the value the track started with, the lap files go back to the original lap files (any groove, edit or speed floor you loaded is undone), and every special mode and grip multiplier is turned off.\n\nLike loading any preset, this only stages the values: click Apply All Tabs to write them to the game. Used as a lap trigger it applies automatically, so it makes a good 'back to normal' step after a preset that changed things for a stretch of the race.",
+  "reset_to_track_defaults": true,
+  "auto_keywords": []
+}

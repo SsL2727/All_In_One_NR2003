@@ -1,0 +1,7 @@
+{
+  "description": "Reduces AI grip to simulate cold tires on restarts.\n\nNR2003 does not model cold tires for AI, so AI cars are unrealistically fast on the drop of the green while the human player struggles on cold rubber. Use this as a Restart preset in your lap triggers to level the playing field.\n\nSets:\n  ai_grip_modifier = 0.95\n\nAll other settings unchanged.",
+  "settings": {
+    "ai_grip_modifier": 0.95
+  },
+  "auto_keywords": []
+}

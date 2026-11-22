@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws://127.0.0.1:* ws://localhost:* http://127.0.0.1:* http://localhost:*">
+<title>Stage Racing</title>
+<link rel="stylesheet" href="ui.css">
+<style>
+  .opt-note { margin: 8px 0 0; }
+  .savebar { display: none; } body[data-tab="stages"] .savebar { display: flex; }
+  .num-inline { display: inline-flex; align-items: center; gap: 6px; }
+  .bp-row { display: grid; grid-template-columns: 112px 92px 44px 1fr; align-items: center; gap: 8px; padding: 3px 0; }
+  .bp-row .err { grid-column: 2 / -1; color: var(--red); font-size: 11px; min-height: 0; }
+  .bp-row .calc { color: var(--dim); font-size: 12px; }
+  details.fold > summary { cursor: pointer; list-style: none; padding: 11px 15px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  details.fold > summary::-webkit-details-marker { display: none; }
+  details.fold > summary:before { content: '▸'; color: var(--faint); transition: transform .12s; } details.fold[open] > summary:before { transform: rotate(90deg); }
+  details.fold > .body { padding: 0 15px 14px; }
+</style>
+</head>
+<body>
+<header class="app-header">
+  <h1>⚑ Stage racing</h1>
+  <span class="chip" id="chip-stages">Stages</span>
+  <span class="chip" id="chip-rc">RaceControl</span>
+  <span class="chip plain" id="race-distance">Race length unknown</span>
+  <span class="grow"></span>
+  <span class="chip" id="chip-live">No live data</span>
+</header>
+<nav class="tabs">
+  <button class="tab" data-tab="stages">Stages</button>
+  <button class="tab" data-tab="rc">RaceControl <span class="dot" id="dot-rc"></span></button>
+  <button class="tab" data-tab="log">Log</button>
+</nav>
+
+<main class="page narrow">
+
+<!-- ═════════════ STAGES ═════════════ -->
+<section class="tabpanel" data-panel="stages">
+
+  <div class="card hero" id="card-master">
+    <div class="body">
+      <div class="switch-row" style="padding-top:2px">
+        <label class="switch"><input type="checkbox" id="stages-on"><span class="knob"></span></label>
+        <div class="txt">
+          <div class="ttl" id="stages-title">Stage racing is on</div>
+          <div class="desc">Stage cautions, stage points and the stage display (scorebug, ticker, standings). Turning it off keeps your plan below but RaceControl, AIMOD, the scorebug and the season tracker ignore it.</div>
+        </div>
+      </div>
+      <div class="callout info" style="margin:8px 0 0">Stage racing is active while this window is open. Close the window to switch it off for the session.</div>
+    </div>
+  </div>
+
+  <div id="stage-sections">
+
+    <div class="card">
+      <div class="head"><h2>Stage plan</h2><span class="grow"></span><span class="chip plain" id="plan-state"></span></div>
+      <div class="body stack">
+        <div class="row">
+          <span class="muted">Number of stages</span>
+          <div class="seg" id="seg-count"><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button></div>
+          <span class="spacer"></span>
+          <span class="muted">Breakpoints in</span>
+          <div class="seg" id="seg-mode"><button data-v="percent">Percent</button><button data-v="laps">Laps</button></div>
+        </div>
+        <div id="stage-inputs"></div>
+        <div class="row tight" id="preview-len-row" style="display:none">
+          <span class="muted small">Race length for the preview</span>
+          <input type="number" id="preview-len" min="10" max="2000" placeholder="laps" style="width:80px">
+          <span class="faint tiny">(only for this preview; the real length comes from NR2003 once you are at the track)</span>
+        </div>
+        <div class="stagebar empty" id="stagebar">Set the breakpoints to see the stages</div>
+        <div class="help">The final stage always ends at the checkered flag, with no stage caution.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="head"><h2>At the end of a stage</h2><span class="grow"></span><span class="chip plain" id="chip-rc-need">RaceControl</span></div>
+      <div class="body stack">
+        <div class="choices" id="stage-end">
+          <div class="choice" data-v="back"><span class="radio"></span><div><div class="ttl">Caution &mdash; the field races back to the line</div><div class="desc">The yellow comes out three quarters of the way through the stage's last lap, the stage result is taken, and the field races back to the line before the restart.</div></div></div>
+          <div class="choice" data-v="freeze"><span class="radio"></span><div><div class="ttl">Caution &mdash; the field stays frozen in order</div><div class="desc">Same caution, but the cars hold their positions instead of racing back.</div></div></div>
+          <div class="choice" data-v="green"><span class="radio"></span><div><div class="ttl">No caution &mdash; the race stays green</div><div class="desc">Stages without cautions: the stage ends when the leader takes the line under green, the order at that moment is the stage result (points and the scorebug still update), and nobody has to stop racing.</div></div></div>
+        </div>
+        <hr class="sep" style="margin:4px 0">
+        <div class="switch-row" style="padding:2px 0">
+          <label class="switch"><input type="checkbox" id="early-on"><span class="knob"></span></label>
+          <div class="txt"><div class="ttl">End a stage early on a late caution</div>
+            <div class="desc">A caution with <input type="number" id="early-laps" min="2" max="30" value="5" style="width:58px"> or fewer laps left in a stage ends that stage on the next lap instead of throwing a second caution. Applies from the next caution.</div></div>
+        </div>
+        <div class="help opt-note" id="stage-end-note"></div>
+      </div>
+    </div>
+
+    <details class="card fold" id="fold-real">
+      <summary>Set the stages from a real race</summary>
+      <div class="body stack">
+        <select id="sch-race" style="width:100%"></select>
+        <div class="help" id="sch-info"></div>
+        <label class="check"><input type="checkbox" id="sch-dist"> Also set NR2003's race distance <span class="faint tiny">(only from the race setup screen, before the session starts)</span></label>
+        <button class="btn block" id="sch-apply" disabled>Apply to stages (RaceControl &amp; AIMOD follow)</button>
+        <div class="small" id="sch-msg" style="min-height:14px;color:var(--green)"></div>
+        <div class="faint tiny" id="sch-src"></div>
+      </div>
+    </details>
+  </div>
+</section>
+
+<!-- ═════════════ RACECONTROL ═════════════ -->
+<section class="tabpanel" data-panel="rc">
+  <div class="card tone-blue">
+    <div class="body">
+      <div class="switch-row" style="padding-top:2px"><label class="switch"><input type="checkbox" id="rc-enabled"><span class="knob"></span></label>
+        <div class="txt"><div class="ttl">Run RaceControl <span class="chip plain" id="rc-chip" style="margin-left:6px">off</span></div>
+          <div class="desc">Cautions, pit road timing, wave around, free pass, stage cautions and double file / choose cone restarts, built into All In One NR2003. Stages come from the Stages tab. Better Cautions is not needed.</div></div></div>
+      <div class="switch-row"><label class="switch"><input type="checkbox" id="rc-dry"><span class="knob"></span></label>
+        <div class="txt"><div class="ttl">Read-only test mode</div><div class="desc">Works out what it would do and changes nothing in NR2003. Switch it off to let RaceControl really control the game: pit road, the pacing line, laps for waved cars, the yellow flag. It lets go again when switched off or when All In One NR2003 closes.</div></div></div>
+      <div class="small muted" id="rc-status" style="margin-top:6px;min-height:15px"></div>
+      <div class="callout err" id="rc-err" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="grid c2">
+    <div class="card"><div class="head"><h2>Cautions &amp; rules</h2></div><div class="body" id="grp-cautions"></div>
+      <div class="body row" style="padding-top:0"><label class="field" title="The posted minimum lap time as a percentage of the fastest lap"><span class="lab">Minimum speed: % of the fastest lap</span><input type="number" id="rc-msp" min="100" max="200" style="width:70px"></label><label class="field" title="Green flag laps in a row slower than the minimum before the black flag"><span class="lab">... black flag after (laps)</span><input type="number" id="rc-msl" min="1" max="10" style="width:60px"></label></div></div>
+    <div class="card"><div class="head"><h2>Pit road</h2></div><div class="body" id="grp-pits"></div></div>
+    <div class="card"><div class="head"><h2>Lapped cars</h2></div><div class="body" id="grp-lapped"></div></div>
+    <div class="card"><div class="head"><h2>Restarts</h2></div>
+      <div class="body row"><label class="field" title="RaceControl 2.0: how many pace laps the field runs before the green. 1 = the game's own (one to go at once). More: Race Control keeps the game's caution request set until the last one; the game needs yellow flags on in its options. Every step is written to the Race Control log."><span class="lab">Race start: pace laps before the green</span><input type="number" id="rc-startpace" min="1" max="10" style="width:60px"></label></div>
+      <div class="body" id="grp-restarts"></div></div>
+  </div>
+
+  <div class="card">
+    <div class="head"><h2>Choose cone</h2></div>
+    <div class="body stack">
+      <div class="row">
+        <label class="field"><span class="lab">Preferred lane</span><select id="rc-lane"><option value="0">none</option><option value="1">inside</option><option value="2">outside</option></select></label>
+        <label class="field"><span class="lab">Rows given up</span><input type="number" id="rc-giveup" min="0" max="10"></label>
+        <label class="field"><span class="lab">Front rows</span><input type="number" id="rc-front" min="0" max="20"></label>
+        <label class="field" title="Distance from the line where the cone is, in metres. 0 = where the pace car is."><span class="lab">Cone at (m, 0 = pace car)</span><input type="number" id="rc-cone" min="0" max="5000" style="width:84px"></label>
+        <button type="button" id="rc-map" title="The track drawn from above: click where the cone should go. Pit entry, pit exit and where the field goes double file are marked. The map draws itself from the AI cars the first time a session runs at a track (the first lap or so) - you don't have to drive." style="align-self:flex-end">Track map…</button>
+      </div>
+      <div class="switch-row" style="padding-bottom:0"><label class="switch"><input type="checkbox" id="rc-crand"><span class="knob"></span></label>
+        <div class="txt"><div class="ttl">Random choose cone</div><div class="desc">Each caution the settings above are rolled at random inside the limits below, and come back to the fixed values after the restart.</div></div></div>
+      <div class="row" id="rand-row">
+        <label class="field"><span class="lab">Lane</span><select id="rc-clanes"><option value="both">either</option><option value="inside">inside</option><option value="outside">outside</option></select></label>
+        <label class="field"><span class="lab">Rows given up</span><input type="number" id="rc-gumin" min="0" max="10" style="width:60px"> to <input type="number" id="rc-gumax" min="0" max="10" style="width:60px"></label>
+        <label class="field"><span class="lab">Front rows</span><input type="number" id="rc-fmin" min="0" max="20" style="width:60px"> to <input type="number" id="rc-fmax" min="0" max="20" style="width:60px"></label>
+        <label class="field"><span class="lab">Cone at (m)</span><input type="number" id="rc-pmin" min="0" max="5000" style="width:70px"> to <input type="number" id="rc-pmax" min="0" max="5000" style="width:70px"></label>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="fld-card">
+    <div class="head"><h2>Field</h2><span class="grow"></span><span class="chip plain" id="fld-chip">off</span></div>
+    <div class="body stack">
+      <div class="switch-row" style="padding-top:2px"><label class="switch"><input type="checkbox" id="fld-on"><span class="knob"></span></label>
+        <div class="txt"><div class="ttl">One car per driver</div>
+          <div class="desc">Before each race the AI roster you picked in NR2003 is cut down to one car for every driver, so the same driver cannot start in two cars. The driver you race as gets no AI car. Your roster file is put back when you switch this off or close All In One NR2003.</div></div></div>
+      <div class="switch-row"><label class="switch"><input type="checkbox" id="fld-reroll"><span class="knob"></span></label>
+        <div class="txt"><div class="ttl">A different paint scheme each race</div>
+          <div class="desc">Picks the car a driver uses at random every time you come back to the menu. Off keeps the same car until you press Shuffle.</div></div></div>
+      <div class="row"><button class="btn sm" id="fld-shuffle" disabled>Shuffle now</button><span class="small muted" id="fld-status"></span></div>
+      <div class="callout err" id="fld-err" style="display:none"></div>
+      <div class="callout warn" id="fld-note" style="display:none"></div>
+      <div class="small muted" id="fld-list"></div>
+<div class="small muted" id="fld-guar"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="head"><h2>Graphics over the game</h2></div>
+    <div class="body"><div class="small muted">The choose cone board, the caution panel and the web pages for OBS are switched on and placed in the <b>Layout Editor</b>, with the other graphics.</div></div>
+  </div>
+
+  <div class="card">
+    <div class="head"><h2>Tools</h2></div>
+    <div class="body row">
+      <button class="btn" id="rc-qual">Qualifying (single car runs / knockout)…</button>
+      <button class="btn" id="rc-beta" style="display:none">Launch RaceControl 1.2 beta</button>
+      <button class="btn danger" id="rc-throw">Throw caution now</button>
+    </div>
+    <div class="body small muted" id="rc-beta-status" style="display:none;padding-top:0;min-height:14px"></div>
+    <div class="body help" style="padding-top:0">The standalone beta adds your own qualifying run, a pause-and-choose lane card, and the updated pace-car and lapped-car handling. Stage laps are seeded from this app. While it runs, All In One NR2003 automatically pauses its built-in RaceControl.</div>
+  </div>
+</section>
+
+<!-- ═════════════ LOG ═════════════ -->
+<section class="tabpanel" data-panel="log">
+  <div class="card"><div class="head"><h2>RaceControl log</h2></div>
+    <div class="body"><pre class="log" id="rc-log" style="max-height:62vh;margin:0"></pre>
+      <div class="help" style="margin-top:6px">Full log: race_control.log in the All In One NR2003 data folder. The lane-choosing pause and the cone board overlay of the standalone RaceControl are not included; the cone rule chooses for your car.</div></div></div>
+</section>
+
+</main>
+
+<div class="savebar" id="savebar">
+  <span class="msg" id="save-msg">Stage plan saved</span>
+  <button class="btn primary" id="save-btn" disabled>Save stage plan</button>
+</div>
+
+<script src="ui.js"></script>
+<script>
+const WS_URL = window.__PSF?.wsUrl || 'ws://localhost:8765';
+const $ = (id) => document.getElementById(id);
+const SHL = window.shl;      // not named shl: that is already a global in the app (contextBridge)
+
+let numStages = 0, inputMode = 'percent', values = [], raceLaps = 0, dirty = false, stagesOff = false, everSaved = false, guardOn = false;
+
+// ── header chips ────────────────────────────────────────────────────────────
+function setChip(el, text, cls) { el.textContent = text; el.className = 'chip' + (cls ? ' ' + cls : ''); }
+function paintStagesChip() { setChip($('chip-stages'), stagesOff ? 'Stages off' : 'Stages on', stagesOff ? 'warn' : 'ok'); }
+
+// ── master switch (stages on / off) ──────────────────────────────────────────
+function paintStagesOff(off) {
+  stagesOff = off; $('stages-on').checked = !off;
+  $('stages-title').textContent = off ? 'Stage racing is off' : 'Stage racing is on';
+  $('stage-sections').style.opacity = off ? '.45' : ''; $('stage-sections').style.pointerEvents = off ? 'none' : '';
+  paintStagesChip();
+}
+$('stages-on').addEventListener('change', () => { const off = !$('stages-on').checked; paintStagesOff(off); SHL.setStagesOff(off); });
+
+// ── load the saved plan ──────────────────────────────────────────────────────
+SHL.getStageRacingConfig().then(sr => {
+  sr = sr || {};
+  paintStagesOff(!!sr.stagesOff);
+  everSaved = !!sr.numStages;
+  if (sr.numStages) {
+    numStages = sr.numStages; inputMode = sr.inputMode || 'percent';
+    values = ((inputMode === 'laps' ? sr.laps : sr.percentages) || []).slice();
+  } else { numStages = 3; inputMode = 'percent'; values = [25, 50]; }
+  ui.seg($('seg-mode'), inputMode, onMode); ui.seg($('seg-count'), numStages, onCount);
+  buildInputs(); validate();
+});
+
+function markDirty(d) {
+  dirty = d; const m = $('save-msg');
+  m.textContent = d ? 'Unsaved changes to the stage plan' : 'Stage plan saved'; m.className = 'msg ' + (d ? 'dirty' : 'ok');
+  $('plan-state').textContent = d ? 'unsaved' : 'saved'; $('plan-state').className = 'chip plain' + (d ? ' warn' : '');
+  validate();
+}
+
+// ── stage count and breakpoint mode ──────────────────────────────────────────
+function onCount(v) {
+  numStages = parseInt(v, 10);
+  const defaults = { percent: { 2: [25], 3: [25, 50], 4: [20, 45, 70] }, laps: { 2: [0], 3: [0, 0], 4: [0, 0, 0] } };
+  if (values.length !== numStages - 1) values = defaults[inputMode][numStages] ? [...defaults[inputMode][numStages]] : Array(numStages - 1).fill(0);
+  buildInputs(); validate(); markDirty(true);
+}
+function onMode(v) {
+  if (v === inputMode) return;
+  const total = raceLaps || previewLaps();
+  if (total > 0) {
+    if (v === 'laps') values = values.map(x => Math.ceil(total * x / 100));
+    else values = values.map(x => Math.round(x / total * 100));
+  } else values = Array(numStages - 1).fill(0);
+  inputMode = v; buildInputs(); validate(); markDirty(true);
+}
+function previewLaps() { return raceLaps || (parseInt($('preview-len').value, 10) || 0); }
+
+// ── breakpoint inputs ────────────────────────────────────────────────────────
+function buildInputs() {
+  const host = $('stage-inputs'); host.innerHTML = '';
+  const isLaps = inputMode === 'laps';
+  for (let i = 0; i < numStages - 1; i++) {
+    const row = document.createElement('div'); row.className = 'bp-row';
+    row.innerHTML = `<span class="muted">Stage ${i + 1} ends at</span>
+      <input type="number" class="stage-input" id="inp-${i}" min="1" max="${isLaps ? (raceLaps > 0 ? raceLaps - 1 : 9999) : 99}" step="1" value="${values[i] || ''}">
+      <span class="muted">${isLaps ? 'laps' : '%'}</span><span class="calc" id="calc-${i}"></span><span class="err" id="err-${i}"></span>`;
+    host.appendChild(row);
+    row.querySelector('input').addEventListener('input', e => { values[i] = parseFloat(e.target.value) || 0; validate(); markDirty(true); });
+  }
+  $('preview-len-row').style.display = raceLaps > 0 ? 'none' : '';
+}
+
+function validate() {
+  let valid = numStages >= 2 && values.length === numStages - 1;
+  const isLaps = inputMode === 'laps', total = previewLaps();
+  const maxVal = isLaps ? (raceLaps > 0 ? raceLaps - 1 : Infinity) : 99;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i], errEl = $('err-' + i), inp = $('inp-' + i), calc = $('calc-' + i);
+    let err = '';
+    if (!v || v <= 0) err = isLaps ? 'Must be a positive lap number' : 'Must be between 1 and 99';
+    else if (isLaps && !Number.isInteger(v)) err = 'Must be a whole number';
+    else if (v >= (isLaps ? maxVal + 1 : 100)) err = isLaps ? `Must be less than the race length${raceLaps > 0 ? ` (${raceLaps} laps)` : ''}` : 'Must be less than 100%';
+    else if (i > 0 && v <= values[i - 1]) err = `Must be after stage ${i}'s breakpoint (${values[i - 1]}${isLaps ? ' laps' : '%'})`;
+    if (errEl) errEl.textContent = err;
+    if (inp) inp.classList.toggle('error', !!err);
+    if (calc) calc.textContent = !err && total > 0 ? (isLaps ? `= ${(v / total * 100).toFixed(1).replace(/\.0$/, '')}% of the race` : `= lap ${Math.ceil(total * v / 100)}`) : '';
+    if (err) valid = false;
+  }
+  $('save-btn').disabled = !valid || (everSaved && !dirty);
+  paintBar(valid);
+  return valid;
+}
+
+// the stages drawn to scale
+function paintBar(valid) {
+  const bar = $('stagebar'), total = previewLaps();
+  if (!valid || numStages < 2) { bar.className = 'stagebar empty'; bar.textContent = 'Set the breakpoints to see the stages'; return; }
+  const ends = values.map(v => (inputMode === 'laps' ? v : (total > 0 ? Math.ceil(total * v / 100) : v)));
+  const unit = (inputMode === 'laps' || total > 0) ? 'laps' : '%';
+  const finish = (inputMode === 'laps' || total > 0) ? (total || ends[ends.length - 1] * 1.5) : 100;
+  const cuts = [0, ...ends, finish];
+  bar.className = 'stagebar'; bar.innerHTML = '';
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const len = cuts[i + 1] - cuts[i], s = document.createElement('div');
+    s.className = 'seg-s s' + (i + 1); s.style.flex = String(Math.max(len, 0.0001));
+    const last = i === cuts.length - 2;
+    s.innerHTML = `<b>${last ? 'Final' : 'Stage ' + (i + 1)}</b><span>${total > 0 || inputMode === 'laps' ? (last && !total ? 'to the flag' : Math.round(len) + ' laps') : Math.round(len) + '%'}</span>`;
+    s.title = last ? 'Final stage: to the checkered flag' : `Stage ${i + 1} ends on lap ${ends[i]}`;
+    bar.appendChild(s);
+  }
+}
+$('preview-len').value = ui.store.get('stage-preview-len') || '';
+$('preview-len').addEventListener('input', () => { ui.store.set('stage-preview-len', $('preview-len').value); validate(); });
+
+// ── save ─────────────────────────────────────────────────────────────────────
+$('save-btn').addEventListener('click', async () => {
+  if (!validate()) return;
+  await SHL.saveStageRacingConfig({ enabled: true, numStages, inputMode, percentages: inputMode === 'percent' ? values : [], laps: inputMode === 'laps' ? values : [] });
+  everSaved = true; markDirty(false); $('save-btn').disabled = true; ui.toast('Stage plan saved');
+});
+
+// ── at the end of a stage (RaceControl's stage caution) and the early-end rule ─
+let rcState = null;
+function stageEndMode(c) { return c.StageThrowCaution === false ? 'green' : (c.StageRaceBack === false ? 'freeze' : 'back'); }
+ui.choices($('stage-end'), 'back', (v) => {
+  const patch = v === 'green' ? { StageThrowCaution: false } : { StageThrowCaution: true, StageRaceBack: v === 'back' };
+  SHL.rc.set(patch).then(paintRc);
+});
+const earlyOn = $('early-on'), earlyLaps = $('early-laps');
+const saveEarly = () => {
+  const laps = Math.max(2, Math.min(30, parseInt(earlyLaps.value, 10) || 5));
+  guardOn = earlyOn.checked;
+  SHL.setStageGuard({ enabled: earlyOn.checked, laps });                 // All In One NR2003's own rule (when RaceControl is not running) ...
+  SHL.rc.set({ StageEarlyLaps: earlyOn.checked ? laps : 0 }).then(paintRc);  // ... and RaceControl's, so both agree
+};
+earlyOn.addEventListener('change', saveEarly); earlyLaps.addEventListener('change', saveEarly);
+SHL.getStageGuard().then(g => { if (g) { guardOn = !!g.enabled; if (document.activeElement !== earlyLaps) earlyLaps.value = g.laps || 5; if (!rcState) earlyOn.checked = guardOn; } });
+
+// ── RaceControl options ──────────────────────────────────────────────────────
+const RC_GROUPS = {
+  'grp-cautions': [
+    ['StockCautions', 'NR2003 runs cautions and restarts (RaceControl: Lucky Dog only)', 'On: during a race RaceControl leaves the whole caution to NR2003 - racing back, pit road, the pace car, one to go and the restart (single file, or NR2003\'s own "double file restarts" race option, which puts the lapped cars on the inside). RaceControl only gives the Lucky Dog (when that box is on) and runs qualifying. Nothing else is written in a race: no lineups, no ghosting, no penalty clearing, no stages, no green-white-checkered. Every other race option is ignored while this is on.'],
+    ['RaceBack', 'Cars race back to the line', 'Off (modern NASCAR, the default): the moment the caution comes out the field is frozen in the order it is in, every car slows at once, and RaceControl brings the pace car out just in front of the leader (see "Pace car picks up the leader" below). On (the 2003 rules): the cars race back to the line under the yellow and the game sends the pace car out by itself; the pace car pickup then does nothing. At stage ends "Race back at stage ends" decides instead.'],
+    ['GreenWhiteCheckered', 'Green-white-checkered finish', 'Extends the race for a green-white-checkered finish when a caution falls late.'],
+    ['GhostWhilePacing', 'No contact while pacing', 'Cars cannot touch each other behind the pace car.'],
+    ["NoMechanicalCautions", "Mechanical failures don’t bring out the caution", "When NR2003 calls a caution and the only trouble in the last 8 seconds is a car that broke down (out of the race, engine trouble, or suddenly slow off pit road) with no car taking body damage, Race Control cancels the game’s caution request and the race stays green. Anything with a crash in it still gets its caution. Test feature: the Race Control log says each time it does it, or “too late” if the game had already started the caution."],
+    ['MinSpeed', 'Minimum speed rule', 'The NASCAR rule, for significantly damaged cars only: a damaged car has to lap within 115% of the fastest lap (the fastest clean green flag lap of the race so far). Three green flag laps in a row slower than that while damaged (a crushed panel or more of body damage, or half-gone engine), and it is black flagged: called to pit road, then parked. Healthy cars are never flagged, however slow. Laps under caution and laps with a pit stop do not count.'],
+    ['MinSpeedPark', 'Park a black-flagged car in the pits', 'Off: the car is only called in and may go back out. On: once it is in the pits it is taken out of the race (never your own car).'],
+    ['PaceCarWaits', 'Pace car picks up the leader (field frozen)', 'With the field frozen every car slows at once and the game sends the pace car out too early, in front of whoever is nearest. RaceControl holds the pace car on pit road and sends it out when the leader is a set distance from it, learned per track; it waits at most 60 s (longer on big tracks).'],
+    ["PaceFixes", "Pace car fixes (RaceControl 3.3)", "The caution line is kept in the order the cars had when the yellow came out (stopped cars and cars on pit road go to the end), the pace car goes the moment the leader drives past it and catches it from behind (the leader crawls for it), the release point allows for the leader's real speed, and nobody is waved or given the free pass until the pace car has picked up the field."],
+    ["PaceLapFit", "Fit pace laps to the line", "Needs Pace car fixes. While the field is catching the pace car each car's pace lap is set to match its real gap to the car it follows, so the game does not send cars a lap round to get in line. Off: cars far behind their spot get a pace lap less until they catch up (tail catch-up)."],
+    ["PaceMatch", "Pace car slows for the leader (test)", "Needs Pace car fixes. When the pace car reaches the track ahead of the leader it slows (down to 60% of the track's pace speed from track.ini) until the leader is on its bumper, then speeds back up. Off by default, as in RaceControl."],
+    ['LappedHoldUntilPitsDone', 'Lapped cars hold their spot during the pit stops', 'A lapped car behind the new leader stays in line while the field pits, then drops to the low line just before one to go. One to go waits at most one extra lap for them.'],
+    ['LappedDropLow', 'Lapped cars drop low, lead lap cars go high', 'A lapped car that has to drop behind lead lap cars drives the track\'s slow-car line (limp.lp) while the lead lap cars\' race line is moved toward the high groove, so they get by. Everything goes back at one to go. Tracks without a limp.lp are left alone.'],
+    ['HoldGreenIfSplit', 'Hold the green if the pack is split (test)', 'TEST: at one to go or double file, if there is a gap of more than 60 m in the line, RaceControl asks the game for another caution lap (once per caution). The log says what happened ("field split: ...").'],
+    ['Untangle', 'Untangle stuck cars', 'Puts cars that cannot sort themselves out behind each other in the order they have on track.'],
+    ['ForgivePenalties', 'Forgive caution penalties', 'AI cars are forgiven passing under yellow (and passing on the inside on the first green lap), and a penalty stop the game already called is called off.'],
+    ['EarlyLineup', 'Line up the field right after the pit stops', 'Once the stops are done the lineup is set at once instead of waiting for one to go, so the cars have the rest of the caution to sort themselves out.'],
+    ['RestorePaceLap', 'Give waved cars their pace lap back', 'A waved car that has passed the pace car and crossed the line gets its lap restored so it lines up in the field.'],
+  ],
+  'grp-pits': [
+    ['PitsClosedFirstLap', 'Pits closed the first caution lap', 'Pit road stays shut until the field has caught the pace car.'],
+    ['OpenWhenPacked', '…or once the field is packed up', 'Opens as soon as the field is packed behind the pace car.'],
+    ['OpenPitsToAll', 'Open pits to all cars first time by', ''],
+    ['HoldOneToGo', 'Hold one to go until the pit stops are done', ''],
+    ['OneStopPerCaution', 'One pit stop per caution', 'A car that has made its stop under a caution is shut out of pit road until the green. The game or AIMOD sending it in again (a forgiven penalty, "without a request") no longer gets it in.'],
+    ['GhostOnPitRoad', 'No car-to-car contact on pit road', ''],
+  ],
+  'grp-lapped': [
+    ['WaveAround', 'Wave around lapped cars that stay out', 'Lapped cars that stay out go around the pace car and to the back of the field.'],
+    ['FreePass', 'Free pass (lucky dog)', 'The first car a lap down gets its lap back.'],
+  ],
+  'grp-restarts': [
+    ['StartPaceAddLaps', 'Add the start pace laps back to the race', 'With more than one pace lap before the green, the game may count some of them as race laps. On: those laps are added back to the race length at the green, so the race runs its full distance.'],
+    ['DoubleFile', 'Double file restarts', 'At one to go the cars pair up in the order they are running behind the pace car. Redone after a delayed green. Classic rules (Wave Around and Choose cone off): 2004 style at one to go - lead lap cars single file on the outside, lapped cars single file on the inside (laps down as they were when the leader took the yellow), the Lucky Dog and penalized cars at the tail of the longer line. No lapped cars: single file.'],
+    ['Cone', 'Choose cone', 'The leader chooses the lane at the cone (your car follows the rule below).'],
+  ],
+};
+const rcBox = {}, rcRow = {};
+for (const [grp, list] of Object.entries(RC_GROUPS)) {
+  const host = $(grp);
+  for (const [k, title, desc] of list) {
+    const row = document.createElement('div'); row.className = 'switch-row';
+    row.innerHTML = `<label class="switch"><input type="checkbox"><span class="knob"></span></label><div class="txt"><div class="ttl">${title}</div>${desc ? `<div class="desc">${desc}</div>` : ''}</div>`;
+    const c = row.querySelector('input'); rcBox[k] = c; rcRow[k] = row;
+    c.addEventListener('change', () => SHL.rc.set({ [k]: c.checked }).then(paintRc));
+    host.appendChild(row);
+  }
+}
+const rcEnabled = $('rc-enabled'), rcDry = $('rc-dry');
+const rcNum = { PreferredLane: 'rc-lane', GiveUpRows: 'rc-giveup', FrontRows: 'rc-front', ConePoint: 'rc-cone', GiveUpRowsMin: 'rc-gumin', GiveUpRowsMax: 'rc-gumax', FrontRowsMin: 'rc-fmin', FrontRowsMax: 'rc-fmax', ConePointMin: 'rc-pmin', ConePointMax: 'rc-pmax', MinSpeedPercent: 'rc-msp', MinSpeedLaps: 'rc-msl', StartPaceLaps: 'rc-startpace' };
+$('rc-qual').addEventListener('click', () => SHL.qual.openWindow());
+$('rc-beta').addEventListener('click', async () => {
+  const b = $('rc-beta'); b.disabled = true;
+  const r = await SHL.extmods.launch('raceControl').catch(e => ({ ok: false, error: String(e && e.message || e) }));
+  b.disabled = false;
+  if (!r.ok) { $('rc-beta-status').textContent = r.error || 'Could not start RaceControl.'; return; }
+  $('rc-beta-status').textContent = r.already ? 'Standalone RaceControl is already running.' : 'RaceControl 1.2 beta started; All In One NR2003 has handed caution control to it.';
+});
+rcEnabled.addEventListener('change', () => SHL.rc.set({ enabled: rcEnabled.checked }).then(paintRc));
+document.getElementById('rc-map').addEventListener('click', () => SHL.rc.openMap());
+rcDry.addEventListener('change', () => {
+  if (!rcDry.checked && !confirm('Turn read-only test mode OFF?\n\nRaceControl will then really control NR2003: pit road, the pacing line, laps for waved cars, the yellow flag. It restores pit road when switched off or when All In One NR2003 closes.')) { rcDry.checked = true; return; }
+  SHL.rc.set({ dryRun: rcDry.checked }).then(paintRc);
+});
+for (const [k, id] of Object.entries(rcNum)) $(id).addEventListener('change', (e) => SHL.rc.set({ [k]: parseInt(e.target.value, 10) || 0 }).then(paintRc));
+$('rc-crand').addEventListener('change', () => SHL.rc.set({ ConeRandom: $('rc-crand').checked }).then(paintRc));
+$('rc-clanes').addEventListener('change', () => SHL.rc.set({ ConeLanes: $('rc-clanes').value }).then(paintRc));
+$('rc-throw').addEventListener('click', () => { if (confirm('Throw a caution now?')) SHL.rc.throwCaution(); });
+
+const FLAGS = ['caution out', 'leader takes yellow', 'catching the pace car', 'pacing', 'delayed green', 'one to go', 'double file', 'green'];
+function paintRc(s) {
+  if (!s) return;
+  rcState = s; const c = s.config;
+  rcEnabled.checked = !!c.enabled; rcDry.checked = !!s.dryRun;
+  for (const k of Object.keys(rcBox)) if (document.activeElement !== rcBox[k]) rcBox[k].checked = !!c[k];
+  // the pace car pickup works on a frozen field only: with racing back on it has nothing to do
+  if (rcRow.PaceCarWaits) {
+    const off = !!c.RaceBack, row = rcRow.PaceCarWaits;
+    row.style.opacity = off ? '.5' : '';
+    let n = row.querySelector('.dep-note');
+    if (!n) { n = document.createElement('div'); n.className = 'desc dep-note'; row.querySelector('.txt').appendChild(n); }
+    n.textContent = off ? 'Not used while "Cars race back to the line" is on (the field is never frozen; at stage ends only when "Race back at stage ends" is off).' : '';
+  }
+  for (const [k, id] of Object.entries(rcNum)) { const el = $(id); if (document.activeElement !== el) el.value = c[k]; }
+  if (document.activeElement !== $('rc-crand')) $('rc-crand').checked = !!c.ConeRandom;
+  $('rand-row').style.opacity = c.ConeRandom ? '' : '.45';
+  if (document.activeElement !== $('rc-clanes')) $('rc-clanes').value = c.ConeLanes || 'both';
+  // stage end behaviour and early end
+  ui.choices($('stage-end'), stageEndMode(c), null);
+  if (document.activeElement !== earlyOn && document.activeElement !== earlyLaps) { earlyOn.checked = guardOn || (c.StageEarlyLaps | 0) > 0; if ((c.StageEarlyLaps | 0) > 0) earlyLaps.value = c.StageEarlyLaps; }
+  $('stage-end-note').textContent = c.enabled
+    ? (s.dryRun ? 'RaceControl is in read-only test mode, so this is worked out but not done in the game yet.' : (stageEndMode(c) === 'green' ? 'No stage caution will be thrown. A normal caution just after a stage end is treated as an ordinary caution.' : ''))
+    : 'RaceControl is off: this setting is used when you turn it on. With another app throwing the stage caution, set it there.';
+  setChip($('chip-rc-need'), c.enabled ? (s.dryRun ? 'RaceControl: test mode' : 'RaceControl: live') : 'RaceControl is off', c.enabled ? (s.dryRun ? 'warn' : 'ok') : '');
+  // chips and status
+  const chip = $('rc-chip'), state = !c.enabled ? 'OFF' : (s.note ? 'BLOCKED' : (s.attached ? (s.dryRun ? 'TEST' : 'LIVE') : 'WAITING'));
+  const cls = !c.enabled ? '' : (s.note ? 'bad' : (s.attached ? (s.dryRun ? 'warn' : 'ok') : ''));
+  chip.textContent = state.toLowerCase(); chip.className = 'chip plain ' + cls;
+  setChip($('chip-rc'), 'RaceControl ' + state.toLowerCase(), cls);
+  $('dot-rc').className = 'dot ' + (!c.enabled ? '' : (s.note ? 'bad' : (s.dryRun ? 'warn' : 'on')));
+  $('rc-status').textContent = !c.enabled ? '' : (s.attached
+    ? (s.inRace ? `${s.track || ''} · lap ${s.lap} · ${s.flag != null && s.flag < 8 ? FLAGS[s.flag] : 'flag ' + s.flag}${s.pitsOpen === false ? ' · pits closed' : ''}${s.stageEnds ? ' · stage ends ' + s.stageEnds : ''}${s.dryRun ? ' · ' + s.pendingWrites.count + ' write(s) would be made' : ''}` : 'attached to NR2003 — waiting for a race')
+    : 'waiting for NR2003');
+  const err = $('rc-err'), msg = s.note || s.error || ''; err.textContent = msg; err.style.display = msg ? '' : 'none';
+  const log = $('rc-log'), text = (s.log || []).join('\n');
+  if (log.textContent !== text) { const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 20; log.textContent = text; if (atEnd) log.scrollTop = log.scrollHeight; }
+}
+const pollRc = () => SHL.rc.get().then(paintRc).catch(() => {});
+pollRc(); setInterval(pollRc, 1000);
+
+// ── field: one car per driver ────────────────────────────────────────────────
+const fldOn = $('fld-on'), fldRe = $('fld-reroll');
+fldOn.addEventListener('change', () => SHL.field.setConfig({ onePerDriver: fldOn.checked }).then(paintField));
+fldRe.addEventListener('change', () => SHL.field.setConfig({ reroll: fldRe.checked }).then(paintField));
+$('fld-shuffle').addEventListener('click', () => SHL.field.shuffle().then(paintField));
+function paintField(s) {
+  if (!s) return;
+  const on = !!s.config.onePerDriver;
+  if (document.activeElement !== fldOn) fldOn.checked = on;
+  if (document.activeElement !== fldRe) fldRe.checked = s.config.reroll !== false;
+  $('fld-shuffle').disabled = !on || !s.active;
+  const chip = $('fld-chip'); chip.textContent = !on ? 'off' : (s.error ? 'blocked' : 'on'); chip.className = 'chip plain ' + (!on ? '' : (s.error ? 'bad' : 'ok'));
+  $('fld-status').textContent = on && s.active ? `${s.series} · ${s.roster} · ${s.drivers} drivers${s.player ? ' · you: ' + s.player : ''}` : (s.series ? `${s.series} · ${s.roster || 'no roster selected'}` : '');
+  const err = $('fld-err'), note = $('fld-note');
+  err.textContent = on ? s.error : ''; err.style.display = on && s.error ? '' : 'none';
+  note.textContent = on ? s.note : ''; note.style.display = on && s.note ? '' : 'none';
+  const dup = s.removed || [];
+  $('fld-list').textContent = on && s.active && dup.length ? `Had more than one car: ${dup.map(d => d.name).join(', ')}.` : '';
+  // season mode's guaranteed starters (the Season Tracker's Schedule tab)
+  const g = s.guarantee, gr = g && g.report;
+  $('fld-guar').textContent = g ? `Season "${g.season || ''}": ${g.nums.length} guaranteed starter(s)` + (g.charters.length ? ` (charters #${g.charters.join(', #')})` : '') + (g.top.length ? ` + top ${g.topN} owners` : '') +
+    (gr ? ` · ${gr.locked.length} in the pool of ${gr.pool} for ${g.slots} AI places${g.track ? ' at ' + g.track + ' (' + g.maxStarters + ' starters)' : ''}${gr.chartersOnly ? ' - more than the places: the game picks among them' : ''}` : '') : '';
+}
+const pollField = () => SHL.field.getState().then(paintField).catch(() => {});
+pollField(); setInterval(pollField, 2000);
+
+// ── real race schedule ───────────────────────────────────────────────────────
+const schSel = $('sch-race'), schInfo = $('sch-info'), schApply = $('sch-apply'), schMsg = $('sch-msg');
+let schRaces = [];
+SHL.schedule.list().then(d => {
+  schRaces = d.races;
+  schSel.innerHTML = '<option value="">Choose a race…</option>';
+  d.races.forEach((r, i) => { const o = document.createElement('option'); o.value = r.id; o.textContent = (i + 1) + '. ' + r.name; schSel.appendChild(o); });
+  $('sch-src').textContent = d.series + ' — real-life stage lengths (speedwaydigest.com).';
+}).catch(() => {});
+schSel.addEventListener('change', () => {
+  const r = schRaces.find(x => x.id === schSel.value);
+  schApply.disabled = !r; schMsg.textContent = '';
+  schInfo.textContent = r ? `${r.track} · ${r.miles} mi · ${r.laps} laps · stages end on lap ${r.stages.join(', ')}` : '';
+});
+schApply.addEventListener('click', async () => {
+  const r = await SHL.schedule.apply(schSel.value, $('sch-dist').checked);
+  if (!r || !r.ok) { schMsg.style.color = 'var(--red)'; schMsg.textContent = (r && r.error) || 'failed'; return; }
+  const sr = r.stageRacing;
+  numStages = sr.numStages; inputMode = sr.inputMode; values = (inputMode === 'percent' ? sr.percentages : sr.laps).slice();
+  ui.seg($('seg-mode'), inputMode, onMode); ui.seg($('seg-count'), numStages, onCount); buildInputs(); markDirty(false); validate();
+  let msg = 'Stages set as ' + sr.percentages.map(p => +p.toFixed(2) + '%').join(', ') + ' of the race (' + r.race.stages.join(', ') + ' of ' + r.race.laps + ' laps) — they scale to any race distance.';
+  schMsg.style.color = 'var(--green)';
+  if (r.distance) { if (r.distance.ok) msg += ' NR2003 race distance set to ' + r.distance.laps + ' (was ' + r.distance.was + ').'; else { schMsg.style.color = 'var(--orange)'; msg += ' Distance not set: ' + r.distance.error; } }
+  schMsg.textContent = msg;
+});
+
+// ── live telemetry: race length and state ────────────────────────────────────
+function updateAtTrackState(d) {
+  const lt = d.lapsTotal || 0;                                   // 32767 = unlimited / practice
+  if (lt > 0 && lt < 32767) {
+    if (lt !== raceLaps) { raceLaps = lt; buildInputs(); validate(); }
+    setChip($('race-distance'), `Race: ${raceLaps} laps`, 'plain info');
+  } else {
+    if (raceLaps) { raceLaps = 0; buildInputs(); validate(); }
+    setChip($('race-distance'), 'Race length unknown', 'plain');
+  }
+  const live = $('chip-live');
+  if (!d.atTrack) setChip(live, 'No live data — stages can still be set', '');
+  else {
+    const session = (d.session || '').toLowerCase(), state = (d.sessionState || '').toLowerCase();
+    if (session === 'race' && state !== 'get in car' && state !== '') setChip(live, 'Armed — stage racing active this session', 'ok');
+    else setChip(live, 'At track — save before the race starts', 'info');
+  }
+}
+let ws = null;
+function connect() {
+  try { ws = new WebSocket(WS_URL); } catch (e) { setTimeout(connect, 2000); return; }
+  ws.onmessage = (evt) => { try { const d = JSON.parse(evt.data); if (d.reset === true) return; updateAtTrackState(d); } catch (e) { /* ignore */ } };
+  ws.onclose = () => setTimeout(connect, 2000);
+  ws.onerror = () => ws.close();
+}
+connect();
+paintStagesChip(); markDirty(false);
+</script>
+</body>
+</html>

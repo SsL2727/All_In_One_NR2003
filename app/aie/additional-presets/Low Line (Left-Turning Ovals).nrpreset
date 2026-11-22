@@ -1,0 +1,5 @@
+{
+  "description": "Moves the AI race line toward the inside (low) groove.\n\nSets the race.lp blend slider all the way toward maxrace (left side).\nMin/max race line sliders stay at their default positions.\n\nAll other settings unchanged.",
+  "racelp_slider": 0,
+  "auto_keywords": []
+}

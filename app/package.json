@@ -1,0 +1,12 @@
+{
+  "name": "all-in-one-nr2003",
+  "productName": "All In One NR2003",
+  "version": "1.0.10",
+  "main": "main.js",
+  "author": "All In One NR2003",
+  "license": "GPL-3.0",
+  "description": "All In One NR2003: AI, race control, TV director and overlays for NASCAR Racing 2003 Season",
+  "dependencies": {
+    "koffi": "3.3.2"
+  }
+}

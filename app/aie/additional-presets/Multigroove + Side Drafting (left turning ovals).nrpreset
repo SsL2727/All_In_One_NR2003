@@ -1,0 +1,33 @@
+{
+  "description": "Ideal settings for Multigroove and Side Drafting combined, but generic to left turning ovals. For optimal results, you should consider editing lap files and grip settings on Environment tab.",
+  "settings": {
+    "ai_bunching_distance": 2.0
+  },
+  "env_grip": {
+    "base": 1.0,
+    "maxrace": 1.0,
+    "minrace": 1.1
+  },
+  "multigroove": {
+    "enabled": true,
+    "left_bound": "race",
+    "right_bound": "minrace",
+    "space_cars": true
+  },
+  "special_modes": {
+    "side_draft_active": true,
+    "side_draft_opts": {
+      "chsBehind": 0.75,
+      "chsLeft": 0.9,
+      "chsRight": 0.75,
+      "engLeft": 0.75,
+      "engRight": 0.5,
+      "latWin": 4.0,
+      "latWinBak": 2.0,
+      "lonWinBak": 4.7,
+      "rearLonWin": 6.0,
+      "slideAmount": 0.5
+    }
+  },
+  "auto_keywords": []
+}

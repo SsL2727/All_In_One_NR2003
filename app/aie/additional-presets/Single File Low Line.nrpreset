@@ -1,0 +1,6 @@
+{
+  "description": "Forces all AI into a tight single-file low (inside) groove.\n\nrace.lp slider: all the way to maxrace.\nminrace.lp slider: 95% toward maxrace (nearly identical to race).\n\nOnly LP sliders are set — all other settings unchanged.",
+  "racelp_slider": 0,
+  "minracelp_slider": 5,
+  "auto_keywords": []
+}

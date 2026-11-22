@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="perf-shim.js"></script>
+<meta charset="UTF-8">
+<title>NR2003 Input Trace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Barlow+Condensed:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-a:      1.0;
+  --bg:        rgba(30, 33, 36,  var(--bg-a));
+  --bg-trace:  rgba(22, 24, 27,  var(--bg-a));
+  --bg-bar:    rgba(22, 24, 27,  var(--bg-a));
+  --border:    #2e3238;
+  --text:      #ffffff;
+  --text-dim:  #8a9099;
+  --green:     #3ddc6e;
+  --green-dim: rgba(61,220,110,0.18);
+  --red:       #e84444;
+  --red-dim:   rgba(232,68,68,0.18);
+  --blue:      #4a9ee8;
+  --blue-dim:  rgba(74,158,232,0.18);
+  --font-num:  'Russo One', sans-serif;
+  --font-ui:   'Barlow Condensed', sans-serif;
+}
+
+html, body {
+  background: transparent;
+  overflow: hidden;
+  width: 100%; height: 100%;
+}
+
+/* ── Scale wrapper ───────────────────────────────────────────────────────── */
+#scale-root {
+  transform-origin: top left;
+  display: inline-flex;
+  /* width/height set by JS after scale is read */
+}
+
+/* ── Main widget ─────────────────────────────────────────────────────────── */
+#widget {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  width: 560px; /* adjusted by JS for no-clutch */
+  height: 110px;
+  font-family: var(--font-ui);
+  user-select: none;
+}
+
+/* ── Section base ────────────────────────────────────────────────────────── */
+.section {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+
+.divider {
+  width: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+  align-self: stretch;
+  margin: 8px 0;
+}
+
+/* ── TRACE section ───────────────────────────────────────────────────────── */
+#trace-section {
+  width: 260px;
+  padding: 6px;
+  position: relative;
+}
+
+#trace-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 3px;
+  background: var(--bg-trace);
+}
+
+/* ── BARS section ────────────────────────────────────────────────────────── */
+#bars-section {
+  width: 90px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+#bars-pcts {
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-end;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  height: 16px;
+}
+
+#bars-row {
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-end;
+  flex: 1;
+  gap: 6px;
+  padding: 4px 0 2px;
+}
+
+.bar-wrap {
+  flex: 1;
+  height: 100%;
+  background: var(--bg-bar);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid var(--border);
+}
+
+/* Anchor fill to bottom via absolute positioning so height grows upward */
+.bar-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  border-radius: 2px 2px 0 0;
+  transition: height 0.04s linear;
+}
+
+.bar-fill.clutch  { background: var(--blue); box-shadow: 0 0 6px rgba(74,158,232,0.5); }
+.bar-fill.brake   { background: var(--red);  box-shadow: 0 0 6px rgba(232,68,68,0.5); }
+.bar-fill.throttle{ background: var(--green);box-shadow: 0 0 6px rgba(61,220,110,0.5); }
+
+/* ── GEAR + SPEED section ────────────────────────────────────────────────── */
+#gearspeed-section {
+  width: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 4px;
+  gap: 0;
+}
+
+#gear-val {
+  font-family: var(--font-num);
+  font-size: 52px;
+  line-height: 1;
+  color: var(--text);
+  text-align: center;
+  letter-spacing: -0.02em;
+}
+
+#speed-val {
+  font-family: var(--font-num);
+  font-size: 26px;
+  line-height: 1;
+  color: var(--text);
+  text-align: center;
+  margin-top: 2px;
+  transition: color 0.2s ease;
+}
+#speed-val.pit-ok  { color: #e8c84a; }   /* on pit road, under limit — amber */
+#speed-val.pit-over { color: #e84444; }  /* on pit road, over limit — red */
+
+#speed-unit {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+  text-align: center;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* ── STEERING section ────────────────────────────────────────────────────── */
+#steer-section {
+  width: 96px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+
+#steer-canvas {
+  display: block;
+}
+</style>
+</head>
+<body>
+
+
+<div id="scale-root">
+  <div id="widget">
+
+    <!-- Trace -->
+    <div class="section" id="trace-section">
+      <canvas id="trace-canvas"></canvas>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Bars -->
+    <div class="section" id="bars-section">
+      <div id="bars-pcts">
+        <span id="pct-clutch">0</span>
+        <span id="pct-brake">0</span>
+        <span id="pct-throttle">0</span>
+      </div>
+      <div id="bars-row">
+        <div class="bar-wrap">
+          <div class="bar-fill clutch"   id="bar-clutch"   style="height:0%"></div>
+        </div>
+        <div class="bar-wrap">
+          <div class="bar-fill brake"    id="bar-brake"    style="height:0%"></div>
+        </div>
+        <div class="bar-wrap">
+          <div class="bar-fill throttle" id="bar-throttle" style="height:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Gear + Speed -->
+    <div class="section" id="gearspeed-section">
+      <div id="gear-val">N</div>
+      <div id="speed-val">0</div>
+      <div id="speed-unit">MPH</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Steering wheel -->
+    <div class="section" id="steer-section">
+      <canvas id="steer-canvas" width="90" height="90"></canvas>
+    </div>
+
+  </div><!-- /widget -->
+</div><!-- /scale-root -->
+
+<script>
+// ── URL param: ?scale=0.75 ────────────────────────────────────────────────
+const params   = new URLSearchParams(location.search);
+const INSTALL_DIR = params.get('installdir') || '';
+function assetPath(rel) {
+  const psf = window.__PSF;
+  if (psf && psf.assetBase) return psf.assetBase + '/' + rel;
+  if (INSTALL_DIR) {
+    const encoded = INSTALL_DIR.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+    return 'file:///' + encoded + '/' + rel;
+  }
+  return rel;
+}
+const WS_HOST  = params.get('host')    || 'localhost';
+const WS_PORT  = params.get('port')    || '8765';
+const WS_URL   = window.__PSF?.wsUrl || `ws://${WS_HOST}:${WS_PORT}`;
+
+// ── In-car visibility ─────────────────────────────────────────────────────
+let VISIBILITY_MODE = params.get('visibilitymode') || 'in_car';
+const ALWAYS_VISIBLE = VISIBILITY_MODE === 'always'; // legacy compat
+
+function checkVisibility(d) {
+  if (!d) return false;
+  switch (VISIBILITY_MODE) {
+    case 'always':   return true;
+    case 'at_track': return !!d.atTrack;
+    case 'in_car':
+    default:         return !!(d.atTrack && d.player?.inCar);
+  }
+}
+
+// Beep always active — suppressed only on restarts until next lap crossing
+
+function updateVisibility(d) {
+  const visible = checkVisibility(d);
+  document.getElementById('scale-root').style.opacity = visible ? '1' : '0';
+}
+
+// ── Session reset handler ─────────────────────────────────────────────────
+function handleReset() {
+  // Clear all cached data so stale state doesn't persist
+  latestData = null;
+  if (typeof _rowCache !== 'undefined') _rowCache.clear();
+  if (typeof dotCache  !== 'undefined') Object.keys(dotCache).forEach(k => delete dotCache[k]);
+  if (typeof smoothPos !== 'undefined') Object.keys(smoothPos).forEach(k => delete smoothPos[k]);
+  if (typeof _sortedIdx !== 'undefined') { _sortedIdx = null; normalized = null; normBounds = null; }
+  if (typeof playerTrkPctSmooth !== 'undefined') playerTrkPctSmooth = -1;
+  // Clear SVG dots
+  ['field-dots','player-dot','leader-dot'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '';
+  });
+  // Clear track lines
+  ['track-border','track-surface'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.setAttribute('points',''); el.setAttribute('d',''); }
+  });
+}
+
+const SCALE    = Math.max(0.1, Math.min(4.0, parseFloat(params.get('scale')         || '1.0')));
+const OPACITY  = Math.max(0.0, Math.min(1.0, parseFloat(params.get('opacity')       || '1.0')));
+let LINE_T   = Math.max(0.5, Math.min(8.0, parseFloat(params.get('linethickness') || '1.5')));
+const STEER_INPUT  = params.get('steerinput') || 'game';
+const SHOW_TRACE   = params.get('showtrace')  !== '0';
+const SHOW_STEER   = params.get('showsteer')  !== '0';
+
+// Apply trace visibility
+if (!SHOW_TRACE) {
+  const ts = document.getElementById('trace-section');
+  if (ts) ts.style.display = 'none';
+}
+
+// Apply steer visibility
+if (!SHOW_STEER) {
+  const ss = document.getElementById('steer-section');
+  if (ss) ss.style.display = 'none';
+}
+const PIT_BEEP = false; // Pit beep moved to Pit Road Speed widget
+const WHEEL_AXIS   = parseInt(params.get('wheelaxis')   ?? '0');
+const WHEEL_LEFT   = parseFloat(params.get('wheelleft')   ?? '-1');
+const WHEEL_RIGHT  = parseFloat(params.get('wheelright')  ?? '1');
+const WHEEL_CENTER = parseFloat(params.get('wheelcenter') ?? '0');
+const WHEEL_DEVICE = parseInt(params.get('wheeldevice')   ?? '0');
+const WHEEL_ROT    = parseFloat(params.get('wheelrot')    ?? '900'); // total degrees
+
+// Pedal params (calibrated axis values)
+const PEDAL_DEVICE      = parseInt(params.get('pedaldevice')      ?? WHEEL_DEVICE);
+const THROTTLE_AXIS     = parseInt(params.get('throttleaxis')     ?? '1');
+const THROTTLE_REST     = parseFloat(params.get('throttlerest')   ?? '0');
+const THROTTLE_PRESS    = parseFloat(params.get('throttlepress')  ?? '1');
+const THROTTLE_INVERT   = params.get('throttleinvert') === '1';
+const BRAKE_AXIS        = parseInt(params.get('brakeaxis')        ?? '2');
+const BRAKE_REST        = parseFloat(params.get('brakerest')      ?? '0');
+const BRAKE_PRESS       = parseFloat(params.get('brakepress')     ?? '1');
+const BRAKE_INVERT      = params.get('brakeinvert') === '1';
+const HAS_CLUTCH        = params.get('clutch') !== '0';  // default true
+const CLUTCH_AXIS       = parseInt(params.get('clutchaxis')       ?? '3');
+const CLUTCH_REST       = parseFloat(params.get('clutchrest')     ?? '0');
+const CLUTCH_PRESS      = parseFloat(params.get('clutchpress')    ?? '1');
+const CLUTCH_INVERT     = params.get('clutchinvert') === '1';
+
+// Widget width depends on clutch — no clutch = narrower bars section
+const TRACE_W  = 260; // width of trace section
+const STEER_W  = 96;  // width of steer section
+const WIDGET_W = (HAS_CLUTCH ? 560 : 520) - (SHOW_TRACE ? 0 : TRACE_W) - (SHOW_STEER ? 0 : STEER_W);
+const WIDGET_H = 110;
+
+const root = document.getElementById('scale-root');
+root.style.transform = `scale(${SCALE})`;
+root.style.width  = WIDGET_W + 'px';
+root.style.height = WIDGET_H + 'px';
+document.body.style.width  = Math.round(WIDGET_W * SCALE) + 'px';
+document.body.style.height = Math.round(WIDGET_H * SCALE) + 'px';
+
+// Apply widget width and hide clutch if not configured
+document.getElementById('widget').style.width = WIDGET_W + 'px';
+if (!HAS_CLUTCH) {
+  const clutchBar  = document.getElementById('bar-clutch')?.closest('.bar-wrap');
+  const clutchPct  = document.getElementById('pct-clutch');
+  if (clutchBar)  clutchBar.style.display  = 'none';
+  if (clutchPct)  clutchPct.style.display  = 'none';
+  // Shrink bars section
+  const barsSection = document.getElementById('bars-section');
+  if (barsSection) barsSection.style.width = '65px';
+}
+
+// Live-toggleable state, tracked separately from the initial URL-param values
+// so clutch/trace can be flipped independently and width recomputed correctly
+let _curHasClutch = HAS_CLUTCH;
+let _curShowTrace = SHOW_TRACE;
+let _curShowSteer = SHOW_STEER;
+
+function recomputeWidth() {
+  const base = _curHasClutch ? 560 : 520;
+  const newW = base - (_curShowTrace ? 0 : TRACE_W) - (_curShowSteer ? 0 : STEER_W);
+  root.style.width = newW + 'px';
+  document.getElementById('widget').style.width = newW + 'px';
+  document.body.style.width = Math.round(newW * SCALE) + 'px';
+  if (window.parent !== window) {
+    try { parent.postMessage(JSON.stringify({ _widgetWidth: newW, _widgetId: 'input' }), '*'); } catch(ex) {}
+  }
+}
+
+// Report initial width on load
+recomputeWidth();
+
+// Responds to postMessage from the layout editor / live editor for live
+// toggling of visibility mode, clutch, and trace without a full reload
+window.addEventListener('message', e => {
+  if (typeof e.data === 'string') {
+    try {
+      const m = JSON.parse(e.data);
+      if (m._visibilityMode !== undefined) VISIBILITY_MODE = m._visibilityMode;
+      if (m._hasClutch !== undefined) {
+        _curHasClutch = m._hasClutch;
+        const clutchBar = document.getElementById('bar-clutch')?.closest('.bar-wrap');
+        const clutchPct = document.getElementById('pct-clutch');
+        const barsSection = document.getElementById('bars-section');
+        if (clutchBar) clutchBar.style.display = m._hasClutch ? '' : 'none';
+        if (clutchPct) clutchPct.style.display = m._hasClutch ? '' : 'none';
+        if (barsSection) barsSection.style.width = m._hasClutch ? '90px' : '65px';
+        recomputeWidth();
+      }
+      if (m._showTrace !== undefined) {
+        const ts = document.getElementById('trace-section');
+        if (ts) ts.style.display = m._showTrace ? '' : 'none';
+        _curShowTrace = m._showTrace;
+        recomputeWidth();
+      }
+      if (m._showSteer !== undefined) {
+        const ss = document.getElementById('steer-section');
+        if (ss) ss.style.display = m._showSteer ? '' : 'none';
+        _curShowSteer = m._showSteer;
+        recomputeWidth();
+      }
+    } catch(ex) {}
+  }
+});
+
+// Apply opacity to background CSS variables only — text/data remain fully opaque
+document.documentElement.style.setProperty('--bg-a', OPACITY);
+
+// ── Telemetry state (written by WS, read by RAF) ──────────────────────────
+const state = {
+  throttle:      0,
+  brake:         0,
+  clutch:        0,
+  steerDeg:      0,
+  gear:          0,
+  speedMph:      0,
+  onPitRoad:     false,
+  pitSpeedLimit: 0,
+  sessionFlag:   'green',
+  connected:     false,
+};
+
+// Restart beep suppression:
+// Disable beep when green flag comes out after caution until next S/F crossing
+let lapCrossed       = true;   // true = beep allowed, false = suppressed until lap crossing
+let prevFlag         = 'green';
+let prevLapsComplete = -1;
+
+// ── Pit speed audio (Web Audio API — works in overlay tools without click) ──
+let   audioCtx      = null;
+let   beepBuffer    = null;
+let   beepInterval  = null;
+let   audioReady    = false;
+
+async function initAudio() {
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    console.log('[PSF Audio] AudioContext state:', audioCtx.state);
+
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+      console.log('[PSF Audio] Resumed, new state:', audioCtx.state);
+    }
+
+    const url = assetPath('sounds/speeding_beep.wav');
+    console.log('[PSF Audio] Fetching:', url);
+    const response = await fetch(url);
+    console.log('[PSF Audio] Fetch status:', response.status, response.ok);
+    const arrayBuf = await response.arrayBuffer();
+    console.log('[PSF Audio] Buffer size:', arrayBuf.byteLength);
+    beepBuffer     = await audioCtx.decodeAudioData(arrayBuf);
+    audioReady     = true;
+    console.log('[PSF Audio] Ready!');
+
+    const prompt = document.getElementById('audio-prompt');
+    if (prompt) {
+      prompt.style.opacity = '0';
+      setTimeout(() => { if (prompt.parentNode) prompt.parentNode.removeChild(prompt); }, 500);
+    }
+  } catch(e) {
+    console.warn('[PSF Audio] init failed:', e);
+  }
+}
+
+function playBeepOnce() {
+  if (!audioReady || !audioCtx || !beepBuffer) {
+    console.log('[PSF Audio] playBeepOnce skipped — ready:', audioReady, 'ctx:', !!audioCtx, 'buf:', !!beepBuffer);
+    return;
+  }
+  try {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const source = audioCtx.createBufferSource();
+    source.buffer = beepBuffer;
+    source.connect(audioCtx.destination);
+    source.start(0);
+  } catch(e) { console.warn('[PSF Audio] playBeepOnce error:', e); }
+}
+
+function startBeeping() {
+  if (beepInterval) return;
+  playBeepOnce();
+  beepInterval = setInterval(playBeepOnce, 500);
+}
+
+function stopBeeping() {
+  if (!beepInterval) return;
+  clearInterval(beepInterval);
+  beepInterval = null;
+}
+
+// Also unlock on user interaction as fallback for strict browsers
+function unlockAudio() {
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+document.addEventListener('click',     unlockAudio);
+document.addEventListener('keydown',   unlockAudio);
+
+// Init audio immediately on page load
+if (PIT_BEEP) initAudio();
+
+// ── Trace ring buffer ─────────────────────────────────────────────────────
+// We store timestamped samples so we can scroll by real time, not by frame
+const TRACE_DURATION_MS = 5000;  // 5 seconds of history
+const MAX_SAMPLES = 2000;
+
+// Each sample: { t: DOMHighResTimeStamp, thr: float, brk: float }
+const traceSamples = new Array(MAX_SAMPLES);
+let   sampleHead   = 0;
+let   sampleCount  = 0;
+let   lastSampleT  = 0;
+
+function pushSample(thr, brk) {
+  const now = performance.now();
+  // Deduplicate: only push if value changed OR 16ms elapsed (cap at ~60 samples/s)
+  if (now - lastSampleT < 8) return;
+  lastSampleT = now;
+  traceSamples[sampleHead] = { t: now, thr, brk };
+  sampleHead = (sampleHead + 1) % MAX_SAMPLES;
+  if (sampleCount < MAX_SAMPLES) sampleCount++;
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────
+let ws = null;
+
+function connect() {
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    state.connected = true;
+  };
+
+  ws.onmessage = (evt) => handleMessage(evt.data);
+
+  function handleMessage(data) {
+    try {
+      const d = JSON.parse(data);
+      updateVisibility(d);
+      // Handle reset signal from bridge
+      if (d.reset === true) { handleReset(); return; }
+
+      const p = d.player || {};
+      state.throttle = THROTTLE_INVERT ? 1 - (p.throttle || 0) : (p.throttle || 0);
+      state.brake    = BRAKE_INVERT    ? 1 - (p.brake    || 0) : (p.brake    || 0);
+      // NR2003 clutch inverted in game mode by default
+      const rawClt   = p.clutch || 0;
+      state.clutch   = CLUTCH_INVERT ? rawClt : 1 - rawClt;
+      state.steerDeg = p.steerDeg || 0;
+      state.gear          = p.gear     !== undefined ? p.gear : state.gear;
+      state.speedMph      = p.speedMph || 0;
+      state.onPitRoad     = d.onPitRoad    || false;
+      state.inCar         = d.player?.inCar !== false;
+      state.pitSpeedLimit = d.pitSpeedLimit || 0;
+      state.sessionFlag   = (d.sessionFlag || 'green').toLowerCase();
+      state.connected     = true;
+
+      // Restart suppression: green comes out after caution → suppress beep until lap crossing
+      const curFlag      = state.sessionFlag;
+      const curLapsComp  = d.lapsComplete || 0;
+      if (prevFlag === 'yellow' && curFlag === 'green') {
+        lapCrossed = false;  // green flag dropped — suppress until next crossing
+      }
+      if (curLapsComp !== prevLapsComplete && prevLapsComplete >= 0) {
+        lapCrossed = true;   // lap crossing — re-enable beep
+      }
+      prevFlag         = curFlag;
+      prevLapsComplete = curLapsComp;
+
+      // Push to trace buffer immediately on receive
+      pushSample(state.throttle, state.brake);
+    } catch(e) {}
+  }  // end handleMessage
+
+  ws.onclose = () => {
+    state.connected = false;
+    setTimeout(connect, 2000);
+  };
+  ws.onerror = () => { ws.close(); };
+}
+
+// ── Canvas setup helpers ──────────────────────────────────────────────────
+function initCanvas(canvas, container) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  canvas.width  = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width  = w + 'px';
+  canvas.style.height = h + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { ctx, w, h };
+}
+
+// ── Trace canvas ──────────────────────────────────────────────────────────
+const traceCanvas    = document.getElementById('trace-canvas');
+const traceContainer = document.getElementById('trace-section');
+let   traceCtx, traceW, traceH;
+
+function initTrace() {
+  const r = initCanvas(traceCanvas, traceContainer);
+  traceCtx = r.ctx;
+  traceW   = r.w;
+  traceH   = r.h;
+}
+
+let _traceBlank = false, _traceLastHead = -1, _traceLastCount = -1;
+function drawTrace() {
+  // Re-init if canvas has zero dimensions (can happen on first render in Electron)
+  if (!traceCtx || traceW === 0 || traceH === 0) {
+    initTrace();
+    _traceBlank = false;
+    if (traceW === 0) return;
+  }
+  if (!traceCtx) return;
+  // Perf: when the trace is just the empty grid (no samples inside the time
+  // window) and no new sample arrived, the canvas is already correct — skip.
+  if (_traceBlank && sampleHead === _traceLastHead && sampleCount === _traceLastCount) {
+    const last = traceSamples[(sampleHead - 1 + MAX_SAMPLES) % MAX_SAMPLES];
+    if (!last || performance.now() - last.t > TRACE_DURATION_MS) return;
+  }
+  _traceLastHead = sampleHead; _traceLastCount = sampleCount;
+  const ctx = traceCtx;
+  const W = traceW, H = traceH;
+  const PAD   = Math.max(4, Math.round(H * 0.08));
+  const drawH = H - PAD * 2;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = '#16181b';
+  ctx.fillRect(0, 0, W, H);
+
+  // Horizontal gridlines at 25%, 50%, 75% — respect same padding as trace
+  ctx.strokeStyle = '#2a2d33';
+  ctx.lineWidth = 1;
+  [0.25, 0.5, 0.75].forEach(g => {
+    const y = (H - PAD) - g * drawH;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(W, y);
+    ctx.stroke();
+  });
+
+  if (sampleCount < 2) { _traceBlank = true; return; }
+
+  const now      = performance.now();
+  const windowMs = TRACE_DURATION_MS;
+
+  // Collect samples within window, from oldest to newest
+  const pts = [];
+  for (let i = 0; i < sampleCount; i++) {
+    const idx = (sampleHead - sampleCount + i + MAX_SAMPLES) % MAX_SAMPLES;
+    const s = traceSamples[idx];
+    if (!s) continue;
+    const age = now - s.t;
+    if (age > windowMs) continue;
+    // x: 0 = oldest (left), W = newest (right)
+    const x = W - (age / windowMs) * W;
+    pts.push({ x, thr: s.thr, brk: s.brk });
+  }
+
+  if (pts.length < 2) { _traceBlank = true; return; }
+  _traceBlank = false;
+
+  // Draw brake (red) first
+  drawTraceLine(ctx, pts, W, H, 'brk', '#e84444', null);
+
+  // Draw throttle (green) on top
+  drawTraceLine(ctx, pts, W, H, 'thr', '#3ddc6e', null);
+}
+
+function drawTraceLine(ctx, pts, W, H, key, stroke, fill) {
+  const PAD   = Math.max(4, Math.round(H * 0.08));
+  const drawH = H - PAD * 2;
+  const valToY = (val) => (H - PAD) - val * drawH;
+
+  // Fill (only if fill color provided)
+  if (fill) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, H - PAD);
+    pts.forEach(p => ctx.lineTo(p.x, valToY(p[key])));
+    ctx.lineTo(pts[pts.length - 1].x, H - PAD);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+
+  // Line
+  ctx.beginPath();
+  pts.forEach((p, i) => {
+    const y = valToY(p[key]);
+    if (i === 0) ctx.moveTo(p.x, y);
+    else ctx.lineTo(p.x, y);
+  });
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth   = LINE_T;
+  ctx.lineJoin    = 'round';
+  ctx.lineCap     = 'round';
+  ctx.stroke();
+}
+
+// ── Steering wheel canvas ─────────────────────────────────────────────────
+const steerCanvas = document.getElementById('steer-canvas');
+const steerCtx    = steerCanvas.getContext('2d');
+const SW = 84, SH = 84;
+steerCanvas.width  = SW;
+steerCanvas.height = SH;
+
+// NR2003 reports ±~7.63° at full lock but the in-game wheel rotates ±157.5°.
+// Scale factor maps shim degrees to visual degrees.
+const STEER_INPUT_MAX = 7.63;    // shim degrees at full lock
+const STEER_VIS_MAX   = 157.5;   // desired visual rotation at full lock (315° total)
+const STEER_SCALE     = STEER_VIS_MAX / STEER_INPUT_MAX;  // ~20.6
+
+// Try to load custom wheel image; fall back to drawn wheel if missing
+const wheelImg = new Image();
+let   wheelImgReady = false;
+wheelImg.onload  = () => { wheelImgReady = true; _lastWheelAngle = null; };
+wheelImg.onerror = () => { wheelImgReady = false; };
+wheelImg.src = assetPath('images/icons/wheel.png');
+
+let _lastWheelAngle = null;
+function drawWheel(angleDeg) {
+  // Perf: the wheel only needs repainting when the angle actually changes.
+  if (_lastWheelAngle !== null && Math.abs(angleDeg - _lastWheelAngle) < 0.01) return;
+  _lastWheelAngle = angleDeg;
+  const ctx = steerCtx;
+  const cx  = SW / 2, cy = SH / 2;
+
+  // In wheel mode angleDeg is already in visual degrees — no scaling needed
+  // In game mode angleDeg is raw shim degrees that need scaling up
+  const visual = STEER_INPUT === 'wheel'
+    ? Math.max(-(WHEEL_ROT/2), Math.min(WHEEL_ROT/2, angleDeg))
+    : Math.max(-STEER_VIS_MAX, Math.min(STEER_VIS_MAX, angleDeg * STEER_SCALE));
+  const rad = (STEER_INPUT === 'wheel' ? 1 : -1) * visual * (Math.PI / 180);
+
+  ctx.clearRect(0, 0, SW, SH);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rad);
+
+  if (wheelImgReady) {
+    const size = Math.min(SW, SH);
+    ctx.drawImage(wheelImg, -size / 2, -size / 2, size, size);
+  } else {
+    // Fallback: drawn wheel
+    const R  = 38, ri = 10;
+    ctx.beginPath();
+    ctx.arc(0, 0, R, 0, Math.PI * 2);
+    ctx.strokeStyle = '#c8cdd6';
+    ctx.lineWidth   = 5;
+    ctx.stroke();
+    [0, (2*Math.PI)/3, (4*Math.PI)/3].forEach(a => {
+      ctx.beginPath();
+      ctx.moveTo(Math.sin(a)*ri,      -Math.cos(a)*ri);
+      ctx.lineTo(Math.sin(a)*(R-3),   -Math.cos(a)*(R-3));
+      ctx.strokeStyle = '#c8cdd6';
+      ctx.lineWidth   = 4;
+      ctx.stroke();
+    });
+    ctx.beginPath();
+    ctx.arc(0, 0, ri, 0, Math.PI * 2);
+    ctx.fillStyle = '#c8cdd6';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(0, -R + 4, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#e8c84a';
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+// ── DOM update (bars, gear, speed) — cheap, no canvas ────────────────────
+let lastGear = null, lastSpeed = null, lastOnPit = null;
+let lastCltPct = -1, lastBrkPct = -1, lastThrPct = -1;
+
+function updateDOM() {
+  const thrPct = Math.round(state.throttle * 100);
+  const brkPct = Math.round(state.brake    * 100);
+  // Clutch: NR2003 game mode reports inverted (1.0 = released) so we flip it
+  // In wheel mode normAxis handles it via CLUTCH_REST/PRESS calibration
+  const cltPct = Math.round(state.clutch * 100);
+
+  if (thrPct !== lastThrPct) {
+    document.getElementById('bar-throttle').style.height = thrPct + '%';
+    document.getElementById('pct-throttle').textContent  = thrPct;
+    lastThrPct = thrPct;
+  }
+  if (brkPct !== lastBrkPct) {
+    document.getElementById('bar-brake').style.height = brkPct + '%';
+    document.getElementById('pct-brake').textContent  = brkPct;
+    lastBrkPct = brkPct;
+  }
+  if (cltPct !== lastCltPct) {
+    document.getElementById('bar-clutch').style.height = cltPct + '%';
+    document.getElementById('pct-clutch').textContent  = cltPct;
+    lastCltPct = cltPct;
+  }
+
+  const gear = state.gear;
+  const gearStr = gear === 0 ? 'N' : (gear < 0 ? 'R' : String(gear));
+  if (gearStr !== lastGear) {
+    document.getElementById('gear-val').textContent = gearStr;
+    lastGear = gearStr;
+  }
+
+  const speed    = Math.round(state.speedMph);
+  const onPit    = state.onPitRoad    || false;
+  const pitLimit = state.pitSpeedLimit || 0;
+
+  if (speed !== lastSpeed || onPit !== lastOnPit) {
+    const speedEl = document.getElementById('speed-val');
+    speedEl.textContent = speed;
+    speedEl.classList.remove('pit-ok', 'pit-over');
+
+    // onPitRoad from memory reader is now the authoritative gate
+    // Beep only fires when in car — prevents garage/spectator false triggers
+    const inCar            = state.inCar !== false;
+    const effectivelyOnPit = inCar && onPit && pitLimit > 0;
+    // Beep always on — suppressed only on restart (lapStarted gate)
+    const beepAllowed      = effectivelyOnPit && lapCrossed;
+
+    if (effectivelyOnPit) {
+      if (speed >= pitLimit + 1) {
+        speedEl.classList.add('pit-over');  // over limit — red
+        if (beepAllowed) { if (PIT_BEEP) startBeeping(); } else stopBeeping();
+      } else {
+        speedEl.classList.add('pit-ok');    // at/under limit — amber
+        stopBeeping();
+      }
+    } else {
+      stopBeeping();
+    }
+    lastSpeed  = speed;
+    lastOnPit  = onPit;
+  }
+}
+
+// ── Wheel / Pedal input (gamepad) ─────────────────────────────────────────
+function getPadAxes(deviceIdx) {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  return Array.from(pads).find(p => p && p.index === deviceIdx);
+}
+
+function normAxis(raw, rest, press, invert = false) {
+  const range = press - rest;
+  if (Math.abs(range) < 0.001) return 0;
+  const v = Math.max(0, Math.min(1, (raw - rest) / range));
+  return invert ? 1 - v : v;
+}
+
+function getWheelDeg() {
+  if (STEER_INPUT !== 'wheel') return state.steerDeg;
+  const pad = getPadAxes(WHEEL_DEVICE);
+  if (!pad) return state.steerDeg;
+  const raw      = pad.axes[WHEEL_AXIS] ?? 0;
+  const center   = WHEEL_CENTER;
+  const halfRange = raw <= center
+    ? Math.abs(center - WHEEL_LEFT)
+    : Math.abs(WHEEL_RIGHT - center);
+  if (halfRange <= 0) return 0;
+  const normalized = (raw - center) / halfRange;
+  const maxDeg = WHEEL_ROT / 2;
+  return Math.max(-maxDeg, Math.min(maxDeg, normalized * maxDeg));
+}
+
+function updateGamepadPedals() {
+  if (STEER_INPUT !== 'wheel') return;
+  const pad = getPadAxes(PEDAL_DEVICE);
+  if (!pad) return;
+  state.throttle = normAxis(pad.axes[THROTTLE_AXIS] ?? 0, THROTTLE_REST, THROTTLE_PRESS, THROTTLE_INVERT);
+  state.brake    = normAxis(pad.axes[BRAKE_AXIS]    ?? 0, BRAKE_REST,    BRAKE_PRESS,    BRAKE_INVERT);
+  if (HAS_CLUTCH) {
+    state.clutch = normAxis(pad.axes[CLUTCH_AXIS]   ?? 0, CLUTCH_REST,   CLUTCH_PRESS,   CLUTCH_INVERT);
+  }
+}
+
+// ── RAF loop ──────────────────────────────────────────────────────────────
+function loop() {
+  updateGamepadPedals();
+  updateDOM();
+  drawTrace();
+  drawWheel(getWheelDeg());
+  requestAnimationFrame(loop);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+// Wait for fonts + layout to settle before measuring canvases
+window.addEventListener('load', () => {
+  initTrace();
+  loop();
+  connect();
+});
+
+// Accept postMessage for layout editor preview — registered once at top level
+window.addEventListener('message', e => {
+  if (typeof e.data === 'string') {
+    try {
+      const d = JSON.parse(e.data);
+      if (d._lineThickness !== undefined) {
+        LINE_T = Math.max(0.5, Math.min(8.0, parseFloat(d._lineThickness)));
+        return;
+      }
+      const p = d.player || {};
+      // In game mode, use telemetry; in wheel mode, gamepad loop handles pedals
+      if (STEER_INPUT !== 'wheel') {
+        state.throttle = THROTTLE_INVERT ? 1 - (p.throttle || 0) : (p.throttle || 0);
+        state.brake    = BRAKE_INVERT    ? 1 - (p.brake    || 0) : (p.brake    || 0);
+        // NR2003 clutch is inverted in game mode (1.0 = released, 0.0 = depressed)
+        // so we invert by default, unless user has set CLUTCH_INVERT to flip it back
+        const rawClt   = p.clutch || 0;
+        state.clutch   = CLUTCH_INVERT ? rawClt : 1 - rawClt;
+      } else {
+        // Still animate trace in preview with fake data
+        state.throttle = p.throttle || 0;
+        state.brake    = p.brake    || 0;
+      }
+      state.steerDeg      = p.steerDeg || 0;
+      state.gear          = p.gear     !== undefined ? p.gear : state.gear;
+      state.speedMph      = p.speedMph || 0;
+      state.onPitRoad     = d.onPitRoad    || false;
+      state.pitSpeedLimit = d.pitSpeedLimit || 0;
+      state.sessionFlag   = (d.sessionFlag || 'green').toLowerCase();
+      state.connected     = true;
+      pushSample(state.throttle, state.brake);
+    } catch(e) {}
+  }
+});
+</script>
+</body>
+</html>

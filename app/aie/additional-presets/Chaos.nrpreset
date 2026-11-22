@@ -1,0 +1,14 @@
+{
+  "description": "AI drive like madmen with a high chance of wrecking. Designed for final-lap carnage.\n\nSets:\n  yaw_accel_k1 = 0.1\n  yaw_accel_k2 = 0.5\n  ai_line_modifier = 1.07\n  ai_drafting_distance = 0.0\n  ai_dlat_pad = 1.0\n  driver_consistency_to_left_offset_dev = 2.7\n  mechanical_failure_interval = 50.0\n  mechanical_failure_chance = 50.0\n\nAll other settings unchanged.",
+  "settings": {
+    "yaw_accel_k1": 0.1,
+    "yaw_accel_k2": 0.5,
+    "ai_line_modifier": 1.07,
+    "ai_drafting_distance": 0.0,
+    "ai_dlat_pad": 1.0,
+    "driver_consistency_to_left_offset_dev": 2.7,
+    "mechanical_failure_interval": 50.0,
+    "mechanical_failure_chance": 50.0
+  },
+  "auto_keywords": []
+}

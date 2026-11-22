@@ -1,0 +1,18 @@
+{
+  "description": "Generic Multigroove settings for left turning ovals. For ideal results, you will likely want to edit the lap files. Also consider the grip levels in Environment tab.",
+  "settings": {
+    "ai_bunching_distance": 2.0
+  },
+  "env_grip": {
+    "base": 1.0,
+    "maxrace": 1.0,
+    "minrace": 1.1
+  },
+  "multigroove": {
+    "enabled": true,
+    "left_bound": "race",
+    "right_bound": "minrace",
+    "space_cars": true
+  },
+  "auto_keywords": []
+}

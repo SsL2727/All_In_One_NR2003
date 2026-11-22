@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: file: http://127.0.0.1:*; font-src 'self' file:; media-src 'self' file:">
+<link rel="stylesheet" href="broadcast.css">
+<style>
+html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden;font-family:var(--psf-tv-font);color:var(--psf-tv-white)}
+.box{position:absolute;transform-origin:0 0;opacity:0;transition:opacity .3s}.box.show{opacity:1}
+/* number card: the series' own artwork, or a plain card in the team colour */
+.card{width:92px;height:64px;border-radius:2px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none;background:rgba(var(--psf-tv-bg-rgb),.98);border:1px solid var(--psf-tv-line)}
+.card img{width:100%;height:100%;object-fit:contain}.card span{font:800 36px/1 var(--psf-tv-font);text-shadow:0 1px 2px #000a}
+.head{width:76px;height:76px;border-radius:2px;overflow:hidden;flex:none;border:2px solid var(--team,#888);background:rgba(var(--psf-tv-bg-rgb),.98) center/cover}
+.head img{width:100%;height:100%;object-fit:cover;object-position:top}
+.rk{display:inline-block;margin-left:8px;padding:1px 6px;border-radius:2px;background:var(--psf-tv-accent);color:#111;font:800 12px/1.3 var(--psf-tv-font);vertical-align:2px}
+.rpl{position:absolute;left:40px;top:36px;transform-origin:0 0;padding:8px 20px;background:rgba(200,40,36,.96);color:#fff;font:800 30px/1 var(--psf-tv-font);letter-spacing:.06em;border-radius:3px;box-shadow:0 3px 9px #0009;opacity:0;transition:opacity .25s}.rpl.show{opacity:1}.rpl small{display:block;margin-top:5px;font:600 14px/1 var(--psf-tv-font);letter-spacing:.08em;opacity:.85}
+.manu{height:26px;max-width:60px;object-fit:contain;margin-left:10px;opacity:.9}
+.tag{display:flex;align-items:center;gap:12px;min-width:470px;padding:9px 16px 9px 8px;background:rgba(var(--psf-tv-bg-rgb),.97);border-radius:3px;border-left:5px solid var(--team,var(--accent,var(--psf-tv-accent)));box-shadow:0 3px 9px #0009}
+.tag .nm{font:700 26px/1.05 var(--psf-tv-font);text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}.tag .st{font:500 16px/1.35 var(--psf-tv-font);color:var(--psf-tv-muted);margin-top:3px}
+.tag .p{margin-left:auto;padding-left:18px;font:800 40px/1 var(--psf-tv-font);color:var(--accent,var(--psf-tv-accent))}
+.battle{min-width:380px;background:rgba(var(--psf-tv-bg-rgb),.97);border-radius:3px;border-top:3px solid var(--psf-tv-accent);padding:6px 10px;box-shadow:0 3px 9px #0009}
+.battle .r{display:flex;align-items:center;gap:12px;padding:3px 0}.battle .r .card{width:70px;height:48px}.battle .r .card span{font-size:27px}
+.battle .r b{font:800 26px/1 var(--psf-tv-font);color:var(--accent,var(--psf-tv-accent));width:2.1em}.battle .r .ln{font:700 22px/1 var(--psf-tv-font);text-transform:uppercase;flex:1}
+.battle .gap .riv{color:#ff8a3c}.battle .gap{display:flex;align-items:center;justify-content:center;gap:10px;color:var(--psf-tv-accent);font:700 17px/1.3 var(--psf-tv-font);letter-spacing:.06em}.battle .gap:before,.battle .gap:after{content:'';height:1px;background:var(--psf-tv-line);flex:1}
+.dash{display:flex;align-items:center;gap:14px;background:rgba(var(--psf-tv-bg-rgb),.98);border:0;border-top:4px solid var(--accent,var(--psf-tv-accent));border-radius:3px;padding:10px 15px;box-shadow:0 3px 9px #0009}
+.dash .col{width:236px}.dash .plate{padding:7px 10px;border-radius:2px;background:linear-gradient(90deg,var(--plate-from,var(--accent)),var(--plate-to,var(--accent2)));color:#fff;text-shadow:0 1px 2px #000b}.dash .top{display:flex;justify-content:space-between;align-items:baseline}.dash .pl{font:800 34px/1 var(--psf-tv-font);color:#fff}.dash .dn{font:700 18px/1.1 var(--psf-tv-font);text-transform:uppercase}
+.dash svg{display:block;margin:0 auto}.dash .spd{font:800 46px/1 var(--psf-tv-font);text-align:center;margin-top:-58px}.dash .unit{text-align:center;font:600 12px var(--psf-tv-font);color:var(--psf-tv-muted);margin-top:6px}
+.gain{display:flex;align-items:center;gap:14px;min-width:360px;padding:8px 16px 8px 8px;background:rgba(var(--psf-tv-bg-rgb),.97);border-radius:3px;border-left:5px solid var(--up,var(--psf-tv-green));box-shadow:0 3px 9px #0009}
+.gain .big{font:800 52px/1 var(--psf-tv-font);color:var(--up,var(--psf-tv-green));min-width:1.7em;text-align:center}.gain.down{--up:var(--psf-tv-red)}
+.gain .nm{font:700 24px/1.05 var(--psf-tv-font);text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}.gain .st{font:500 16px/1.35 var(--psf-tv-font);color:var(--psf-tv-muted);margin-top:3px}
+.chip{display:inline-block;margin-left:8px;padding:0 6px;border-radius:2px;font:800 .8em/1.4 var(--psf-tv-font);color:#0b1a10;background:var(--psf-tv-green)}.chip.down{background:var(--psf-tv-red);color:#fff}
+.classic{display:flex;align-items:center;gap:12px;background:rgba(var(--psf-tv-bg-rgb),.97);border-radius:3px;padding:8px 14px 8px 8px;border-bottom:3px solid var(--team,var(--accent,var(--psf-tv-accent)))}
+.lay{position:absolute;transform-origin:0 0;opacity:0;transition:opacity .3s}.lay.show{opacity:1}
+.classic .v{font:800 44px/1 var(--psf-tv-font)}.classic small{display:block;font:600 13px var(--psf-tv-font);color:var(--psf-tv-muted);margin-top:2px}
+</style></head><body>
+<div id="lays"></div><div class="box" id="battle"></div><div class="box" id="tag"></div><div class="box" id="dash"></div><div class="box" id="gain"></div><div class="rpl" id="rpl"></div>
+<script src="director/layoutdraw.js"></script>
+<script>
+const $ = (i) => document.getElementById(i);
+// RaceVision 2.0 overlay layouts: a panel with a layout picked is drawn from it (director/layoutdraw.js) on its own canvas; All In One NR2003's own
+// version of that panel steps aside. o.lay = { panels: [{ key, layout, on, x, y, scale }], snap, pics, fonts }
+const LAY = { fonts: new Set(), imgs: new Map(), last: null, rpmTop: {} };
+function layFonts(list) {
+  for (const f of list || []) {
+    if (!f || !f.url || LAY.fonts.has(f.url)) continue;
+    LAY.fonts.add(f.url);
+    const d = RVLayout.fontFace(f);
+    try { const face = new FontFace(d.family, 'url("' + d.url + '")', { weight: d.weight, style: d.style }); document.fonts.add(face); face.load().then(() => { if (LAY.last) layDraw(LAY.last); }).catch(() => {}); } catch (e) { /* skip */ }
+  }
+}
+function layImg(url) {
+  if (!url) return null;
+  let im = LAY.imgs.get(url);
+  if (!im) { im = new Image(); im.onload = () => { if (LAY.last) layDraw(LAY.last); }; im.src = url; LAY.imgs.set(url, im); }
+  return im.complete && im.naturalWidth ? im : null;
+}
+function layDraw(lay) {
+  LAY.last = lay;
+  const host = $('lays'), seen = new Set();
+  if (lay) {
+    layFonts(lay.fonts);
+    const snap = RVLayout.hydrate(lay.snap || {}, lay.pics || {});
+    const k = innerHeight / 1080, dpr = window.devicePixelRatio || 1;
+    for (const p of lay.panels || []) {
+      seen.add(p.key);
+      let cv = document.getElementById('lay-' + p.key);
+      if (!cv) { cv = document.createElement('canvas'); cv.id = 'lay-' + p.key; cv.className = 'lay'; host.appendChild(cv); }
+      const L = p.layout || {}, w = Math.max(20, Math.min(2400, +L.w || 300)), h = Math.max(20, Math.min(1400, +L.h || 100));
+      const sc = (+p.scale || 1) * k;
+      cv.style.left = Math.round(p.x * k) + 'px'; cv.style.top = Math.round(p.y * k) + 'px';
+      cv.style.width = Math.round(w * sc) + 'px'; cv.style.height = Math.round(h * sc) + 'px';
+      const pw = Math.max(1, Math.round(w * sc * dpr)), ph = Math.max(1, Math.round(h * sc * dpr));
+      if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+      cv.classList.toggle('show', !!p.on);
+      if (!p.on) continue;
+      const g = cv.getContext('2d');
+      g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, pw, ph); g.setTransform(sc * dpr, 0, 0, sc * dpr, 0, 0);
+      RVLayout.draw(g, L, snap, { img: layImg, rpmTop: LAY.rpmTop });
+    }
+  }
+  for (const el of [...host.children]) if (!seen.has(el.id.slice(4))) el.remove();
+}
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function place(el, spec, def) {
+  const p = String(spec || '').split(',').map(Number);
+  const v = p.length >= 3 && p.every(Number.isFinite) ? p : def;
+  const k = innerHeight / 1080;
+  el.style.left = Math.round(v[0] * k) + 'px'; el.style.top = Math.round(v[1] * k) + 'px'; el.style.transform = 'scale(' + (v[2] * k) + ')';
+}
+const lum = (c) => { const m = /^#?([0-9a-f]{6})$/i.exec(c || ''); if (!m) return 0; const n = parseInt(m[1], 16); return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255; };
+// the number card: the series' artwork when it has one, else the number in the team colour
+function card(x) {
+  const a = x.art || {};
+  if (a.number) return '<div class="card"><img src="' + esc(a.number) + '"></div>';
+  const bg = a.color || '#d8232a';
+  return '<div class="card" style="background:' + esc(bg) + '"><span style="color:' + (lum(bg) > 0.6 ? '#111' : '#fff') + '">' + esc(x.num) + '</span></div>';
+}
+const head = (x) => (x.art && x.art.head ? '<div class="head"><img src="' + esc(x.art.head) + '"></div>' : '');
+const manu = (x) => (x.art && x.art.manu ? '<img class="manu" src="' + esc(x.art.manu) + '">' : '');
+function arc(mph, max, rpm) {
+  const f = Math.max(0, Math.min(1, mph / max)), r = 70, cx = 110, cy = 100, a0 = Math.PI * 0.8, a1 = Math.PI * 2.2, a = a0 + (a1 - a0) * f;
+  const pt = (t) => [cx + r * Math.cos(t), cy + r * Math.sin(t)];
+  const p0 = pt(a0), p1 = pt(a1), pa = pt(a), big = (a - a0) > Math.PI ? 1 : 0, rf = Math.max(0, Math.min(1, rpm / 9500));
+  return '<svg width="220" height="150" viewBox="0 0 220 150"><path d="M' + p0[0] + ' ' + p0[1] + ' A' + r + ' ' + r + ' 0 1 1 ' + p1[0] + ' ' + p1[1] + '" stroke="#252b38" stroke-width="12" fill="none" stroke-linecap="round"/>' +
+    '<path d="M' + p0[0] + ' ' + p0[1] + ' A' + r + ' ' + r + ' 0 ' + big + ' 1 ' + pa[0] + ' ' + pa[1] + '" stroke="var(--accent,#e8c84a)" stroke-width="12" fill="none" stroke-linecap="round"/>' +
+    '<rect x="40" y="134" width="140" height="6" rx="3" fill="#252b38"/><rect x="40" y="134" width="' + (140 * rf) + '" height="6" rx="3" fill="' + (rf > .9 ? '#e74c3c' : 'var(--accent2)') + '"/></svg>';
+}
+// places made up (+) or lost (-) since the start / restart
+const chip = (g) => (g && g.places ? '<span class="chip' + (g.places < 0 ? ' down' : '') + '">' + (g.places > 0 ? '▲' : '▼') + Math.abs(g.places) + '</span>' : '');
+function render(o) {
+  const savedAccent = String(o.accent || '').trim();
+  const accent = !savedAccent || savedAccent.toLowerCase() === '#3cc8c8' ? '#e8c84a' : savedAccent;
+  document.documentElement.style.setProperty('--accent', accent);
+  document.documentElement.style.setProperty('--accent2', o.accent2 || '#145A60');
+  document.documentElement.style.setProperty('--plate-from', o.plateFrom || accent);
+  document.documentElement.style.setProperty('--plate-to', o.plateTo || o.accent2 || '#145A60');
+  const L = o.layout || {};
+  layDraw(o.lay || null);
+  const layKeys = new Set(((o.lay && o.lay.panels) || []).map(p => p.key));
+  const t = o.on && !layKeys.has('tag') && o.tag;
+  $('tag').style.setProperty('--team', (t && t.art && t.art.color) || '');
+  $('tag').innerHTML = t ? '<div class="tag">' + head(t) + card(t) + '<div><div class="nm">' + esc(t.name || ('#' + t.num)) + (t.art && t.art.rookie ? '<span class="rk">ROOKIE</span>' : '') + manu(t) + '</div><div class="st">' + esc(t.story) + '</div></div><span class="p">P' + t.pos + '</span></div>' : '';
+  $('tag').classList.toggle('show', !!t); place($('tag'), L.tag, [40, 900, 1]);
+  const b = o.on && !layKeys.has('battle') && o.battle;
+  const row = (x) => '<div class="r">' + '<b>P' + x.pos + '</b>' + card(x) + '<span class="ln">' + esc(x.last) + '</span></div>';
+  $('battle').innerHTML = b ? '<div class="battle">' + row(b.a) + '<div class="gap">' + b.gap.toFixed(2) + ' s' + (b.rival ? ' &middot; <span class="riv">' + String(b.rival).replace(/[<>&]/g, '') + '</span>' : '') + '</div>' + row(b.b) + '</div>' : '';
+  $('battle').classList.toggle('show', !!b); place($('battle'), L.battle, [620, 900, 1]);
+  const d = o.on && !layKeys.has(o.style === 'dash' ? 'dash' : 'onboard') && o.dash;
+  $('dash').style.setProperty('--team', (d && d.art && d.art.color) || '');
+  if (d && o.style === 'dash') $('dash').innerHTML = '<div class="dash">' + head(d) + '<div class="col"><div class="plate"><div class="top"><span class="pl">P' + d.pos + chip(d.gain) + '</span><span class="dn">' + esc(d.last || d.name) + '</span></div></div>' + arc(d.mph, o.speedMax || 220, d.rpm) + '<div class="spd">' + d.mph + '</div><div class="unit">MPH</div></div></div>';
+  else if (d) $('dash').innerHTML = '<div class="classic">' + card(d) + '<div><div class="v">' + d.mph + '</div><small>MPH · P' + d.pos + chip(d.gain) + '</small></div></div>';
+  else $('dash').innerHTML = '';
+  $('dash').classList.toggle('show', !!d); place($('dash'), L.onboard, [1560, 880, 1]);
+  const g = o.on && o.gain;
+  if (g) {
+    const n = Math.abs(g.places), s = g.since === 'start' ? 'the start' : 'the restart';
+    $('gain').innerHTML = '<div class="gain' + (g.places < 0 ? ' down' : '') + '"><div class="big">' + (g.places < 0 ? '▼' : '▲') + n + '</div>' + card(g) +
+      '<div><div class="nm">' + esc(g.name || g.last || ('#' + g.num)) + '</div><div class="st">' + (g.places < 0 ? 'lost ' : 'up ') + n + ' place' + (n === 1 ? '' : 's') + ' since ' + s + ' · P' + g.from + ' → P' + g.to + '</div></div></div>';
+  } else $('gain').innerHTML = '';
+  $('gain').classList.toggle('show', !!g); place($('gain'), L.gain, [40, 790, 1]);
+  const r = o.replay;
+  $('rpl').innerHTML = r ? esc(r.text) + (r.phase === 'playing' ? '<small>' + (r.angles > 1 ? 'ANGLE ' + r.angle + ' OF ' + r.angles + ' · ' : '') + 'LIVE IN ' + Math.max(0, r.liveIn || 0) + 's</small>' : '') : '';
+  $('rpl').classList.toggle('show', !!r); place($('rpl'), L.replay, [40, 36, 1]);
+  for (const c of (o.crowd || [])) crowd(c, o);
+}
+const cache = {};
+async function crowd(c, o) {
+  try {
+    if (!(c.kind in cache)) cache[c.kind] = await window.shl.tvOverlay.sounds(c.kind);
+    const l = cache[c.kind]; if (!l.length) return;
+    const a = new Audio(l[Math.floor(Math.random() * l.length)]); a.volume = Math.min(1, (o.crowdVolume || 0.8) * (c.fav ? 1 : 0.7)); a.play().catch(() => {});
+  } catch (e) { /* no sounds */ }
+}
+window.shl.tvOverlay.onData(render);
+</script></body></html>

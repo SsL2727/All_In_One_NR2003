@@ -1,0 +1,84 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Replay wipe</title>
+<style>html,body{margin:0;padding:0;background:transparent;overflow:hidden;width:100%;height:100%}canvas{display:block;width:100vw;height:100vh}</style>
+</head><body><canvas id="c"></canvas>
+<script>
+// The replay transition (RaceVision 1.2.0 WipeDraw, racevision_tape.cpp): three slanted bars sweep across (a white edge, the accent colour,
+// then the dark one), the screen is covered, the word REPLAY / LIVE slams in, and the bars leave the other way. The director's cut
+// happens while it is covered: main.js waits for 'covered', makes the cut, then sends 'release'. kind 0 = into a replay, 1 = back to live,
+// 2 = a new angle (shorter, just its label).
+'use strict';
+const cv = document.getElementById('c'), g = cv.getContext('2d');
+let job = null;
+const ease = (x) => { x = Math.max(0, Math.min(1, x)); return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+function rgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  let r = 255, gg = 196, b = 0;
+  if (m) { const v = parseInt(m[1], 16); r = (v >> 16) & 255; gg = (v >> 8) & 255; b = v & 255; }
+  if (r + gg + b < 60) { r = 255; gg = 196; b = 0; }
+  return [r, gg, b];
+}
+function draw(W, H, phase, p, holdT, kind, sub, acc) {
+  g.clearRect(0, 0, W, H);
+  const sk = H * 0.30, span = W + 3 * sk;
+  const dark = 'rgb(12,14,20)', white = '#fff', A = 'rgb(' + acc.join(',') + ')';
+  const poly = (fill, pts) => { g.fillStyle = fill; g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]); g.closePath(); g.fill(); };
+  const cover = (fill, x) => poly(fill, [[-2 * sk, 0], [x + sk, 0], [x, H], [-2 * sk, H]]);            // everything left of the slanted edge at x
+  const rest = (fill, x) => poly(fill, [[x + sk, 0], [W + 2 * sk, 0], [W + 2 * sk, H], [x, H]]);        // everything right of it
+  const stripe = (fill, x, w) => poly(fill, [[x + sk - w, 0], [x + sk, 0], [x, H], [x - w, H]]);
+  if (phase === 0) {                                     // in: the white edge leads, then the accent, then the dark bar
+    const xw = -2 * sk + span * ease(p / 0.72), xa = -2 * sk + span * ease((p - 0.14) / 0.72), xd = -2 * sk + span * ease((p - 0.28) / 0.72);
+    cover(A, xa); cover(dark, xd); stripe(white, xw, H * 0.05); stripe(A, xw - H * 0.07, H * 0.025);
+  } else if (phase === 1) {
+    g.fillStyle = dark; g.fillRect(0, 0, W, H);
+  } else {                                               // out: the dark bar leaves first, the white edge last
+    const xd = -2 * sk + span * ease(p / 0.72), xa = -2 * sk + span * ease((p - 0.14) / 0.72), xw = -2 * sk + span * ease((p - 0.28) / 0.72);
+    rest(white, xw); rest(A, xa); rest(dark, xd);
+  }
+  // the word, on the dark bar
+  const ta = phase === 1 ? Math.min(1, holdT / 0.14) : phase === 2 ? 1 - Math.min(1, p * 3) : 0;
+  if (ta > 0.01 && kind !== 2) {
+    const big = H * 0.20, sm = H * 0.034;
+    const slide = (1 - ease(phase === 1 ? holdT / 0.32 : 1)) * W * 0.06;
+    if (phase === 1) { g.fillStyle = 'rgba(255,255,255,0.055)'; for (let y = 0; y < H; y += 4) g.fillRect(0, y, W, 1); }
+    g.font = 'italic 700 ' + big + 'px "Segoe UI", system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const word = kind === 1 ? 'LIVE' : 'REPLAY', cx = W / 2 - slide, cy = H * 0.5;
+    g.fillStyle = 'rgba(0,0,0,' + (0.43 * ta) + ')'; g.fillText(word, cx + H * 0.008, cy + H * 0.008);
+    g.fillStyle = 'rgba(255,255,255,' + ta + ')'; g.fillText(word, cx, cy);
+    const grow = phase === 1 ? ease(holdT / 0.30) : 1, rw = W * 0.36 * grow;   // the accent rule under it grows out from the middle
+    g.fillStyle = 'rgba(' + acc.join(',') + ',' + ta + ')'; g.fillRect(W / 2 - rw / 2, H * 0.5 + big * 0.62, rw, H * 0.008);
+    if (kind === 1) {                                    // the red LIVE dot
+      const r = H * 0.022; g.fillStyle = 'rgba(235,60,50,' + ta + ')'; g.beginPath(); g.arc(W / 2 - big * 1.45, cy, r, 0, Math.PI * 2); g.fill();
+    }
+    if (sub) {
+      g.font = '700 ' + sm + 'px "Segoe UI", system-ui, sans-serif'; g.textBaseline = 'top';
+      g.fillStyle = 'rgba(200,205,215,' + (0.92 * ta) + ')'; g.fillText(sub, W / 2, H * 0.5 + big * 0.62 + H * 0.025);
+    }
+  } else if (ta > 0.01 && kind === 2 && sub) {           // a new angle: just the small label
+    g.font = 'italic 700 ' + (H * 0.05) + 'px "Segoe UI", system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = 'rgba(' + acc.join(',') + ',' + ta + ')'; g.fillText(sub, W / 2, H / 2);
+  }
+  if (phase === 1 && holdT < 0.10) { g.fillStyle = 'rgba(255,255,255,' + (0.47 * (1 - holdT / 0.10)) + ')'; g.fillRect(0, 0, W, H); }   // a flash as the bars meet
+}
+function frame() {
+  if (!job) return;
+  const now = performance.now() / 1000, j = job;
+  const dpr = window.devicePixelRatio || 1, W = window.innerWidth, H = window.innerHeight;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  let p = 0, holdT = 0;
+  if (j.phase === 0) { p = (now - j.t0) / j.tIn; if (p >= 1) { p = 1; j.phase = 1; j.tHold = now; window.shl.wipe.covered(j.id); } }
+  if (j.phase === 1) { holdT = now - j.tHold; if ((holdT >= j.holdMin && j.release) || holdT >= j.holdMax) { j.phase = 2; j.tOut0 = now; } }
+  if (j.phase === 2) { p = (now - j.tOut0) / j.tOut; if (p >= 1) { g.clearRect(0, 0, W, H); job = null; window.shl.wipe.done(); return; } }
+  draw(W, H, j.phase, p, holdT, j.kind, j.sub, j.acc);
+  requestAnimationFrame(frame);
+}
+window.shl.wipe.onGo((o) => {
+  const total = Math.max(0.4, Math.min(5, (Number(o.ms) || 1500) / 1000)) * (o.kind === 2 ? 0.55 : 1);
+  if (job) window.shl.wipe.covered(job.id);             // (never leave the director waiting on an older one)
+  job = { id: o.id, kind: o.kind | 0, sub: String(o.sub || ''), acc: rgb(o.color), t0: performance.now() / 1000, phase: 0, release: false,
+    tIn: total * 0.36, holdMin: o.kind === 2 ? 0.07 : total * 0.30, tOut: total * 0.34, holdMax: 2.2 };
+  requestAnimationFrame(frame);
+});
+window.shl.wipe.onRelease((id) => { if (job && job.id === id) job.release = true; });
+</script></body></html>

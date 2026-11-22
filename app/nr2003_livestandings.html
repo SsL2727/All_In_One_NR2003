@@ -1,0 +1,1804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="stage_shim.js"></script>
+<script src="perf-shim.js"></script>
+<meta charset="UTF-8">
+<title>NR2003 Live Standings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,400;0,600;0,700;0,800;0,900;1,700&family=Barlow:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* Chase highlight — drivers in the chase get a yellow name background */
+.chase { background: #f5d100 !important; color: #111 !important; text-shadow: none !important;
+         box-shadow: -3px 0 0 #f5d100, 3px 0 0 #f5d100; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-a:        1.0;
+  --bg:          rgba(18, 18, 20,    var(--bg-a));
+  --bg-header:   rgba(12, 12, 14,    var(--bg-a));
+  --bg-row-odd:  rgba(22, 22, 26,    var(--bg-a));
+  --bg-row-even: rgba(28, 28, 34,    var(--bg-a));
+  --bg-divider:  rgba(200,200,200,   var(--bg-a));
+  --bg-logo:     rgba(12, 12, 14,    var(--bg-a));
+  --text:        #ffffff;
+  --text-dim:    #a0a0a8;
+  --text-delta:  #c8c8d0;
+  --accent:      #e8c84a;
+  --green:       #2ecc40;
+  --yellow:      #ffdc00;
+  --red:         #ff4136;
+  --white-flag:  #f0f0f0;
+  --font:        'Barlow Condensed', sans-serif;
+  --w:           290px;
+}
+
+html, body {
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+}
+
+#scale-root {
+  transform-origin: top left;
+  display: inline-block;
+}
+
+#widget {
+  width: var(--w);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font);
+  border-radius: 9px;
+  overflow: hidden;  /* clips children to rounded corners */
+}
+
+/* ── Flag bar ────────────────────────────────────────────────────────────── */
+.flag-bar {
+  display: flex;
+  height: 9px;
+  flex-shrink: 0;
+}
+
+.flag-segment {
+  flex: 1;
+  background: var(--green);
+  transition: background 0.4s ease;
+}
+
+.flag-bar.yellow .flag-segment { background: var(--yellow); }
+.flag-bar.red    .flag-segment { background: var(--red); }
+.flag-bar.white  .flag-segment { background: var(--white-flag); }
+.flag-bar.checkered .flag-segment:nth-child(odd)  { background: #ffffff; }
+.flag-bar.checkered .flag-segment:nth-child(even) { background: #111111; }
+.flag-bar.stage-complete .flag-segment:nth-child(odd)  { background: #ffffff; }
+.flag-bar.stage-complete .flag-segment:nth-child(even) { background: var(--green); }
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+#header {
+  background: var(--bg-header);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 8px 7px;
+  gap: 5px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+#logo-wrap {
+  height: 42px;
+  max-width: 140px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#logo-img {
+  max-height: 42px;
+  max-width: 140px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+#logo-img.hidden { display: none; }
+
+#track-name {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.1;
+}
+
+#lap-info {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  width: 100%;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* Font size auto-managed by JS to prevent overflow */
+}
+#lap-info .li-left  { flex: 0 0 auto; text-align: left; }
+#lap-info .li-right { flex: 0 0 auto; text-align: right; }
+#lap-info .li-center { flex: 1; text-align: center; }
+
+#lap-info.caution { color: var(--yellow); }
+#lap-info.stage-complete { color: var(--text); }
+
+#caution-row {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--yellow);
+  text-transform: uppercase;
+  text-align: center;
+  padding: 5px 8px 4px;
+  background: var(--bg-header);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  flex-shrink: 0;
+}
+
+/* ── Live mode badge ─────────────────────────────────────────────────────── */
+#live-badge {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #e84444;
+  color: #ffffff;
+  text-transform: uppercase;
+  margin-left: 6px;
+  vertical-align: middle;
+  animation: livepulse 2s ease-in-out infinite;
+}
+#live-badge.official {
+  background: #5a6070;
+  animation: none;
+}
+@keyframes livepulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: 0.6; }
+}
+
+/* ── Series label bar ────────────────────────────────────────────────────── */
+#series-bar {
+  background: rgba(200,200,200, calc(var(--bg-a) * 0.15));
+  border-top: 1px solid rgba(255,255,255,0.12);
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+  text-align: center;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+/* ── Rows ─────────────────────────────────────────────────────────────────── */
+#rows-top, #rows-rotating {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.s-row {
+  display: grid;
+  grid-template-columns: 26px 44px 1fr 68px;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px 0 8px;
+  gap: 2px;
+}
+
+.s-row:nth-child(odd)  { background: var(--bg-row-odd); }
+.s-row:nth-child(even) { background: var(--bg-row-even); }
+
+
+
+.s-row.player-row {
+  background: rgba(74,158,232, calc(var(--bg-a) * 0.18)) !important;
+  outline: 1px solid rgba(74,158,232,0.4);
+}
+
+
+  60%  { background-color: rgba(46,204,64,0.6); }
+  100% { background-color: rgba(46,204,64,0.0); }
+}
+
+
+  60%  { background-color: rgba(232,68,68,0.6); }
+  100% { background-color: rgba(232,68,68,0.0); }
+}
+
+
+
+
+
+
+
+
+/* Position */
+.s-pos {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-align: right;
+  padding-right: 3px;
+  font-family: var(--font);
+}
+
+.s-row[data-pos="1"] .s-pos { color: var(--accent) !important; }
+.s-pos { color: var(--text-dim); }
+
+/* Number image / fallback */
+.s-num-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  width: 44px;
+  overflow: hidden;
+}
+
+.s-num-img {
+  width: 34px;
+  height: 18px;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+  image-rendering: -webkit-optimize-contrast;
+}
+
+.s-num-text {
+  font-size: 18px;
+  font-weight: 900;
+  font-style: italic;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  text-align: center;
+  width: 100%;
+}
+
+/* Name */
+.s-name {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Delta */
+.s-delta {
+  font-size: 12px;
+  font-weight: 700;
+  color: #c8ccd6;
+  text-align: right;
+  font-family: var(--font);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+.s-delta.lapped      { color: #ff8c69; }
+.s-delta.out         { color: #888890; font-size: 11px; }
+.s-delta.leader      { color: transparent; }
+.s-delta.leader-best { color: #ffffff; font-weight: 800; font-size: 13px; letter-spacing: 0.02em; }
+.s-delta.season      { color: var(--accent); font-weight: 800; font-size: 13px; }
+
+/* ── Position change animation ───────────────────────────────────────────── */
+.s-row {
+  transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  will-change: transform;
+}
+.s-row.flip-animating {
+  transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+@keyframes flash-gained {
+  0%   { box-shadow: inset 0 0 0 2px rgba(46,204,64,0.0); }
+  20%  { box-shadow: inset 0 0 0 2px rgba(46,204,64,1.0); }
+  70%  { box-shadow: inset 0 0 0 2px rgba(46,204,64,0.8); }
+  100% { box-shadow: inset 0 0 0 2px rgba(46,204,64,0.0); }
+}
+@keyframes flash-lost {
+  0%   { box-shadow: inset 0 0 0 2px rgba(232,68,68,0.0); }
+  20%  { box-shadow: inset 0 0 0 2px rgba(232,68,68,1.0); }
+  70%  { box-shadow: inset 0 0 0 2px rgba(232,68,68,0.8); }
+  100% { box-shadow: inset 0 0 0 2px rgba(232,68,68,0.0); }
+}
+.s-row.pos-gained,
+.s-row.pos-gained:nth-child(odd),
+.s-row.pos-gained:nth-child(even) { animation: flash-gained 3s ease-in-out forwards !important; }
+.s-row.pos-lost,
+.s-row.pos-lost:nth-child(odd),
+.s-row.pos-lost:nth-child(even)   { animation: flash-lost   3s ease-in-out forwards !important; }
+
+/* ── Divider between top 10 and rotating ─────────────────────────────────── */
+#divider {
+  height: 3px;
+  background: var(--bg-divider);
+  flex-shrink: 0;
+}
+
+/* ── Rotating section ────────────────────────────────────────────────────── */
+#rotating-wrap {
+  position: relative;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+#rows-rotating {
+  transition: opacity 0.3s ease;
+}
+
+#rows-rotating.fading {
+  opacity: 0;
+}
+
+/* ── Connecting overlay ──────────────────────────────────────────────────── */
+#connecting {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-header);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  z-index: 10;
+}
+#connecting.hidden { display: none; }
+.conn-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #e84444; box-shadow: 0 0 6px #e84444;
+  animation: blink 1.2s ease-in-out infinite;
+}
+@keyframes blink { 0%,100%{opacity:1}50%{opacity:0.2} }
+.conn-label {
+  font-family: var(--font); font-size: 11px;
+  letter-spacing: 0.1em; text-transform: uppercase; color: #5a6070;
+}
+</style>
+</head>
+<body>
+<div id="scale-root">
+<div id="widget" style="position:relative;">
+
+  <div id="connecting">
+    <div class="conn-dot"></div>
+    <div class="conn-label">Waiting for bridge</div>
+  </div>
+
+  <!-- Flag bar (10 segments for checkered pattern) -->
+  <div id="flag-bar" class="flag-bar green">
+    <div class="flag-segment"></div><div class="flag-segment"></div>
+    <div class="flag-segment"></div><div class="flag-segment"></div>
+    <div class="flag-segment"></div><div class="flag-segment"></div>
+    <div class="flag-segment"></div><div class="flag-segment"></div>
+    <div class="flag-segment"></div><div class="flag-segment"></div>
+  </div>
+
+  <!-- Header -->
+  <div id="header">
+    <div id="logo-wrap">
+      <img id="logo-img" src="" alt="Series Logo">
+    </div>
+    <div id="track-name">— <span id="live-badge" class="official">OFFICIAL</span></div>
+    <div id="lap-info">—</div>
+  </div>
+
+  <!-- Caution row — only visible under yellow flag -->
+  <div id="caution-row" style="display:none"></div>
+
+  <!-- Series label -->
+  <div id="series-bar">NASCAR CUP SERIES</div>
+
+  <!-- Top 10 (always visible) -->
+  <div id="rows-top"></div>
+
+  <!-- Divider -->
+  <div id="divider"></div>
+
+  <!-- Rotating rows (11+) -->
+  <div id="rotating-wrap">
+    <div id="rows-rotating"></div>
+  </div>
+
+  <!-- Bottom flag bar — mirrors top -->
+  <div id="flag-bar-bottom" class="flag-bar green">
+    <div class="flag-segment"></div><div class="flag-segment"></div>
+    <div class="flag-segment"></div><div class="flag-segment"></div>
+    <div class="flag-segment"></div><div class="flag-segment"></div>
+    <div class="flag-segment"></div><div class="flag-segment"></div>
+    <div class="flag-segment"></div><div class="flag-segment"></div>
+  </div>
+
+</div>
+</div>
+
+<script>
+// ── Chase highlight ─────────────────────────────────────────────────────────
+// The main process tells every overlay which car numbers are in the chase
+// (empty list = feature off). Name elements carry data-chase-num; the class
+// is toggled here so it updates instantly, without waiting for a re-render.
+let _CHASE = new Set();
+const chaseKey = n => String(n == null ? '' : n).trim().replace(/"/g, '');
+const chaseCls = n => (_CHASE.size && _CHASE.has(chaseKey(n))) ? ' chase' : '';
+function chaseMark(el, n) {
+  if (!el) return;
+  const k = chaseKey(n);
+  el.dataset.chaseNum = k;
+  el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(k));
+}
+function _chasePass() {
+  document.querySelectorAll('[data-chase-num]').forEach(el =>
+    el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(el.dataset.chaseNum)));
+}
+function _setChase(list) {
+  _CHASE = new Set((Array.isArray(list) ? list : []).map(chaseKey));
+  _chasePass();
+}
+if (window.shl && window.shl.onChaseSet) {
+  window.shl.onChaseSet(_setChase);
+  if (window.shl.getChaseSet) window.shl.getChaseSet().then(_setChase).catch(() => {});
+}
+window.addEventListener('message', e => {      // layout-editor preview
+  if (typeof e.data !== 'string' || e.data.indexOf('"_chase"') < 0) return;
+  try { const m = JSON.parse(e.data); if (Array.isArray(m._chase)) _setChase(m._chase); } catch (x) {}
+});
+// ── URL params ────────────────────────────────────────────────────────────
+const params      = new URLSearchParams(location.search);
+
+// ── Season feed (shared by overlays) ──────────────────────────────────────────
+// Live season standings from the Season Tracker's local server. Silent no-op when
+// the tracker isn't running, so overlays behave exactly as before without it.
+const __psfSeason = (() => {
+  const q = new URLSearchParams(location.search);
+  const host = location.protocol === 'http:' ? location.hostname : '127.0.0.1';
+  const base = q.get('seasonbase') || `http://${host}:${q.get('seasonport') || 8769}`;
+  const subs = []; let state = null;
+  try {
+    const es = new EventSource(base + '/season/events');
+    es.addEventListener('state', e => { try { state = JSON.parse(e.data); subs.forEach(f => { try { f(state); } catch (_) {} }); } catch (_) {} });
+  } catch (_) {}
+  return { get state() { return state; }, onState(f) { subs.push(f); if (state) f(state); } };
+})();
+
+// Points column (layout editor: Season / race points). off | results | live
+//   results — after scoring, show points earned in the latest race
+//   live    — during the race show projected season totals, then the scored season total
+let SEASON_PTS = params.get('seasonpts') || 'off';
+const _seasonByNum = { src: null, map: new Map() };
+function seasonPtsFor(standing, d) {
+  if (SEASON_PTS === 'off' || !standing) return null;
+  const st = __psfSeason.state;
+  if (!st || !st.season || !st.standings || !d) return null;
+  if ((d.session || '').toLowerCase() !== 'race') return null;
+  const state = (d.sessionState || '').toLowerCase();
+  const committed = st.tracker && st.tracker.phase === 'committed';
+  let rows = null;
+  if (state === 'cool down') rows = committed ? st.standings.rows : null;
+  else if (SEASON_PTS === 'live' && st.live && st.live.rows && st.live.rows.length) rows = st.live.rows;
+  if (!rows) return null;
+  if (_seasonByNum.src !== rows) {
+    // a season keeps every driver who ever ran, so one number can belong to several of them (an old roster's #24): the one in this race wins
+    _seasonByNum.src = rows; _seasonByNum.map = new Map();
+    const inRace = r => (r.livePos != null ? 2 : 0) + (r.lastFinish > 0 ? 1 : 0);
+    rows.forEach(r => {
+      const k = String(r.number).trim(), had = _seasonByNum.map.get(k);
+      if (!had || inRace(r) > inRace(had)) _seasonByNum.map.set(k, r);
+    });
+  }
+  const row = _seasonByNum.map.get(String(standing.number == null ? '' : standing.number).trim());
+  if (!row) return null;
+  const points = SEASON_PTS === 'results' && state === 'cool down' ? row.lastPoints : row.points;
+  return { text: String(points == null ? 0 : points), cls: 'season' };
+}
+window.addEventListener('message', e => {
+  if (typeof e.data !== 'string') return;
+  try { const m = JSON.parse(e.data); if (m._seasonPts !== undefined) { SEASON_PTS = m._seasonPts || 'off'; refreshSeasonPts(); } } catch (_) {}
+});
+const INSTALL_DIR = params.get('installdir') || '';
+function assetPath(rel) {
+  const psf = window.__PSF;
+  if (psf && psf.assetBase) return psf.assetBase + '/' + rel;
+  if (INSTALL_DIR) {
+    const encoded = INSTALL_DIR.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+    return 'file:///' + encoded + '/' + rel;
+  }
+  return rel;
+}
+const WS_HOST     = params.get('host')       || 'localhost';
+const WS_PORT     = params.get('port')       || '8765';
+const WS_URL      = window.__PSF?.wsUrl || `ws://${WS_HOST}:${WS_PORT}`;
+
+// ── In-car visibility ─────────────────────────────────────────────────────
+let DNF_DISPLAY = (window.__PSF?.dnfdisplay || new URLSearchParams(location.search).get('dnfdisplay') || 'reason');
+let VISIBILITY_MODE = params.get('visibilitymode') || 'in_car';
+const ALWAYS_VISIBLE = VISIBILITY_MODE === 'always'; // legacy compat
+
+// ── Visibility mode ───────────────────────────────────────────────────────────
+// Modes: 'in_car' | 'at_track' | 'always'
+// Responds to postMessage { _visibilityMode: '...' } from layout editor
+window.addEventListener('message', e => {
+  if (typeof e.data === 'string') {
+    try {
+      const m = JSON.parse(e.data);
+      if (m._visibilityMode !== undefined) {
+        VISIBILITY_MODE = m._visibilityMode;
+      }
+      if (m._dnfDisplay !== undefined) {
+        DNF_DISPLAY = m._dnfDisplay;
+        clearRowCache();
+      }
+    } catch(ex) {}
+  }
+});
+
+function checkVisibility(d) {
+  if (!d) return false;
+  switch (VISIBILITY_MODE) {
+    case 'always':   return true;
+    case 'at_track': return !!d.atTrack;
+    case 'in_car':
+    default:         return !!(d.atTrack && d.player?.inCar);
+  }
+}
+
+
+let _visHideTimer = null;
+function updateVisibility(d) {
+  const inCar = checkVisibility(d);
+  if (inCar) {
+    if (_visHideTimer) { clearTimeout(_visHideTimer); _visHideTimer = null; }
+    document.getElementById('scale-root').style.opacity = '1';
+  } else {
+    if (!_visHideTimer) {
+      _visHideTimer = setTimeout(() => {
+        document.getElementById('scale-root').style.opacity = '0';
+        _visHideTimer = null;
+      }, 1000);
+    }
+  }
+}
+
+// ── Live standings engine ─────────────────────────────────────────────────
+const LIVE_UPDATE_MS = 500;
+let   _liveTimer     = null;
+let   _refLapTime    = 0;
+let   _isLiveMode    = false;
+let   _lastLiveData  = null;
+const _lappedState   = new Map();  // carIdx -> laps down (sticky until gap < 1 lap)
+let   _lastOfficialHash = '';       // detect official standings changes
+
+function _syncWithOfficialStandings(d) {
+  const standings  = d.standings || [];
+  if (!standings.length) return;
+
+  const leaderLap = standings[0].lap || 0;
+
+  // Only process when leader lap advances — prevents S/F window false clears
+  if (leaderLap <= _stickyLeaderLap && _stickyLeaderLap > 0) return;
+  _stickyLeaderLap = leaderLap;
+
+  standings.forEach(s => {
+    const ci           = s.carIdx;
+    const officialDown = leaderLap - (s.lap || 0);
+    const stickyDown   = _lappedState.get(ci) || 0;
+
+    if (officialDown === 0 && stickyDown > 0) {
+      // Car genuinely back on lead lap per official standings — clear lapped state
+      _lappedState.delete(ci);
+    } else if (officialDown > stickyDown) {
+      _lappedState.set(ci, officialDown);
+    }
+  });
+}
+
+function _computeLiveStandings(d) {
+  const opponents = d.opponents  || [];
+  const standings = d.standings  || [];
+  const drivers   = d.drivers    || [];
+  const relative  = d.relative   || [];
+  const playerIdx = d.playerCarIdx;
+  const session   = (d.session      || '').toLowerCase();
+  const state     = (d.sessionState || '').toLowerCase();
+
+  if (session !== 'race') return standings;
+
+  // During cool down — use official standings (authoritative results), stop live sort
+  if (state === 'cool down' || state === 'get in car' || state === 'warmup' || state === 'parade laps') return standings;
+
+  // Caution phase handling:
+  // 'frozen'  — yellow just flew, return official standings (order frozen),
+  //             gaps will be blanked by fmtDelta's isYellow check
+  // 'official'— P1 crossed under caution, official standings updating lap by lap
+  // 'warmup'  — green just flew, waiting for one green lap before live math resumes
+  // In all three phases we return official standings directly, same as race start.
+  // _isLiveMode = false ensures gaps don't live-compute during these phases.
+  const cautionPhase = d.cautionPhase;
+  if (cautionPhase === 'frozen' || cautionPhase === 'official' || cautionPhase === 'warmup') {
+    _isLiveMode = false;
+    return standings;
+  }
+
+  // Sync with official standings when they change (once per lap crossing)
+  const officialHash = standings.map(s => s.carIdx + ':' + s.lap).join(',');
+  if (officialHash !== _lastOfficialHash) {
+    _lastOfficialHash = officialHash;
+    _syncWithOfficialStandings(d);
+  }
+
+  // Build number/name/meta maps
+  const numMap = {}, nameMap = {}, metaMap = {};
+  standings.forEach(s => {
+    numMap[s.carIdx]  = s.number;
+    nameMap[s.carIdx] = s.name;  // already deduplicated by bridge
+    metaMap[s.carIdx] = s;
+  });
+  drivers.forEach(drv => {
+    if (drv.number && drv.number !== '??') numMap[drv.carIdx] = drv.number;
+    // Only use drivers array name as fallback — standings.name is already
+    // deduplicated (last name only) by the bridge; overwriting it with the
+    // full name from drivers causes full names to show after overlay refresh.
+    if (drv.name && !nameMap[drv.carIdx]) nameMap[drv.carIdx] = drv.name;
+  });
+  relative.forEach(r => {
+    if (r.number && r.number !== '??') numMap[r.carIdx] = r.number;
+    if (r.name && !nameMap[r.carIdx])  nameMap[r.carIdx] = r.name;
+  });
+
+  // Known cars filter (exclude pace car)
+  const known = new Set([
+    ...relative.map(r => r.carIdx),
+    ...drivers.map(r => r.carIdx),
+    ...standings.map(r => r.carIdx),
+    playerIdx,
+  ]);
+
+  // Per-car lap counts from bridge
+  const carLaps = d.carLaps || {};
+
+  // Build totalProgress per car
+  // For cars in _lappedState, use their confirmed laps down to adjust progress
+  const cars = [];
+  const carsSet = new Set();
+  opponents.forEach(opp => {
+    const ci = opp.carIdx;
+    if (!known.has(ci)) return;
+    const laps = carLaps[ci] !== undefined ? carLaps[ci] : (metaMap[ci]?.lap || 0);
+    cars.push({ carIdx: ci, trkPct: opp.trkPct||0, laps,
+                totalProgress: laps + (opp.trkPct||0) });
+    carsSet.add(ci);
+  });
+
+  // Add retired/non-running cars from standings that aren't in opponents
+  // NR2003 removes retired cars from opponents but they should still show in standings
+  standings.forEach(s => {
+    const ci = s.carIdx;
+    if (carsSet.has(ci) || !known.has(ci)) return;
+    const status = (s.status || 'running').toLowerCase();
+    if (status === 'running' || status === '') return; // only add non-running cars
+    const laps = carLaps[ci] !== undefined ? carLaps[ci] : (s.lap || 0);
+    cars.push({ carIdx: ci, trkPct: s.trkPct || 0, laps,
+                totalProgress: laps + (s.trkPct || 0) });
+    carsSet.add(ci);
+  });
+
+  // Add player if not in opponents — but only if actually in car
+  const player = d.player || {};
+  if (player.trkPct !== undefined && player.inCar !== false &&
+      !cars.find(c => c.carIdx === playerIdx)) {
+    const laps = carLaps[playerIdx] !== undefined
+      ? carLaps[playerIdx] : (metaMap[playerIdx]?.lap || 0);
+    cars.push({ carIdx: playerIdx, trkPct: player.trkPct, laps,
+                totalProgress: laps + player.trkPct });
+  }
+
+  // Sort descending by totalProgress first pass
+  cars.sort((a, b) => b.totalProgress - a.totalProgress);
+  const leaderProgress = cars.length > 0 ? cars[0].totalProgress : 0;
+
+  // Apply lapped state to totalProgress so lapped cars sort below same-lap cars
+  // A car confirmed 1 lap down should sort as if their totalProgress is 1 less
+  // than the leader, adjusted by their trkPct within that lap
+  cars.forEach(car => {
+    const stickyDown = _lappedState.get(car.carIdx) || 0;
+    if (stickyDown > 0) {
+      // Sort lapped cars by: lap group (stickyDown) descending, then trkPct descending
+      // Use a base far below lead-lap cars, subtract stickyDown, add trkPct for intra-group sort
+      // Floor leaderProgress to avoid fractional leader position affecting lapped car sort
+      const leaderLaps = Math.round(leaderProgress);
+      car.totalProgress = (leaderLaps - stickyDown) + car.trkPct;
+    }
+  });
+
+  // Final sort: lead-lap cars by totalProgress, lapped cars by official standings order
+  const officialOrder = {};
+  standings.forEach((s, i) => { officialOrder[s.carIdx] = i; });
+
+  cars.sort((a, b) => {
+    const aDown = _lappedState.get(a.carIdx) || 0;
+    const bDown = _lappedState.get(b.carIdx) || 0;
+    // Lead-lap cars first, sorted by live progress
+    if (aDown === 0 && bDown === 0) return b.totalProgress - a.totalProgress;
+    // Lead-lap beats lapped
+    if (aDown === 0) return -1;
+    if (bDown === 0) return 1;
+    // Both lapped: sort by lap deficit first, then official standings order within group
+    if (aDown !== bDown) return aDown - bDown;
+    return (officialOrder[a.carIdx] ?? 999) - (officialOrder[b.carIdx] ?? 999);
+  });
+  const leader = cars[0];
+  if (!leader) return standings;
+
+  // Check live mode threshold — leader must have completed at least 1 lap.
+  // The real guard is _refLapTime below (requires an actual lap time to exist);
+  // >= 1 here just prevents live-sorting during gridding/parade when no
+  // meaningful trkPct positions exist yet. >= 2 was too conservative and
+  // caused the first race session to show only official standings for laps 1-2.
+  _isLiveMode = leader.laps >= 1;
+  if (!_isLiveMode) return standings;
+
+  // Update reference lap time from leader's last lap or session fastest
+  const leaderMeta = metaMap[leader.carIdx];
+  if (leaderMeta?.lastLap && leaderMeta.lastLap > 0) _refLapTime = leaderMeta.lastLap;
+  else if (d.fastestLap && d.fastestLap > 0)         _refLapTime = d.fastestLap;
+  if (_refLapTime <= 0) return standings;
+
+  // Build live sorted array
+  return cars.map((car, i) => {
+    const meta    = metaMap[car.carIdx] || {};
+    const progDiff = leader.totalProgress - car.totalProgress;
+    const mathLaps = Math.floor(progDiff);
+
+    // Sticky lapped state — once a car is marked lapped it stays lapped
+    // until progDiff genuinely drops below 0.9 (unlapping themselves)
+    // Use MAX of previous and current so multiple-lap-down cars update correctly
+    const prevLapped = _lappedState.get(car.carIdx) || 0;
+    const carAheadOfLeader = car.trkPct > leader.trkPct + 0.05;
+    const currentMathLaps  = (mathLaps >= 1 && !carAheadOfLeader) ? mathLaps : 0;
+    let lapsDiff = Math.max(prevLapped, currentMathLaps);
+    if (lapsDiff > 0) _lappedState.set(car.carIdx, lapsDiff);
+
+    let time, liveStatus;
+    if (i === 0)            { time = 0;         liveStatus = 'running'; }
+    else if (lapsDiff >= 1) { time = -lapsDiff; liveStatus = 'lapped'; }
+    else                    { time = Math.max(0, progDiff) * _refLapTime; liveStatus = 'running'; }
+
+    // Check retirement — retired cars show OUT regardless of position
+    const officialStatus = (meta.status || 'running').toLowerCase();
+    const isRetired = officialStatus !== 'running' && officialStatus !== '';
+    if (isRetired) liveStatus = 'retired';
+
+    return {
+      carIdx:     car.carIdx,
+      number:     numMap[car.carIdx]  || meta.number || '??',
+      name:       nameMap[car.carIdx] || meta.name   || '?',
+      lap:        car.laps,
+      trkPct:     car.trkPct,
+      time:       time,
+      status:     meta.status     || 'running',
+      incidents:  meta.incidents  || 0,
+      lastLap:    meta.lastLap    || 0,
+      bestLap:    meta.bestLap    || 0,
+      liveStatus,
+    };
+  });
+}
+
+// ── Session reset handler ─────────────────────────────────────────────────
+function handleReset() {
+  // Clear all cached data so stale state doesn't persist
+  latestData = null;
+  if (typeof _rowCache !== 'undefined') _rowCache.clear();
+  _lastHash = '';
+  _isLiveMode = false;
+  _refLapTime = 0;
+  _lappedState.clear();
+  _lastOfficialHash = '';
+  _animatingRows.forEach(t => clearTimeout(t));
+  _animatingRows.clear();
+  _lastPos.clear();
+  _lastPosSnapshot.clear();
+  _lastStandingsOrderKey = '';
+  _flashTimers.forEach(t => clearTimeout(t));
+  _flashTimers.clear();
+  resetStickyLaps();
+  _stickyLeaderLap = 0;
+  // Clear rendered rows
+  const topEl = document.getElementById('rows-top');
+  const rotEl = document.getElementById('rows-rotating');
+  if (topEl) topEl.innerHTML = '';
+  if (rotEl) rotEl.innerHTML = '';
+  if (typeof dotCache  !== 'undefined') Object.keys(dotCache).forEach(k => delete dotCache[k]);
+  if (typeof smoothPos !== 'undefined') Object.keys(smoothPos).forEach(k => delete smoothPos[k]);
+  if (typeof _sortedIdx !== 'undefined') { _sortedIdx = null; normalized = null; normBounds = null; }
+  if (typeof playerTrkPctSmooth !== 'undefined') playerTrkPctSmooth = -1;
+  // Clear SVG dots
+  ['field-dots','player-dot','leader-dot'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '';
+  });
+  // Clear track lines
+  ['track-border','track-surface'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.setAttribute('points',''); el.setAttribute('d',''); }
+  });
+}
+
+const SCALE       = Math.max(0.1, Math.min(4.0, parseFloat(params.get('scale')   || '1.0')));
+const OPACITY     = Math.max(0.0, Math.min(1.0, parseFloat(params.get('opacity') || '1.0')));
+const SERIES_ID   = (window.__PSF && window.__PSF.series) ? window.__PSF.series : (params.get('series') || 'default');
+const IS_DEFAULT  = !SERIES_ID || SERIES_ID === 'default';
+const SERIES_NAME = IS_DEFAULT ? 'NR2003' : (params.get('seriesname') || SERIES_ID);
+const LOGO_PATH   = IS_DEFAULT ? assetPath('images/nr2003_logo.svg') : assetPath(`series/${SERIES_ID}/serieslogo.png`);
+const ROTATE_MS   = parseInt(params.get('rotate') || '8000');
+let   customName  = params.get('customname') ? decodeURIComponent(params.get('customname')) : '';
+let   OFFICIAL_MODE = params.get('officialmode') === '1';
+
+// Sticky lap tracking — lap deficit can only increase, never decrease
+// Prevents brief "on lead lap" flash when leader crosses S/F before standings update
+const _stickyLapDeficit = {};  // carIdx -> max laps deficit seen
+let   _stickyLeaderLap  = 0;
+
+function getStickyLap(carIdx, officialLap, leaderLap) {
+  const deficit = leaderLap - officialLap;
+  const prev    = _stickyLapDeficit[carIdx] ?? 0;
+  // Deficit can only grow (or stay), never shrink mid-race
+  const sticky  = Math.max(prev, deficit);
+  _stickyLapDeficit[carIdx] = sticky;
+  return leaderLap - sticky;
+}
+
+function resetStickyLaps() {
+  Object.keys(_stickyLapDeficit).forEach(k => delete _stickyLapDeficit[k]);
+  _stickyLeaderLap = 0;
+}
+const ROWS_PER_GROUP = 10;
+
+// Apply scale + opacity
+const root = document.getElementById('scale-root');
+root.style.transform = `scale(${SCALE})`;
+document.documentElement.style.setProperty('--bg-a', OPACITY);
+
+// Series label
+document.getElementById('series-bar').textContent = SERIES_NAME;
+
+// Logo
+const logoImg = document.getElementById('logo-img');
+logoImg.src = LOGO_PATH;
+logoImg.onerror = () => logoImg.classList.add('hidden');
+logoImg.onload  = () => logoImg.classList.remove('hidden');
+
+// ── State ─────────────────────────────────────────────────────────────────
+let latestData        = null;
+let rotateGroupIdx    = 0;
+let rotateTimer       = null;
+let lastStandingsLen  = 0;
+let pracDeltaMode     = false;   // false=lap times, true=gaps to leader
+let pracDeltaTimer    = null;
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function lastName(full) {
+  return (full || '?').toUpperCase();
+}
+
+function displayName(entry) {
+  return (entry.name || '?').toUpperCase();
+}
+
+// Format countdown time (seconds) → M:SS or H:MM:SS
+function fmtCountdownTime(sec) {
+  if (!sec || sec <= 0) return null;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function fmtLapInfo(d) {
+  const state     = (d.sessionState || '').toLowerCase();
+  const session   = (d.session      || '').toLowerCase();
+  const sessNum   = d.sessionNum !== undefined ? d.sessionNum : -1;
+  const lapsComp  = d.lapsComplete  || 0;
+  const lapsRem   = d.lapsRemaining || 0;
+  const lapsTotal = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  const timeRem   = d.timeRemaining || 0;
+  const flag      = (d.sessionFlag  || '').toLowerCase();
+  const cautions  = d.cautionFlags  || 0;
+
+  // ── Practice ─────────────────────────────────────────────────────────
+  if (session === 'practice' || session === 'testing') {
+    if (session === 'testing' || sessNum === 2) return 'TESTING';
+    const t = fmtCountdownTime(timeRem);
+    return t ? `Practice: ${t}` : 'PRACTICE';
+  }
+
+  // ── Qualifying ───────────────────────────────────────────────────────
+  if (session === 'qualifying') {
+    const t = fmtCountdownTime(timeRem);
+    return t ? `Qualifying: ${t}` : 'QUALIFYING';
+  }
+
+  // ── Race state overrides (always take priority) ───────────────────────
+  if (state === 'get in car')  return 'GRIDDING';
+  if (state === 'warmup' || state === 'parade laps') return 'PACING';
+  if (state === 'cool down')   return 'RESULTS';
+  if (state === 'checkered')   return 'CHECKERED';
+
+  if (lapsTotal <= 0) {
+    return lapsComp > 0 ? `LAP ${lapsComp + 1}` : 'PACING';
+  }
+
+  const isYellow      = flag === 'yellow';
+  const lapNum        = lapsComp + 1;
+
+  // Last lap
+  if (lapsRem <= 1 && lapsComp > 0) {
+    return 'FINAL LAP';
+  }
+
+  // ── Stage Racing format ───────────────────────────────────────────────
+  if (d.stageRacingActive && d.stageTotalLaps > 0 && !d.stageFinalStage) {
+    if (isYellow) {
+      // Under caution — always centered, no left/right split
+      if (d.stageCompleteActive) {
+        return `STAGE ${d.stageCompleteNum} COMPLETE`;
+      }
+      const stageRem = d.stageTotalLaps - Math.max(0, d.stageLap);
+      return `STAGE ${d.stageNum}: ${stageRem} TO GO`;
+    }
+    // Green flag — single centered string with 5-space separator
+    // Dynamic numbers (current lap, laps to go in stage) highlighted green
+    const g = (n) => `<span style="color:var(--green)">${n}</span>`;
+    if (d.stageCompleteActive) {
+      return `LAP ${g(lapNum)} | ${lapsTotal}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;STAGE ${d.stageCompleteNum} COMPLETE`;
+    }
+    const stageRem = d.stageTotalLaps - Math.max(0, d.stageLap);
+    return `LAP ${g(lapNum)} | ${lapsTotal}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;STAGE ${d.stageNum} — ${g(stageRem)} TO GO`;
+  }
+
+  // ── Final stage or no stage racing ───────────────────────────────────
+  if (isYellow) {
+    // Under caution — centered, just laps to go
+    return `${lapsRem} TO GO`;
+  }
+  const halfway = Math.floor(lapsTotal / 2);
+  if (lapsComp < halfway) {
+    return `LAP ${lapNum} of ${lapsTotal}`;
+  } else {
+    return `${lapsRem} TO GO`;
+  }
+}
+
+function fmtFlag(flag) {
+  switch ((flag || '').toLowerCase()) {
+    case 'yellow': return 'yellow';
+    case 'red':    return 'red';
+    default:       return 'green';
+  }
+}
+
+function fmtFlag2(d) {
+  const state   = (d.sessionState || '').toLowerCase();
+  const session = (d.session      || '').toLowerCase();
+  // Checkered bars for checkered flag and cool down (results screen)
+  if (state === 'checkered' || state === 'cool down') return 'checkered';
+  // Stage complete — green/white checkered during stage-end caution
+  if (d.stageCompleteActive) return 'stage-complete';
+  // White flag: 1 to go
+  if ((d.lapsRemaining || 0) === 1 && session === 'race' && state === 'racing') return 'white';
+  return fmtFlag(d.sessionFlag);
+}
+
+function numImgSrc(numStr) {
+  const n = (numStr || '').trim();
+  if (!n || n === '??' || IS_DEFAULT) return '';
+  return assetPath(`series/${SERIES_ID}/numbers/${n}.png`);
+}
+
+function buildBadges(carIdx, d) {
+  // Badges only show during race sessions
+  const session = (d.session || '').toLowerCase();
+  if (session !== 'race') return '';
+  const badgeStyle = 'height:11px;width:auto;vertical-align:middle;margin-left:3px;opacity:0.9;display:inline-block';
+  let html = '';
+  // Fastest lap badge
+  if (d.fastestCarIdx !== undefined && d.fastestCarIdx === carIdx) {
+    const src = assetPath('images/badges/fastest_lap.png');
+    html += `<img src="${src}" style="${badgeStyle}" alt="FL" onerror="this.style.display='none'">`;
+  }
+  // Stage winner badge — one per stage won, in order earned
+  if (Array.isArray(d.stageWinners)) {
+    d.stageWinners.filter(w => w.carIdx === carIdx && w.pos === 1).forEach(() => {
+      const src = assetPath('images/badges/stage_winner.png');
+      html += `<img src="${src}" style="${badgeStyle}" alt="SW" onerror="this.style.display='none'">`;
+    });
+  }
+  return html;
+}
+
+function fmtDelta(standing, leaderLap, isPracQual, pracMode, leaderBestLap, isYellow) {
+  // Practice/Qualifying: show lap times or gaps
+  if (isPracQual) {
+    const best = standing.time || 0;
+    if (best <= 0) return { text: '—', cls: '' };
+    if (!pracMode) {
+      const isLeaderBest = leaderBestLap && leaderBestLap > 0 && Math.abs(best - leaderBestLap) < 0.001;
+      return { text: best.toFixed(3), cls: isLeaderBest ? 'leader-best' : '' };
+    } else {
+      if (!leaderBestLap || leaderBestLap <= 0) return { text: best.toFixed(3), cls: 'leader-best' };
+      const gap = best - leaderBestLap;
+      if (gap <= 0.0005) return { text: leaderBestLap.toFixed(3), cls: 'leader-best' };
+      return { text: `-${gap.toFixed(3)}`, cls: '' };
+    }
+  }
+
+  // Live race mode — use liveStatus if available
+  const liveStatus = standing.liveStatus;
+  const status     = (standing.status || '').toLowerCase();
+
+  // Retired cars — show specific reason if available
+  if (liveStatus === 'retired' || (status !== 'running' && status !== '')) {
+    const reasonMap = {
+      'accident':     'ACCIDENT',
+      'retired':      'RETIRED',
+      'dq':           'DQ',
+      'disconnected': 'DISC',
+      'ejected':      'EJECTED',
+      'brakes':       'BRAKES',
+      'coolant':      'COOLANT',
+      'radiator':     'RADIATOR',
+      'engine':       'ENGINE',
+      'fire':         'FIRE',
+      'fuel':         'FUEL',
+      'oil':          'OIL',
+      'suspension':   'SUSP',
+      'tire':         'TIRE',
+      'out of fuel':  'NO FUEL',
+    };
+    const reason = DNF_DISPLAY === 'out' ? 'OUT' : (reasonMap[status] || (status !== 'running' && status ? status.toUpperCase() : 'OUT'));
+    return { text: reason, cls: 'out' };
+  }
+
+  const t = standing.time || 0;
+
+  if (liveStatus === 'lapped') {
+    const lapsDown = standing.lapsDown || 0;
+    const lapCount = lapsDown >= 1 ? lapsDown : Math.abs(Math.round(t));
+    return { text: `-${lapCount}L`, cls: 'lapped' };
+  }
+
+  if (t <= 0 && liveStatus === 'running') return { text: '', cls: 'leader' };
+
+  // Under caution, blank lead-lap running car gaps regardless of data source —
+  // gaps are meaningless while the field is bunched behind the pace car.
+  // Lapped (-XL) and retired (ACCIDENT etc.) still show since those are
+  // meaningful and handled above before this point.
+  if (isYellow && liveStatus === 'running') return { text: '', cls: '' };
+
+  // No liveStatus — official standings path (caution phases, cooldown,
+  // or early before live mode kicks in).
+  if (!liveStatus) {
+    // Always check lapsDown first — works correctly in cooldown even under yellow
+    const lapsDown = standing.lapsDown || 0;
+    if (lapsDown >= 1) return { text: `-${lapsDown}L`, cls: 'lapped' };
+
+    // During caution, use _lappedState (built during green-flag racing,
+    // no per-car timing skew) to determine lapped status. A car in
+    // _lappedState was genuinely lapped before yellow flew — show -XL.
+    // Lead-lap cars (not in _lappedState) get blanked since gaps are
+    // meaningless under caution.
+    if (isYellow) {
+      const stickyDown = _lappedState.get(standing.carIdx) || 0;
+      if (stickyDown >= 1) return { text: `-${stickyDown}L`, cls: 'lapped' };
+      if (t <= 0)          return { text: '', cls: 'leader' };
+      return { text: '', cls: '' };  // lead-lap car, blank under caution
+    }
+    // Not under caution — use lapsDown or fall back to getStickyLap
+    const lapDiff = leaderLap - getStickyLap(standing.carIdx, standing.lap || 0, leaderLap);
+    if (lapDiff >= 1) return { text: `-${lapDiff}L`, cls: 'lapped' };
+    if (t <= 0)       return { text: '', cls: 'leader' };
+    return { text: `-${t.toFixed(3)}`, cls: '' };
+  }
+
+  if (t > 0)  return { text: `-${t.toFixed(3)}`, cls: '' };
+
+  // Fallback
+  const lapDiff = leaderLap - getStickyLap(standing.carIdx, standing.lap || 0, leaderLap);
+  if (lapDiff >= 1) return { text: `-${lapDiff}L`, cls: 'lapped' };
+  if (t <= 0)       return { text: '', cls: 'leader' };
+  return { text: `-${t.toFixed(3)}`, cls: '' };
+}
+
+// Season state changes (a race got scored, live projection moved) don't go through
+// render(), so repaint just the points cells of rows that already exist.
+function refreshSeasonPts() {
+  if (!latestData) return;
+  const src = latestData.liveStandings || latestData.standings || [];
+  _rowCache.forEach((c, ci) => {
+    const st = src.find(s => s.carIdx === ci);
+    const sp = st && seasonPtsFor(st, latestData);
+    if (sp) { c.deltaEl.textContent = sp.text; c.deltaEl.className = 's-delta season'; }
+  });
+}
+__psfSeason.onState(() => { if (SEASON_PTS !== 'off') refreshSeasonPts(); });
+
+// ── Row element cache — keyed by carIdx to prevent image flashing ──────────
+const _rowCache = new Map(); // carIdx -> { el, deltaEl, posEl }
+
+function getOrCreateRow(standing, pos, leaderLap, playerCarIdx, isPracQual, pracMode, leaderBestLap, d) {
+  const ci       = standing.carIdx;
+  const isYellow = d ? (d.sessionFlag || '').toLowerCase() === 'yellow' : false;
+  const sp       = seasonPtsFor(standing, d);
+  const delta    = sp || fmtDelta(standing, leaderLap, isPracQual, pracMode, leaderBestLap, isYellow);
+  const isLeader = pos === 1 && !sp;
+  const isPlayer = ci === playerCarIdx;
+  const badges   = buildBadges(ci, d || {});
+
+  if (_rowCache.has(ci)) {
+    const cached = _rowCache.get(ci);
+    // Always update dynamic fields
+    cached.posEl.textContent   = pos;
+    cached.deltaEl.textContent = (isLeader && !isPracQual) ? '' : delta.text;
+    cached.deltaEl.className   = `s-delta ${delta.cls}`;
+    cached.el.className        = 's-row' + (isPlayer ? ' player-row' : '');
+    cached.el.dataset.pos      = pos;
+
+    // Update badges — fastest lap and stage wins can change mid-race
+    const nameEl = cached.el.querySelector('.s-name');
+    if (nameEl) {
+      nameEl.innerHTML = displayName(standing) + badges;
+      chaseMark(nameEl, standing.number);
+    }
+
+    // Update number image if number changed
+    const prevNum = cached.el.dataset.numStr || '';
+    const curNum  = (standing.number || '').trim();
+    if (prevNum !== curNum) {
+      const imgEl = cached.el.querySelector('.s-num-img');
+      const txtEl = cached.el.querySelector('.s-num-text');
+      const newSrc = numImgSrc(standing.number);
+      if (imgEl) {
+        imgEl.src = newSrc || '';
+        imgEl.style.display    = newSrc ? '' : 'none';
+        if (txtEl) txtEl.style.display = newSrc ? 'none' : '';
+      }
+      if (txtEl && !newSrc) txtEl.textContent = curNum;
+      cached.el.dataset.numStr = curNum;
+    }
+    return cached.el;
+  }
+
+  // First time — build the full row
+  const el     = document.createElement('div');
+  el.className = 's-row' + (isPlayer ? ' player-row' : '');
+  el.dataset.caridx  = ci;
+  el.dataset.pos     = pos;
+  el.dataset.numStr  = (standing.number || '').trim();
+
+  const numSrc = numImgSrc(standing.number);
+  const name   = displayName(standing);
+
+  el.innerHTML = `
+    <span class="s-pos">${pos}</span>
+    <span class="s-num-wrap">
+      ${numSrc
+        ? `<img class="s-num-img" src="${numSrc}" alt="${(standing.number||'').trim()}"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+           <span class="s-num-text" style="display:none">${(standing.number||'').trim()}</span>`
+        : `<span class="s-num-text">${(standing.number||'').trim()}</span>`
+      }
+    </span>
+    <span class="s-name${chaseCls(standing.number)}" data-chase-num="${chaseKey(standing.number)}">${name}${badges}</span>
+    <span class="s-delta ${delta.cls}">${(isLeader && !isPracQual) ? '' : delta.text}</span>
+  `;
+
+
+  const posEl   = el.querySelector('.s-pos');
+  const deltaEl = el.querySelector('.s-delta');
+  const nameEl2 = el.querySelector('.s-name');
+  if (nameEl2)  _rowCache.set(ci, { el, posEl, deltaEl });
+  return el;
+}
+
+// Clear cache on track/session change
+function clearRowCache() { _rowCache.clear(); }
+
+// ── Render ────────────────────────────────────────────────────────────────
+let _lastTrack    = '';
+let _lastHash     = '';
+let _prevHash     = '';
+let _lastPosSnapshot = new Map();
+let _lastStandingsOrderKey = '';
+
+// ── Position change flash ─────────────────────────────────────────────────
+const _lastPos     = new Map();   // carIdx -> last known position
+const _flashTimers = new Map();   // carIdx -> timeout id
+
+function _checkPosChange(carIdx, newPos, rowEl, officialMode = false) {
+  const prevPos = _lastPos.get(carIdx);
+  _lastPos.set(carIdx, newPos);
+  if (prevPos === undefined || prevPos === newPos) return;
+
+  // In official mode only animate when the standings hash changed
+  // (i.e. a lap crossing occurred) — not on every tick
+  if (officialMode && _lastHash === _prevHash) return;
+
+  const cls = newPos < prevPos ? 'pos-gained' : 'pos-lost';
+  if (rowEl.classList.contains(cls)) return;
+
+  if (_flashTimers.has(carIdx)) {
+    clearTimeout(_flashTimers.get(carIdx));
+    rowEl.classList.remove('pos-gained', 'pos-lost');
+    void rowEl.offsetWidth;
+  }
+
+  rowEl.classList.add(cls);
+  const t = setTimeout(() => {
+    rowEl.classList.remove('pos-gained', 'pos-lost');
+    _flashTimers.delete(carIdx);
+  }, 2100);
+  _flashTimers.set(carIdx, t);
+}
+
+// ── FLIP animation ────────────────────────────────────────────────────────
+// Tracks which rows are currently animating — throttles rapid re-animation
+const _animatingRows = new Map();  // carIdx -> timeout id
+
+function _flipAnimate(container) {
+  // Step 1: FIRST — record current positions of all rows
+  const rows    = Array.from(container.children);
+  const firstPos = new Map();
+  rows.forEach(row => {
+    const ci = parseInt(row.dataset.caridx);
+    if (!isNaN(ci)) {
+      firstPos.set(ci, row.getBoundingClientRect().top);
+    }
+  });
+  return firstPos;
+}
+
+function _flipPlay(container, firstPos) {
+  // Step 2: LAST + INVERT + PLAY
+  const rows = Array.from(container.children);
+  rows.forEach(row => {
+    const ci = parseInt(row.dataset.caridx);
+    if (isNaN(ci) || !firstPos.has(ci)) return;
+
+    // If already animating this row, skip — let current animation finish
+    if (_animatingRows.has(ci)) return;
+
+    const lastTop  = row.getBoundingClientRect().top;
+    const firstTop = firstPos.get(ci);
+    const delta    = firstTop - lastTop;
+
+    if (Math.abs(delta) < 2) return;  // negligible movement, skip
+
+    // INVERT: snap to old position instantly
+    row.style.transition = 'none';
+    row.style.transform  = `translateY(${delta}px)`;
+
+    // Force reflow so browser registers the transform before transitioning
+    row.getBoundingClientRect();
+
+    // PLAY: transition to natural position
+    row.style.transition = '';
+    row.style.transform  = '';
+    row.classList.add('flip-animating');
+
+    // Throttle — mark as animating, clear after animation completes
+    const t = setTimeout(() => {
+      row.classList.remove('flip-animating');
+      _animatingRows.delete(ci);
+    }, 420);  // slightly longer than 400ms CSS duration
+    _animatingRows.set(ci, t);
+  });
+}
+
+let _lastLapInfoHtml = null;
+let _lastWinSizeKey  = '';
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { _lastLapInfoHtml = null; });
+function render(d) {
+  updateVisibility(d);
+  if (!d || !d.atTrack) return;
+
+  const session = (d.session      || '').toLowerCase();
+  const state   = (d.sessionState || '').toLowerCase();
+
+  // Sync official mode from bridge config
+  if (d.liveStandingsEnabled !== undefined) OFFICIAL_MODE = !d.liveStandingsEnabled;
+  else if (d.isOnline !== undefined) OFFICIAL_MODE = d.isOnline;
+
+  // Falls back to official when liveStandingsEnabled=false, online, or caution phases
+  const liveStandings = d.liveStandings || d.standings || [];
+
+  // In official mode during checkered — use d.standings directly (NR2003 handles
+  // finish ordering natively, no need for computed merge array)
+  // In live mode during checkered — use computedStandings (frozen/live merge)
+  // In cooldown — always use d.standings (has lapsDown injected by bridge)
+  const standings = state === 'cool down'
+    ? (d.standings || [])
+    : (state === 'checkered' && !OFFICIAL_MODE && Array.isArray(d.computedStandings) && d.computedStandings.length)
+      ? d.computedStandings
+      : (OFFICIAL_MODE ? (d.standings || []) : liveStandings);
+
+  // Live mode — check if bridge is in live mode (leader has 1+ laps)
+  const isLiveModeNow = !OFFICIAL_MODE && liveStandings.length > 0;
+
+  const playerCarIdx = d.playerCarIdx;
+
+  const badge = document.getElementById('live-badge');
+  if (badge) {
+    if (state === 'cool down')    { badge.textContent = 'RESULTS'; badge.classList.add('official'); }
+    else if (state === 'checkered') { badge.textContent = 'FINAL'; badge.classList.add('official'); }
+    else if (OFFICIAL_MODE)       { badge.textContent = 'OFFICIAL'; badge.classList.add('official'); }
+    else if (isLiveModeNow)         { badge.textContent = 'LIVE'; badge.classList.remove('official'); }
+    else                          { badge.textContent = 'OFFICIAL'; badge.classList.add('official'); }
+  }
+
+  // Clear row cache on track change
+  const currentTrack = d.track || '';
+  if (currentTrack !== _lastTrack) {
+    clearRowCache();
+    _lastHash   = '';
+    _lastTrack  = currentTrack;
+    _lastLapInfoHtml = null;
+    _isLiveMode = false;
+    _refLapTime = 0;
+    _animatingRows.forEach(t => clearTimeout(t));
+    _animatingRows.clear();
+  }
+
+  // Header — use custom name if set, otherwise track name
+  document.getElementById('track-name').textContent =
+    customName || d.trackNameShort || d.track || '—';
+
+  // Set lap info text then auto-scale font to fit fixed width
+  const lapInfoEl2 = document.getElementById('lap-info');
+  const lapInfoVal = fmtLapInfo(d);
+  const lapInfoHtml = (typeof lapInfoVal === 'object' && lapInfoVal !== null)
+    ? `<span class="li-left">${lapInfoVal.left}</span>` +
+      `<span class="li-right">${lapInfoVal.right}</span>`
+    : `<span class="li-center">${lapInfoVal}</span>`;
+  // Perf: this text only changes a few times per lap — skip the DOM rewrite and
+  // the forced-reflow font-fit loop on every other telemetry frame.
+  if (lapInfoHtml !== _lastLapInfoHtml) {
+    _lastLapInfoHtml = lapInfoHtml;
+    lapInfoEl2.innerHTML = lapInfoHtml;
+    // Reset font size then shrink until it fits
+    lapInfoEl2.style.fontSize = '';
+    let fs = 16;
+    lapInfoEl2.style.fontSize = fs + 'px';
+    while (lapInfoEl2.scrollWidth > lapInfoEl2.offsetWidth && fs > 7) {
+      fs -= 0.5;
+      lapInfoEl2.style.fontSize = fs + 'px';
+    }
+  }
+
+  // Flag bars (top + bottom)
+  const flagClass = fmtFlag2(d);
+  ['flag-bar','flag-bar-bottom'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.className = 'flag-bar'; el.classList.add(flagClass); }
+  });
+
+  // Caution styling on lap info and caution row
+  const lapInfoEl = document.getElementById('lap-info');
+  const cautionRowEl = document.getElementById('caution-row');
+  const isYellow = (d.sessionFlag || '').toLowerCase() === 'yellow';
+  if (isYellow) lapInfoEl.classList.add('caution');
+  else lapInfoEl.classList.remove('caution');
+  if (d.stageCompleteActive) lapInfoEl.classList.add('stage-complete');
+  else lapInfoEl.classList.remove('stage-complete');
+
+  // Caution row — shown only under yellow, shifts series/rows down
+  if (cautionRowEl) {
+    if (isYellow && session === 'race') {
+      const cautionNum = d.cautionFlags || 0;
+      const lapsComp2  = d.lapsComplete || 0;
+      const lapsTotal2 = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+      const lapNum2    = lapsComp2 + 1;
+      const lapStr     = lapsTotal2 > 0 ? `LAP ${lapNum2} OF ${lapsTotal2}` : `LAP ${lapNum2}`;
+      cautionRowEl.textContent = `CAUTION #${cautionNum} — ${lapStr}`;
+      cautionRowEl.style.display = '';
+    } else {
+      cautionRowEl.style.display = 'none';
+    }
+  }
+
+  // Top 10 — only rebuild when standings order actually changes
+  const top10    = standings.slice(0, 10);
+  const leaderLap = standings.length > 0 ? (standings[0].lap || 0) : 0;
+  const topEl    = document.getElementById('rows-top');
+  const isPracQual  = session === 'practice' || session === 'qualifying' || session === 'testing';
+  const leaderBest  = standings.length > 0 ? (standings[0].time || 0) : 0;
+
+  const newOrderKey = standings.map(s => s.carIdx).join(',');
+  const orderChanged = newOrderKey !== (_lastStandingsOrderKey || '');
+
+  if (orderChanged) {
+    const oldOrder = _lastStandingsOrderKey ? _lastStandingsOrderKey.split(',').map(Number) : [];
+    const newOrder = top10.map(s => s.carIdx);
+
+    // FIRST — snapshot offsetTop of each row before rebuild
+    const firstPositions = new Map();
+    Array.from(topEl.children).forEach(node => {
+      firstPositions.set(Number(node.dataset.caridx), node.offsetTop);
+    });
+
+    // Rebuild
+    _rowCache.clear();
+    topEl.innerHTML = '';
+    top10.forEach((s, i) => {
+      topEl.appendChild(getOrCreateRow(s, i + 1, leaderLap, playerCarIdx, isPracQual, pracDeltaMode, leaderBest, d));
+    });
+
+    // FLIP — animate from old Y to new Y, same pattern as ticker
+    requestAnimationFrame(() => {
+      const pending = [];
+      Array.from(topEl.children).forEach(node => {
+        const ci     = Number(node.dataset.caridx);
+        const oldTop = firstPositions.get(ci);
+        if (oldTop === undefined) return;
+        const dy = oldTop - node.offsetTop;
+        if (Math.abs(dy) < 1) return;
+        const oldIdx = oldOrder.indexOf(ci);
+        const newIdx = newOrder.indexOf(ci);
+        const gained = newIdx < oldIdx;
+        const color  = gained ? 'rgba(46,204,64,0.5)' : 'rgba(232,68,68,0.5)';
+        node.style.transition      = 'none';
+        node.style.transform       = `translateY(${dy}px)`;
+        node.style.backgroundColor = color;
+        node.style.boxShadow       = `inset 0 0 0 2px ${gained ? 'rgba(46,204,64,1.0)' : 'rgba(232,68,68,1.0)'}`;
+        void node.offsetWidth;
+        pending.push(node);
+      });
+      requestAnimationFrame(() => {
+        pending.forEach(node => {
+          node.style.transition      = 'transform 0.75s cubic-bezier(0.65, 0, 0.35, 1), background-color 2.5s ease-out, box-shadow 2.5s ease-out';
+          node.style.transform       = '';
+          node.style.backgroundColor = 'rgba(0,0,0,0)';
+          node.style.boxShadow       = 'inset 0 0 0 2px rgba(0,0,0,0)';
+        });
+        setTimeout(() => {
+          pending.forEach(node => {
+            node.classList.remove('pos-gained', 'pos-lost');
+            node.style.transition      = '';
+            node.style.backgroundColor = '';
+            node.style.boxShadow       = '';
+          });
+        }, 3000);
+      });
+    });
+
+    _lastStandingsOrderKey = newOrderKey;
+  } else {
+    // Order unchanged — update content in-place, preserving animations
+    top10.forEach((s, i) => {
+      getOrCreateRow(s, i + 1, leaderLap, playerCarIdx, isPracQual, pracDeltaMode, leaderBest, d);
+    });
+  }
+
+  // Rotating groups — only rebuild when standings change
+  const rest = standings.slice(10);
+  lastStandingsLen = rest.length;
+  if (orderChanged) {
+    _renderRotatingGroup(rest, leaderLap, playerCarIdx, isPracQual, leaderBest);
+  } else {
+    // Update content in-place without rebuilding
+    const rotEl = document.getElementById('rows-rotating');
+    Array.from(rotEl.children).forEach(node => {
+      const ci = Number(node.dataset.caridx);
+      const s  = rest.find(r => r.carIdx === ci);
+      if (s) {
+        const pos = rest.indexOf(s) + 11;
+        getOrCreateRow(s, pos, leaderLap, playerCarIdx, isPracQual, pracDeltaMode, leaderBest, d);
+      }
+    });
+  }
+
+  // Set widget height dynamically
+  const rowH      = 28;
+  const flagBarH  = 6;
+  const headerH   = document.getElementById('header').offsetHeight
+                  + document.getElementById('series-bar').offsetHeight
+                  + flagBarH   // top flag bar
+                  + 3;         // divider
+  const rotH      = Math.min(10, rest.length) * rowH;
+  document.getElementById('rotating-wrap').style.height = rotH + 'px';
+  // Let widget height be natural (flexbox) — just size the scale root after layout
+  requestAnimationFrame(() => {
+    const widgetEl  = document.getElementById('widget');
+    const flagBot   = document.getElementById('flag-bar-bottom');
+    const totalH    = widgetEl.offsetHeight + (flagBot ? flagBot.offsetHeight : 0);
+    root.style.width  = '290px';
+    root.style.height = totalH + 'px';
+    document.body.style.width  = Math.round(290 * SCALE) + 'px';
+    document.body.style.height = Math.round(totalH * SCALE) + 'px';
+    // Tell Electron to resize the window to match — required when the
+    // caution row appears/disappears and changes total height.
+    // Perf: only touch the native window when its size really changes
+    const sizeKey = SCALE + '|' + totalH;
+    if (sizeKey !== _lastWinSizeKey) {
+      _lastWinSizeKey = sizeKey;
+      window.shl?.setWindowSize(SCALE, 290, totalH);
+    }
+  });
+}
+
+function _renderRotatingGroup(rest, leaderLap, playerCarIdx, isPracQual, leaderBest) {
+  if (rest.length === 0) {
+    document.getElementById('rows-rotating').innerHTML = '';
+    return;
+  }
+
+  const d        = latestData || {};
+  const numGroups = Math.ceil(rest.length / ROWS_PER_GROUP);
+  const groupIdx  = rotateGroupIdx % numGroups;
+  const start     = groupIdx * ROWS_PER_GROUP;
+  const group     = rest.slice(start, start + ROWS_PER_GROUP);
+  const rotEl     = document.getElementById('rows-rotating');
+
+  // FLIP for rotating group — snapshot before rebuild
+  const rotFirstPos = new Map();
+  Array.from(rotEl.children).forEach(node => {
+    rotFirstPos.set(Number(node.dataset.caridx), node.offsetTop);
+  });
+  const prevGroupOrder = Array.from(rotEl.children).map(n => Number(n.dataset.caridx));
+
+  rotEl.innerHTML = '';
+  const newGroupOrder = group.map(s => s.carIdx);
+  group.forEach((s, i) => {
+    const row = getOrCreateRow(s, start + i + 11, leaderLap, playerCarIdx, isPracQual, pracDeltaMode, leaderBest, d);
+    rotEl.appendChild(row);
+  });
+
+  // Only animate if same group is shown (not a rotation switch)
+  if (prevGroupOrder.length && prevGroupOrder[0] === newGroupOrder[0]) {
+    requestAnimationFrame(() => {
+      const pending = [];
+      Array.from(rotEl.children).forEach(node => {
+        const ci = Number(node.dataset.caridx);
+        const oldTop = rotFirstPos.get(ci);
+        if (oldTop === undefined) return;
+        const dy = oldTop - node.offsetTop;
+        if (Math.abs(dy) < 1) return;
+        const oldIdx = prevGroupOrder.indexOf(ci);
+        const newIdx = newGroupOrder.indexOf(ci);
+        node.style.transition      = 'none';
+        node.style.transform       = `translateY(${dy}px)`;
+        const gained = newIdx < oldIdx;
+        const clr    = gained ? 'rgba(46,204,64,0.5)' : 'rgba(232,68,68,0.5)';
+        const border = gained ? 'rgba(46,204,64,1.0)' : 'rgba(232,68,68,1.0)';
+        node.style.backgroundColor = clr;
+        node.style.boxShadow       = `inset 0 0 0 2px ${border}`;
+        void node.offsetWidth;
+        pending.push(node);
+      });
+      requestAnimationFrame(() => {
+        pending.forEach(node => {
+          node.style.transition      = 'transform 0.75s cubic-bezier(0.65, 0, 0.35, 1), background-color 2.5s ease-out, box-shadow 2.5s ease-out';
+          node.style.transform       = '';
+          node.style.backgroundColor = 'rgba(0,0,0,0)';
+          node.style.boxShadow       = 'inset 0 0 0 2px rgba(0,0,0,0)';
+        });
+        setTimeout(() => {
+          pending.forEach(node => {
+            node.style.transition      = '';
+            node.style.backgroundColor = '';
+            node.style.boxShadow       = '';
+          });
+        }, 3000);
+      });
+    });
+  }
+}
+
+// ── Rotation timer ────────────────────────────────────────────────────────
+
+function startPracDeltaTimer() {
+  if (pracDeltaTimer) clearInterval(pracDeltaTimer);
+  pracDeltaTimer = setInterval(() => {
+    if (!latestData) return;
+    const sess = (latestData.session || '').toLowerCase();
+    if (sess !== 'practice' && sess !== 'qualifying' && sess !== 'testing') return;
+
+    // Fade only the delta cells, not the whole row
+    const deltaEls = document.querySelectorAll('.s-delta');
+    deltaEls.forEach(el => {
+      el.style.transition = 'opacity 0.3s';
+      el.style.opacity = '0';
+    });
+
+    setTimeout(() => {
+      pracDeltaMode = !pracDeltaMode;
+      if (latestData) render(latestData);
+      // Re-query after render since cache updates textContent directly
+      document.querySelectorAll('.s-delta').forEach(el => {
+        el.style.transition = 'opacity 0.3s';
+        el.style.opacity = '1';
+      });
+    }, 300);
+  }, 10000);
+}
+
+function reorderRows(standings) {
+  // Only reorder and animate rows — don't touch header/flags/deltas
+  const d          = latestData;
+  const playerCarIdx = d.playerCarIdx;
+  const session    = (d.session || '').toLowerCase();
+  const top10      = standings.slice(0, 10);
+  const leaderLap  = standings.length > 0 ? (standings[0].lap || 0) : 0;
+  const isPracQual = session === 'practice' || session === 'qualifying' || session === 'testing';
+  const leaderBest = standings.length > 0 ? (standings[0].time || 0) : 0;
+  const topEl      = document.getElementById('rows-top');
+
+  // FLIP Step 1: snapshot positions before reorder
+  const flipFirst = topEl.children.length > 0 ? _flipAnimate(topEl) : new Map();
+
+  // Reorder rows
+  // Build new position snapshot and animate changes
+  const newPosSnapshot = new Map();
+  standings.forEach((s, i) => { newPosSnapshot.set(s.carIdx, i + 1); });
+
+  topEl.innerHTML = '';
+  top10.forEach((s, i) => {
+    const row = getOrCreateRow(s, i + 1, leaderLap, playerCarIdx, isPracQual, pracDeltaMode, leaderBest, d);
+    topEl.appendChild(row);
+    if (session === 'race') {
+      const prevPos = _lastPosSnapshot.get(s.carIdx);
+      const newPos  = i + 1;
+      if (prevPos !== undefined && prevPos !== newPos) {
+        // Position changed — animate
+        const cls = newPos < prevPos ? 'pos-gained' : 'pos-lost';
+        if (_flashTimers.has(s.carIdx)) {
+          clearTimeout(_flashTimers.get(s.carIdx));
+          row.classList.remove('pos-gained', 'pos-lost');
+          void row.offsetWidth;
+        }
+        row.classList.add(cls);
+        const t = setTimeout(() => {
+          row.classList.remove('pos-gained', 'pos-lost');
+          _flashTimers.delete(s.carIdx);
+        }, 2100);
+        _flashTimers.set(s.carIdx, t);
+      }
+    }
+  });
+  _lastPosSnapshot = newPosSnapshot;
+
+  // FLIP Step 2: play slide animation
+  if (flipFirst.size > 0) {
+    requestAnimationFrame(() => _flipPlay(topEl, flipFirst));
+  }
+}
+
+function startLiveTimer() {
+  if (_liveTimer) clearInterval(_liveTimer);
+  let _lastLiveOrder = '';
+
+  _liveTimer = setInterval(() => {
+    if (!latestData || !_isLiveMode) return;
+    const session = (latestData.session || '').toLowerCase();
+    if (session !== 'race') return;
+
+    const newStandings = latestData.liveStandings || latestData.standings || [];
+    if (!newStandings || newStandings.length === 0) return;
+
+    // Only reorder if the position order actually changed
+    const newOrder = newStandings.slice(0, 10).map(s => s.carIdx).join(',');
+    if (newOrder === _lastLiveOrder) return;
+    _lastLiveOrder = newOrder;
+
+    reorderRows(newStandings);
+  }, LIVE_UPDATE_MS);
+}
+
+function startRotation() {
+  if (rotateTimer) clearInterval(rotateTimer);
+  rotateTimer = setInterval(() => {
+    if (!latestData) return;
+
+    const stateNow = (latestData.sessionState || '').toLowerCase();
+    const sourceStandings = (stateNow === 'checkered' && !OFFICIAL_MODE && Array.isArray(latestData.computedStandings) && latestData.computedStandings.length)
+      ? latestData.computedStandings
+      : (OFFICIAL_MODE ? (latestData.standings || []) : (latestData.liveStandings || latestData.standings || []));
+    const rest = sourceStandings.slice(10);
+    if (rest.length <= ROWS_PER_GROUP) return; // Only one group, nothing to rotate
+
+    const rotEl = document.getElementById('rows-rotating');
+    rotEl.classList.add('fading');
+
+    setTimeout(() => {
+      rotateGroupIdx++;
+      const leaderLap2   = sourceStandings.length > 0 ? (sourceStandings[0].lap || 0) : 0;
+      const sess2        = (latestData.session || '').toLowerCase();
+      const isPQ2        = sess2 === 'practice' || sess2 === 'qualifying' || sess2 === 'testing';
+      const lb2          = sourceStandings.length > 0 ? (sourceStandings[0].time || 0) : 0;
+      _renderRotatingGroup(rest, leaderLap2, latestData.playerCarIdx, isPQ2, lb2);
+      rotEl.classList.remove('fading');
+    }, 300);
+  }, ROTATE_MS);
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────
+let ws = null;
+const connEl = document.getElementById('connecting');
+let _reconnectCount = 0;
+
+function handleMessage(data) {
+  try {
+    const d = JSON.parse(data);
+    if (d && d.reset === true) { handleReset(); return; }
+    updateVisibility(d);
+    latestData = d;
+    render(d);
+  } catch(e) {}
+}
+
+function connect() {
+  // Only show 'waiting' overlay after multiple failed reconnects
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => { connEl.classList.add('hidden'); _reconnectCount = 0; };
+  ws.onmessage = (evt) => handleMessage(evt.data);
+  ws.onclose = () => {
+    _reconnectCount++; if (_reconnectCount >= 3) connEl?.classList.remove('hidden');
+    setTimeout(connect, 2000);
+  };
+  ws.onerror = () => ws.close();
+}
+
+// Accept postMessage for layout editor preview — registered once at top level
+window.addEventListener('message', e => {
+  if (typeof e.data === 'string') {
+    if (connEl) { connEl.classList.add('hidden'); connEl.style.display = 'none'; }
+    try {
+      const d = JSON.parse(e.data);
+      if (d._customName !== undefined) {
+        customName = d._customName;
+        const trackEl = document.getElementById('track-name');
+        if (trackEl) trackEl.textContent = customName || (latestData?.trackNameShort || latestData?.track || '—');
+        return;
+      }
+      if (d._officialMode !== undefined) {
+        OFFICIAL_MODE = !!d._officialMode;
+        if (latestData) render(latestData);
+        return;
+      }
+    } catch(ex) {}
+    handleMessage(e.data);
+  }
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────
+startRotation();
+startPracDeltaTimer();
+startLiveTimer();
+connect();
+</script>
+</body>
+</html>

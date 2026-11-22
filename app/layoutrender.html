@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Layout render</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: file:; font-src 'self' file: data:">
+<style>html,body{margin:0;background:transparent}</style>
+</head><body>
+<script src="director/layoutdraw.js"></script>
+<script>
+// The editor's previews (RaceVision 2.0: /api/overlay/render and /panelpng): one layout drawn by director/layoutdraw.js on a canvas, as a
+// PNG. main.js calls window.RVRender(job) in this hidden window; job = { layout, snap, pics, fonts, sample, scale } -> data URL.
+'use strict';
+const fontsDone = new Set();
+async function loadFonts(list) {
+  const wait = [];
+  for (const f of list || []) {
+    if (!f || !f.url || fontsDone.has(f.url)) continue;
+    fontsDone.add(f.url);
+    const d = RVLayout.fontFace(f);
+    try { const face = new FontFace(d.family, `url("${d.url}")`, { weight: d.weight, style: d.style }); document.fonts.add(face); wait.push(face.load().catch(() => null)); } catch (e) { /* skip that font */ }
+  }
+  await Promise.all(wait);
+}
+const imgs = new Map();
+function loadImg(url) {
+  if (!url) return Promise.resolve(null);
+  if (imgs.has(url)) return imgs.get(url);
+  const p = new Promise((res) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = url; });
+  imgs.set(url, p);
+  return p;
+}
+window.RVRender = async function (job) {
+  await loadFonts(job.fonts);
+  const L = job.layout || {}, snap = RVLayout.hydrate(job.snap || {}, job.pics || {});
+  const urls = RVLayout.pictures(L, snap, job.sample);
+  const got = new Map();
+  await Promise.all(urls.map(async (u) => { got.set(u, await loadImg(u)); }));
+  const scale = Math.max(0.5, Math.min(3, Number(job.scale) || 1));
+  const w = Math.max(20, Math.min(2400, Number(L.w) || 300)), h = Math.max(20, Math.min(1400, Number(L.h) || 100));
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(w * scale); cv.height = Math.round(h * scale);
+  const g = cv.getContext('2d');
+  g.scale(scale, scale);
+  RVLayout.draw(g, L, snap, { sample: !!job.sample, img: (u) => (u ? got.get(u) || null : null) });
+  return cv.toDataURL('image/png');
+};
+</script></body></html>

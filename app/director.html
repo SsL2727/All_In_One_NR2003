@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>RaceVision (TV director)</title>
+<link rel="stylesheet" href="ui.css">
+<style>
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 7px 22px; }
+  .grid2 .field { justify-content: space-between; }
+  .grid2 input[type=number] { width: 96px; } .grid2 input[type=text] { width: 170px; }
+  .cams { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 4px 12px; }
+  .cams label { display: flex; gap: 8px; align-items: center; padding: 4px 8px; border-radius: var(--r-s); border: 1px solid transparent; cursor: pointer; }
+  .cams label:hover { background: #121722; } .cams label.showing { border-color: #3b5a8a; background: #1a2740; }
+  .camrow { display: flex; flex-wrap: wrap; gap: 4px; }
+  .camrow .btn { min-width: 36px; padding: 4px 8px; } .camrow .btn.on { background: var(--accent-bg); border-color: var(--accent); }
+  tr.click { cursor: pointer; } tr.tv td { background: #152033; }
+  .setrow { border: 1px solid var(--line); border-radius: var(--r-s); padding: 8px 10px; margin: 6px 0; }
+  .setrow.now { border-color: #2c6b46; background: #0f1d16; } .setrow.next { border-color: #25446f; }
+  .setrow .top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .setrow .ds { color: var(--dim); font-size: 12px; margin: 3px 0; }
+  .setrow .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; font-size: 13px; } .kv span:nth-child(odd) { color: var(--dim); }
+  .meter { height: 5px; background: #1a2130; border-radius: 3px; overflow: hidden; } .meter i { display: block; height: 100%; background: var(--green); }
+  .dynrow { display: grid; grid-template-columns: 1fr 120px 140px; gap: 10px; align-items: center; padding: 3px 0; border-bottom: 1px solid #1a2130; font-size: 12px; }
+</style>
+</head>
+<body>
+<header class="app-header">
+  <h1>🎥 RaceVision</h1>
+  <span class="chip" id="chip-game">NR2003: —</span>
+  <span class="chip" id="chip-hook">Camera hook: —</span>
+  <span class="chip plain" id="chip-tv">On TV: —</span>
+  <span class="grow"></span>
+  <span class="sub">TV director built into All In One NR2003 — no RaceVision.exe</span>
+</header>
+<nav class="tabs">
+  <button class="tab" data-tab="live">Live</button>
+  <button class="tab" data-tab="cams">Cameras</button>
+  <button class="tab" data-tab="replay">Replays</button>
+  <button class="tab" data-tab="dyn">Dynamic cameras</button>
+  <button class="tab" data-tab="sets">Camera sets</button>
+  <button class="tab" data-tab="timing">Timing</button>
+  <button class="tab" data-tab="gfx">Graphics &amp; crowd</button>
+  <button class="tab" data-tab="log">Log</button>
+</nav>
+<main class="page">
+
+<section class="tabpanel" data-panel="live">
+  <div class="card" id="master">
+    <div class="body"><div class="switch-row" style="padding:2px 0">
+      <label class="switch"><input type="checkbox" id="enabled"><span class="knob"></span></label>
+      <div class="txt"><div class="ttl" id="master-title" style="font-size:15px">TV director is OFF</div>
+        <div class="desc">Picks the car and the camera for the TV view. Close RaceVision.exe first.</div></div></div></div>
+  </div>
+  <div class="card tone-blue" id="dry-box">
+    <div class="body"><div class="switch-row" style="padding:2px 0">
+      <label class="switch"><input type="checkbox" id="dryRun"><span class="knob"></span></label>
+      <div class="txt"><div class="ttl" id="dry-title">Read-only test mode</div><div class="desc" id="dry-sub"></div></div></div></div>
+  </div>
+  <div class="callout err" id="err" style="display:none"></div>
+  <div class="callout warn" id="note" style="display:none"></div>
+
+  <div class="card">
+    <div class="head"><h2>Phone / tablet remote</h2></div>
+    <div class="body stack">
+      <div class="switch-row" style="padding:2px 0"><label class="switch"><input type="checkbox" id="remote-on"><span class="knob"></span></label>
+        <div class="txt"><div class="ttl">Control the TV from a phone, tablet or another PC</div><div class="desc">A small page on your network to put a driver or camera on TV and pause the director. It needs the key in the link; Windows may ask to allow it through the firewall.</div></div></div>
+      <label class="field"><span class="lab">Port</span><input type="number" id="remote-port" min="1024" max="65535" style="width:110px"></label>
+      <div class="row"><span class="lab">Pairing code</span><code id="remote-key">—</code><button class="btn sm ghost" id="remote-newkey">New code</button></div>
+      <button class="btn sm" id="director-view">Open live map and timeline</button>
+      <button class="btn sm" id="overlay-editor" title="RaceVision 2.0: design the overlays as layouts (text, boxes, pictures, portraits, bars, dials) bound to live data, place every panel on a picture of the screen, and save the whole look as a preset. Race Control's timing box, telemetry strip and cone board can be drawn from layouts too. Opens in your browser.">Overlay editor</button>
+      <div id="remote-links" class="small"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="head"><h2>On TV now</h2></div>
+    <div class="body stack">
+      <div class="row"><button class="btn sm" id="auto">Hand back to the director</button><button class="btn sm" id="pause">Pause director</button>
+        <span class="muted small">Click a driver to put them on TV (held for manual_hold seconds); click a camera to switch.</span></div>
+      <div class="callout warn" id="cut-status" style="display:none"></div>
+      <div class="camrow" id="camnow"></div>
+      <div style="max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:var(--r-s)"><table class="table" id="field"><thead><tr><th class="n">Pos</th><th>#</th><th>Driver</th><th class="n">Laps</th><th class="n">mph</th><th class="n">Gap s</th><th></th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+</section>
+
+<section class="tabpanel" data-panel="cams">
+  <div class="card">
+    <div class="head"><h2>Cameras the director may use</h2></div>
+    <div class="body stack">
+      <div class="row tight"><button class="btn sm" id="c-all">All</button><button class="btn sm" id="c-nocock">No cockpit / on-board</button><button class="btn sm" id="c-tv">TV cameras only</button><button class="btn sm" id="c-none">None</button></div>
+      <div class="help">Every shot below only uses ticked cameras; a shot with none left keeps the current camera.</div>
+      <div class="cams" id="cams"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="head"><h2>Camera library and editor</h2></div>
+    <div class="body stack">
+      <div class="help">Cameras 22-28 are RaceVision's additions (In-car right, Drone, Side tracking, Low rear, Front quarter, Overhead, Pack view) and 29-40 are your own: each is one of the game's cameras with its placement changed in memory while it shows (and put back when another camera is on). Pick a camera, change it while you watch it on TV, then save it, or save it as a new camera. Cockpit 1 accepts turn, tilt, roll and lens values; the Drone has guarded near-clip, follow, and sound adjustments.</div>
+      <div class="row"><label class="field" style="margin:0"><span class="lab">Setup</span><select id="preset"></select></label><button class="btn sm" id="preset-load">Load</button><span class="muted small">"RaceVision default" puts every setting and camera back; "JT's Customs" loads that preset with its camera library.</span></div>
+      <div class="cams" id="lib"></div>
+      <div class="row" id="ed-head" style="display:none"><b id="ed-title"></b><button class="btn sm" id="ed-show">Show it on TV</button><button class="btn sm" id="ed-save">Save</button><button class="btn sm" id="ed-new">Save as a new camera…</button><button class="btn sm" id="ed-rename">Rename…</button><button class="btn sm" id="ed-hide">Hide</button><button class="btn sm" id="ed-del">Delete</button></div>
+      <div class="grid2" id="ed-fields"></div>
+      <label class="field"><span class="lab">Camera order (numbers, in the order the lists show them)</span><input type="text" id="s-cam_order" placeholder="e.g. 1, 22, 29, 19, 20"></label>
+    </div>
+  </div>
+  <div class="card">
+    <div class="head"><h2>Cameras for each kind of shot</h2></div>
+    <div class="body stack">
+      <div class="help">A shot opens on the first list, then moves to its “follow” list after <i>follow_after</i> seconds. Camera numbers, separated by commas.</div>
+      <div class="grid2" id="camlists"></div>
+    </div>
+  </div>
+</section>
+
+<section class="tabpanel" data-panel="replay">
+  <div class="card">
+    <div class="head"><h2>Crash replays</h2></div>
+    <div class="body stack">
+      <div class="help">Crashes are found from the cars' damage and replayed with the game's own replay, from up to three angles, each starting just before that car's hardest hit. The camera hook has to be installed (read-only test mode off). <b>Ctrl+F7</b> shows the replay of the crash most worth it; while you drive it pauses the race, plays it and resumes. Getting out of your car skips the game's own climb-out replay.</div>
+      <div class="row"><button class="btn sm" id="rp-now">▶ Replay the best crash</button><button class="btn sm" id="rp-reel">🎞 Highlight reel</button><button class="btn sm" id="rp-live">⏹ Back to live</button><span class="muted small" id="rp-state"></span></div>
+      <div style="max-height:34vh;overflow:auto;border:1px solid var(--line);border-radius:var(--r-s)"><table class="table" id="crashes"><thead><tr><th class="n">#</th><th>Cars (hardest hit first)</th><th class="n">Score</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div class="grid2" id="rp-set"></div>
+    </div>
+  </div>
+  <div class="card" id="tp">
+    <div class="head"><h2>Playback</h2><span class="chip info" id="tp-speed">LIVE</span><span class="muted small" id="tp-pos"></span></div>
+    <div class="body stack">
+      <div class="help">NR2003's own replay controls: scrub the tape, step a frame, slow motion down to 1/17, fast forward and rewind, jump to a lap or a crash. From live it starts the tape paused a few seconds back; a replay already rolling is taken over (it then ends when you press <b>Live</b>). Also on the phone remote.</div>
+      <div style="position:relative;padding-top:12px"><div id="tp-marks" style="position:absolute;left:0;right:0;top:0;height:10px;pointer-events:none"></div><input type="range" id="tp-seek" min="0" max="1000" value="1000" style="width:100%"></div>
+      <div class="row"><button class="btn sm" data-tp="start">|&lt; Start</button><button class="btn sm" data-tp="step" data-d="-1">&lt; Frame</button><button class="btn sm" data-tp="toggle" id="tp-play">Play</button><button class="btn sm" data-tp="step" data-d="1">Frame &gt;</button><button class="btn sm" data-tp="live">Live &gt;|</button></div>
+      <div class="row"><button class="btn sm" data-tp="fast" data-n="2" data-rev="1">&lt;&lt; x2</button><button class="btn sm" data-tp="slow" data-n="16">1/17</button><button class="btn sm" data-tp="slow" data-n="7">1/8</button><button class="btn sm" data-tp="slow" data-n="3">1/4</button><button class="btn sm" data-tp="slow" data-n="1">1/2</button><button class="btn sm" data-tp="play">1x</button><button class="btn sm" data-tp="fast" data-n="2">x2</button><button class="btn sm" data-tp="fast" data-n="4">x4</button></div>
+      <div class="row"><button class="btn sm" data-tp="jump" data-kind="C" data-d="-1">&lt; Crash</button><button class="btn sm" data-tp="jump" data-kind="C" data-d="1">Crash &gt;</button><button class="btn sm" data-tp="jump" data-kind="L" data-d="-1">&lt; Lap</button><button class="btn sm" data-tp="jump" data-kind="L" data-d="1">Lap &gt;</button>
+        <label class="field" style="margin:0;flex-direction:row;align-items:center;gap:6px"><span class="lab">Go to lap</span><input type="number" id="tp-lap" min="1" style="width:70px"></label><button class="btn sm" id="tp-go">Go</button></div>
+      <div class="muted small" id="tp-note"></div>
+    </div>
+  </div>
+</section>
+
+<section class="tabpanel" data-panel="dyn">
+  <div class="card">
+    <div class="head"><h2>Dynamic cameras (test)</h2></div>
+    <div class="body stack">
+      <div class="help">The director puts its own cameras where the story is - the pit entry as the leaders come in, the stall, the race off pit road, a new angle on every crash, low at the restart, the line at the finish - and learns each track as it goes. A dynamic camera is one of the game's pit lane cameras (17 / 18) moved to its place and aimed at the car, and put back when the shot ends. It needs the track's map (Race Control draws it from the cars in the first lap of a session) and the camera hook (read-only test mode off).</div>
+      <div class="grid2" id="dyn-set"></div>
+      <div class="callout" id="dyn-note" style="display:none"></div>
+      <div class="row"><button class="btn sm" id="dyn-test">Test camera on the car on air</button><button class="btn sm" id="dyn-up">👍 Last shot</button><button class="btn sm" id="dyn-down">👎 Last shot</button><button class="btn sm ghost" id="dyn-forget">Forget this track</button><span class="muted small" id="dyn-live"></span></div>
+      <div class="help">The test puts a camera 24 m from the car on air for 8 s. If it looks off to one side, or up when it should look down, use the aim fixes. A thumbs up or down counts three times in the angle's score.</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="head"><h2 id="dyn-learn-title">Learned about this track</h2></div>
+    <div class="body stack"><div class="kv" id="dyn-kv"></div></div>
+  </div>
+  <div class="card">
+    <div class="head"><h2>Angles and how they scored</h2></div>
+    <div class="body"><div id="dyn-angles"></div></div>
+  </div>
+</section>
+
+<section class="tabpanel" data-panel="sets">
+  <div class="card">
+    <div class="head"><h2>Camera sets</h2></div>
+    <div class="body stack">
+      <div class="help">Choose what NR2003's TV cameras show on a track, and the car cameras (bumper, roof, door, sides) of a series. <b>Use now</b> writes the set into the cameras the game is using this moment, so the next shot already shows it; <b>Save for next session</b> writes it over the game's file, after keeping the game's own copy, so it can always be put back. Sets are RaceVision's recipes made from the game's own cameras, and any .cam files in the camsets folder (presets\track\&lt;track&gt;, presets\series\&lt;series&gt;), in the game's own binary form or RaceVision's text form. <b>Preview</b> plays a simulated race through a track's set, with dynamic cameras if you like, before you pick it.</div>
+      <div class="callout" id="cs-note"></div>
+      <div class="row"><label class="field" style="margin:0"><span class="lab">Track</span><select id="cs-track"></select></label><label class="l small"><input type="checkbox" id="cs-keep" checked> Use now also keeps it for the next sessions</label></div>
+      <div id="cs-track-sets"></div>
+      <div class="row"><label class="field" style="margin:0"><span class="lab">Series</span><select id="cs-series"></select></label><span class="muted small" id="cs-series-note"></span></div>
+      <div id="cs-series-sets"></div>
+      <div class="grid2"><label class="field"><span class="lab">Camsets folder (empty = All In One NR2003's own)</span><input type="text" id="s-camsets_dir"></label><label class="field"><span class="lab">NR2003 folder (empty = the game All In One NR2003 starts)</span><input type="text" id="s-game_dir"></label></div>
+      <div class="muted small" id="cs-root"></div>
+    </div>
+  </div>
+</section>
+
+<section class="tabpanel" data-panel="timing">
+  <div class="card">
+    <div class="head"><h2>Timing and detection</h2></div>
+    <div class="body stack">
+      <div class="grid2" id="nums"></div>
+      <label class="field"><span class="lab">Favourite drivers (car numbers the tour prefers)</span><input type="text" id="favs" placeholder="e.g. 24, 48"></label>
+    </div>
+  </div>
+</section>
+
+<section class="tabpanel" data-panel="gfx">
+  <div class="card">
+    <div class="head"><h2>Crowd sounds and art</h2></div>
+    <div class="body stack">
+      <div class="help">The on-screen graphics (driver tag, battle box, on-board dash, positions gained or lost) are switched on and placed in the <b>Layout Editor</b>, with the other graphics. Here: the dash dial, accent colour and art, and the crowd. Graphics need NR2003 running windowed or borderless. Crowd sounds are your own recordings, named like <i>roar_1.wav</i>, <i>cheer_2.wav</i>, <i>pop</i>, <i>ooh</i>, <i>ahh</i>, in the folder below (relative folders sit in All In One NR2003's data folder, under <i>tv</i>).</div>
+      <div class="grid2" id="gfx"></div>
+    </div>
+  </div>
+</section>
+
+<section class="tabpanel" data-panel="log">
+  <div class="card"><div class="head"><h2>Log</h2></div><div class="body"><div class="log" id="log" style="max-height:62vh"></div></div></div>
+</section>
+
+</main>
+<script src="ui.js"></script>
+<script>
+const $ = (id) => document.getElementById(id), T = window.shl.tv;
+let last = null, built = false;
+const NUMS = [
+  ['follow_after', 'Follow camera after (s)'], ['camera_every', 'Change follow camera every (s)'], ['min_hold', 'Shot holds at least (s)'], ['max_hold', 'Shot holds at most (s)'],
+  ['incident_hold', 'Incident shot (s)'], ['switch_margin', 'Better shot must score × this'], ['revisit_after', 'Revisit a car after (s)'], ['manual_hold', 'Manual choice held (s)'],
+  ['battle_gap', 'Battle gap (s)'], ['battle_min_age', 'Battle lasts at least (s)'], ['short_track_m', 'Short track under (m)'], ['battle_short_m', 'Battle gap on short tracks (m)'],
+  ['lead_battle_depth', 'Hold lead battles within positions'], ['lead_battle_hold', 'Lead battle hold (s)'], ['lead_battle_pack', 'Skip lead hold at this pack size'], ['rival_boost', 'Rivals battle boost (0 off, 1, 2)'],
+  ['tv_cut_gap', 'TV camera cut safety gap (s)'], ['tv_cut_wait', 'Wait this long for a safe cut (s)'],
+  ['onboard_hold', 'On-board shot stays (s)'], ['settle_laps', 'Start/restart: settle laps'], ['settle_positions', 'Settle: positions followed'], ['settle_hold', 'Settle: shot holds (s)'],
+  ['tour_depth', 'Tour the first … cars'], ['crash_drop', 'Crash = speed drop (m/s)'], ['crash_window', 'Crash window (s)'],
+  ['camera_call', 'Switch cameras by calling the game (1) or writing the camera directly (0)'],
+];
+const GFX = [
+  ['dash_speed_max', 'Dash: speed dial max (mph)'],
+  ['dash_art_colors', 'Dash uses driver art colors (1/0)'],
+  ['drone_distance', 'Drone follow distance (m)'], ['drone_top_mph', 'Drone follow top speed (mph)'], ['drone_hover_m', 'Drone hover radius (m)'], ['drone_quiet', 'Drone quiet mode (1/0)'],
+  ['crowd', 'Crowd sounds on (1/0)'], ['crowd_volume', 'Crowd volume (0-1)'], ['crowd_pass_depth', 'Cheer passes for this position or better'], ['crowd_cooldown', 'Crowd: at most every (s)'],
+];
+const LISTS = [
+  ['cam_incident', 'Incident — open'], ['cam_incident_follow', 'Incident — follow'], ['cam_pass', 'Pass — open'], ['cam_pass_follow', 'Pass — follow'],
+  ['cam_battle', 'Battle — open'], ['cam_battle_follow', 'Battle — follow'], ['cam_pit', 'Pit entry'], ['cam_pit_stall', 'Pit stall'], ['cam_pit_exit', 'Pit exit'], ['cam_pit_follow', 'Pit — follow'],
+  ['cam_leader', 'Leader — open'], ['cam_leader_follow', 'Leader — follow'], ['cam_tour', 'Tour — open'], ['cam_tour_follow', 'Tour — follow'],
+  ['cam_restart', 'Restart — open'], ['cam_restart_follow', 'Restart — follow'], ['cam_qual_exit', 'Qualifying run: leaving the pits'], ['cam_qual', 'Qualifying run — open'], ['cam_qual_follow', 'Qualifying run — follow'],
+  ['onboard_cams', 'Counts as on-board (stays on)'], ['stage_laps', 'Stage end laps for the graphics (e.g. 60, 120)'],
+  ['art_series', 'Fallback art series (when ticker has no series selected)'], ['art_folders', 'More art folders (separate with ;)'], ['dash_accent', 'Accent colour (#rrggbb)'], ['dash_accent2', 'Second accent colour (#rrggbb)'],
+  ['crowd_events', 'Crowd events (start, restart, lead, pass, crash, white, win)'], ['crowd_favourites', 'Crowd favourites (car numbers)'], ['crowd_folder', 'Crowd sound folder (kind_*.wav)'],
+];
+const RP = [
+  ['replay_auto', 'Replay crashes by themselves (1/0)'], ['replay_caution_only', 'Only under caution (1/0)'], ['replay_countdown', 'Countdown before it rolls (s)'], ['replay_worthy', 'Worth a replay from (score)'],
+  ['replay_after', 'Wait after the crash (s)'], ['replay_within', 'Too old after (s)'], ['replay_preroll', 'Start before the hit (s)'], ['replay_max', 'Longest first angle (s)'],
+  ['replay_angles', 'Angles of a multi-car crash'], ['replay_take', 'Each later angle (s)'], ['reel_angles', 'Angles per crash in the reel'], ['replay_drive', 'Watch while driving: pause (1/0)'],
+  ['replay_overlays', 'Overlays in replays (1/0)'], ['replay_banner', 'Show replay banner and live countdown (1/0)'], ['crash_damage', 'A crash from damage'], ['contact_join', 'In it from damage'], ['crash_span', 'Crash lasts at most (s)'],
+  ['live_after_climb_out', 'Skip the game\'s climb-out replay (1/0)'], ['qual_player_cam', 'Camera for your qualifying run (0 = leave)'],
+  ['qual_handoff_m', 'Qualifying camera handoff distance (m)'], ['remote_scanner', 'Remote scanner enabled (1/0)'], ['aimod_port', 'AIMOD companion port'],
+  ['replay_smart', 'Smart slow motion: slows into the hit and out of it (1/0)'], ['replay_slow_max', 'Slowest for a big hit (1 = 1/2 ... 16 = 1/17)'],
+  ['replay_transition', 'Replay wipe: full-screen TV wipe in, between angles, back to live (1/0)'], ['replay_transition_ms', 'Wipe length (ms, 400 - 5000)'],
+  ['hide_companion_overlays', 'Hide other overlays during replays (1/0)'],
+];
+const DYN = [
+  ['dyn_cams', 'Dynamic cameras on (1/0)'], ['dyn_chance', 'How often (% of the shots that could have one)'],
+  ['dyn_pit', 'Pit road: who dives in, the stall, the race off it (1/0)'], ['dyn_crash', 'Crashes: a new angle on the wreck (1/0)'], ['dyn_restart', 'Restarts: low and close at the green, and at the choose cone (1/0)'],
+  ['dyn_battle', 'Battles and passes: trackside, ahead of the cars (1/0)'], ['dyn_finish', 'The finish: at the line on the last lap (1/0)'], ['dyn_learn', 'Learn the track (1/0, saved per track)'],
+  ['dyn_rig', 'Smooth following: its own fast timer follows the car (1/0)'], ['dyn_autozoom', 'Zoom with the car: the car keeps its size (1/0)'], ['dyn_smooth', 'Pan smoothing (1 = standard, lower = quicker)'],
+  ['dyn_yaw_fix', 'Aim correction (degrees, added to the turn)'], ['dyn_pitch_sign', 'Tilt direction (1 or -1)'], ['dyn_half_width', 'Track half width (m, 0 = learn it)'],
+];
+const RP_LISTS = [['cam_replay', 'Replay cameras — first angle'], ['cam_replay_angles', 'Replay cameras — later angles'],
+  ['replay_wipe_color', 'Wipe colour (#rrggbb, empty = the accent colour)'],
+  ['companion_apps', "Other programs' overlays to hide: only these (part of the exe name, ; between; empty = every topmost overlay)"], ['companion_keep', 'Never hide these programs (part of the exe name, ; between)']];
+const LIBTXT = { EDIT: 0, TUNE: null, BASE: 0 };
+const TUNE_LABELS = ['x (m, + ahead)', 'y (m, + left)', 'z (m, up)', 'turn (°)', 'tilt (° + down)', 'roll (°)', 'lens (°)'];
+const keep = (el) => document.activeElement === el;
+const setS = (k, v) => T.setConfig({ settings: { [k]: v } }).then(paint);
+
+$('enabled').onchange = (e) => T.setConfig({ enabled: e.target.checked }).then(paint);
+$('dryRun').onchange = (e) => {
+  if (!e.target.checked && !confirm('Turn read-only test mode OFF?\n\nAll In One NR2003 will then really drive the game camera: it adds a small hook to NR2003 (the same one RaceVision uses) and switches car and camera. The hook is removed when you switch this off or close All In One NR2003.')) { e.target.checked = true; return; }
+  T.setConfig({ dryRun: e.target.checked }).then(paint);
+};
+$('favs').onchange = (e) => T.setConfig({ favourites: e.target.value }).then(paint);
+$('remote-on').onchange = (e) => setS('remote', e.target.checked ? 1 : 0);
+$('remote-port').onchange = (e) => setS('remote_port', Math.max(1024, Math.min(65535, parseInt(e.target.value, 10) || 8090)));
+$('remote-newkey').onclick = async () => { if (confirm('Generate a new phone pairing code? Existing phone links will stop working.')) { await T.newRemoteKey(); refresh(); } };
+$('director-view').onclick = () => T.openDirectorView();
+$('overlay-editor').onclick = () => T.openOverlayEditor();
+$('auto').onclick = () => T.auto(); $('pause').onclick = () => T.pause(!(last && last.director.paused)).then(refresh);
+const setCams = (list) => T.setConfig({ enabledCams: list }).then(paint);
+$('c-all').onclick = () => setCams(Object.keys(last.cameras).map(Number).filter(c => c !== 9));
+$('c-nocock').onclick = () => setCams(Object.keys(last.cameras).map(Number).filter(c => ![1, 2, 3, 9, 12, 13].includes(c)));
+$('c-tv').onclick = () => setCams([16, 17, 18, 19, 20, 21]);
+$('c-none').onclick = () => setCams([]);
+
+function build(s) {
+  const cams = $('cams');
+  for (const [n, name] of Object.entries(s.cameras)) {
+    const l = document.createElement('label'); l.id = 'cam' + n;
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.n = n;
+    cb.onchange = () => setCams([...cams.querySelectorAll('input:checked')].map(x => +x.dataset.n));
+    l.appendChild(cb); l.appendChild(document.createTextNode(n + '  ' + name)); cams.appendChild(l);
+  }
+  const cl = $('camlists');
+  for (const [k, label] of LISTS) {
+    const l = document.createElement('label'); l.className = 'field'; const t = document.createElement('span'); t.className = 'lab'; t.textContent = label; l.appendChild(t);
+    const i = document.createElement('input'); i.type = 'text'; i.id = 's-' + k; i.onchange = () => setS(k, i.value); l.appendChild(i); cl.appendChild(l);
+  }
+  const nm = $('nums');
+  for (const [k, label] of GFX) {
+    const l = document.createElement('label'); l.className = 'field'; const t = document.createElement('span'); t.className = 'lab'; t.textContent = label; l.appendChild(t);
+    const i = document.createElement('input'); i.type = 'number'; i.step = 'any'; i.id = 's-' + k; i.onchange = () => setS(k, parseFloat(i.value)); l.appendChild(i); $('gfx').appendChild(l);
+  }
+  for (const [k, label] of NUMS) {
+    const l = document.createElement('label'); l.className = 'field'; const t = document.createElement('span'); t.className = 'lab'; t.textContent = label; l.appendChild(t);
+    const i = document.createElement('input'); i.type = 'number'; i.step = 'any'; i.id = 's-' + k; i.onchange = () => setS(k, parseFloat(i.value)); l.appendChild(i); nm.appendChild(l);
+  }
+  const cn = $('camnow');
+  for (const n of Object.keys(s.cameras)) { const b = document.createElement('button'); b.className = 'btn sm'; b.textContent = n; b.title = s.cameras[n]; b.id = 'cb' + n; b.onclick = () => T.camera(+n); cn.appendChild(b); }
+  const rs = $('rp-set');
+  for (const [k, label] of RP) { const l = document.createElement('label'); l.className = 'field'; const t = document.createElement('span'); t.className = 'lab'; t.textContent = label; l.appendChild(t); const i = document.createElement('input'); i.type = 'number'; i.step = 'any'; i.id = 's-' + k; i.onchange = () => setS(k, parseFloat(i.value)); l.appendChild(i); rs.appendChild(l); }
+  for (const [k, label] of RP_LISTS) { const l = document.createElement('label'); l.className = 'field'; const t = document.createElement('span'); t.className = 'lab'; t.textContent = label; l.appendChild(t); const i = document.createElement('input'); i.type = 'text'; i.id = 's-' + k; i.onchange = () => setS(k, i.value); l.appendChild(i); rs.appendChild(l); }
+  const ds = $('dyn-set');
+  for (const [k, label] of DYN) { const l = document.createElement('label'); l.className = 'field'; const t = document.createElement('span'); t.className = 'lab'; t.textContent = label; l.appendChild(t); const i = document.createElement('input'); i.type = 'number'; i.step = 'any'; i.id = 's-' + k; i.onchange = () => setS(k, parseFloat(i.value)); l.appendChild(i); ds.appendChild(l); }
+  for (const k of ['camsets_dir', 'game_dir']) $('s-' + k).onchange = (e) => setS(k, e.target.value.trim()).then(() => paintSets(true));
+  $('s-cam_order').onchange = (e) => T.camOrder(e.target.value.split(/[ ,;]+/).map(Number).filter(Boolean)).then(refresh);
+  $('rp-now').onclick = () => T.replayNow(); $('rp-reel').onclick = () => T.reel(); $('rp-live').onclick = () => T.replayLive();
+  $('preset-load').onclick = () => { const n = $('preset').value; if (n && confirm('Load "' + n + '"? It replaces your director settings and camera library (your phone link stays).')) T.applyPreset(n).then(refresh); };
+  built = true;
+}
+
+// ── the camera library and editor ──
+async function pickCam(id) {
+  LIBTXT.EDIT = id;
+  const d = await T.camDescribe(id);
+  LIBTXT.TUNE = d.tune; LIBTXT.BASE = d.base;
+  const c = (d.library || []).find(x => x.id === id) || { name: 'Camera ' + id, kind: 'game' };
+  $('ed-head').style.display = ''; $('ed-title').textContent = id + '  ' + c.name + (d.editable ? '' : ' (this camera has no placement to edit)');
+  $('ed-del').style.display = c.kind === 'custom' ? '' : 'none'; $('ed-hide').textContent = c.hidden ? 'Show in the lists' : 'Hide';
+  const f = $('ed-fields'); f.textContent = '';
+  if (d.editable && d.tune) d.tune.forEach((v, i) => {
+    const l = document.createElement('label'); l.className = 'field'; const t = document.createElement('span'); t.className = 'lab'; t.textContent = TUNE_LABELS[i]; l.appendChild(t);
+    const inp = document.createElement('input'); inp.type = 'number'; inp.step = i < 3 ? '0.05' : '0.5'; inp.value = v;
+    inp.oninput = () => { LIBTXT.TUNE[i] = parseFloat(inp.value) || 0; T.camAdjust(id, LIBTXT.TUNE); }; l.appendChild(inp); f.appendChild(l);
+  });
+  T.camera(id);
+}
+$('ed-show').onclick = () => { if (LIBTXT.EDIT) T.camAdjust(LIBTXT.EDIT, LIBTXT.TUNE || []); };
+$('ed-save').onclick = async () => { if (LIBTXT.EDIT && LIBTXT.TUNE) { await T.camSave(LIBTXT.EDIT, LIBTXT.TUNE); refresh(); } };
+$('ed-new').onclick = async () => { const n = prompt('Name of the new camera', 'Custom'); if (!n) return; const id = await T.camNew(LIBTXT.BASE, n, LIBTXT.TUNE || []); if (!id) alert('All twelve of your own camera slots (29-40) are used.'); else { await refresh(); pickCam(id); } };
+$('ed-rename').onclick = async () => { const c = (last.library || []).find(x => x.id === LIBTXT.EDIT); const n = prompt('Name', c ? c.name : ''); if (n !== null) { await T.camLabel(LIBTXT.EDIT, n); refresh(); } };
+$('ed-hide').onclick = async () => { const c = (last.library || []).find(x => x.id === LIBTXT.EDIT); await T.camHide(LIBTXT.EDIT, !(c && c.hidden)); refresh(); };
+$('ed-del').onclick = async () => { if (confirm('Delete this camera?')) { await T.camDelete(LIBTXT.EDIT); LIBTXT.EDIT = 0; $('ed-head').style.display = 'none'; $('ed-fields').textContent = ''; refresh(); } };
+function paintLibrary(s) {
+  const lib = $('lib'); const sig = JSON.stringify((s.library || []).map(c => [c.id, c.name, c.hidden]));
+  if (lib.dataset.sig !== sig) {
+    lib.dataset.sig = sig; lib.textContent = '';
+    for (const c of s.library || []) { const b = document.createElement('button'); b.className = 'btn sm'; b.id = 'lb' + c.id; b.textContent = c.id + '  ' + c.name + (c.hidden ? ' (hidden)' : ''); b.onclick = () => pickCam(c.id); b.style.cssText = 'justify-content:flex-start;margin:2px'; lib.appendChild(b); }
+  }
+  for (const b of lib.querySelectorAll('button')) b.classList.toggle('on', +b.id.slice(2) === LIBTXT.EDIT);
+  const ps = $('preset'); if (!ps.options.length) for (const n of s.presets || []) ps.add(new Option(n, n));
+  if (!keep($('s-cam_order'))) $('s-cam_order').value = s.settings.cam_order || '';
+}
+// ── the tape transport (RaceVision 1.2.0) ──
+let TP = null, tpDrag = false, tpMarksKey = '';
+const tpTime = (f, rate) => { const s = Math.max(0, Math.round(f / (rate || 36))); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+async function tpSend(q) { try { await T.tapeCtl(q); } catch (e) { /* ignore */ } setTimeout(tpPoll, 250); }
+async function tpPoll() {
+  if (!T.tape) return;
+  let t; try { t = await T.tape(); } catch (e) { return; }
+  if (!t) return; TP = t;
+  const live = t.mode !== 1;
+  $('tp-speed').textContent = t.speed; $('tp-speed').className = 'chip ' + (live ? 'ok' : 'info');
+  let lap = ''; for (const m of t.marks) if (m.t === 'L' && m.f <= t.idx) lap = m.l;
+  $('tp-pos').textContent = t.frames > 0 ? (live ? tpTime(t.frames, t.rate) + ' of race on the tape' : tpTime(t.idx, t.rate) + ' / ' + tpTime(t.frames, t.rate) + (lap ? '  -  ' + lap : '')) : '';
+  if (!tpDrag) $('tp-seek').value = live ? 1000 : Math.round(1000 * t.idx / Math.max(1, t.frames - 1));
+  const key = t.frames + ':' + t.marks.length;
+  if (key !== tpMarksKey) {
+    tpMarksKey = key; const box = $('tp-marks'); box.textContent = '';
+    for (const m of t.marks) { const i = document.createElement('i'); i.title = m.l; i.style.cssText = 'position:absolute;top:0;width:' + (m.t === 'C' ? 3 : 2) + 'px;height:' + (m.t === 'C' ? 10 : 6) + 'px;background:' + (m.t === 'C' ? 'var(--red)' : m.t === 'F' ? 'var(--orange)' : '#5b6272') + ';left:' + (100 * m.f / Math.max(1, t.frames - 1)).toFixed(2) + '%'; box.appendChild(i); }
+  }
+  $('tp-play').textContent = !live && t.step !== 0 ? 'Pause' : 'Play';
+  $('tp').style.opacity = t.can || !live ? 1 : 0.6;
+  $('tp-note').textContent = t.msg || (!t.can && live ? t.why : '');
+}
+$('tp').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tp]'); if (!b) return;
+  const q = { do: b.dataset.tp };
+  if (q.do === 'toggle') q.do = TP && TP.mode === 1 && TP.step !== 0 ? 'pause' : 'play';
+  if (b.dataset.n) q.n = b.dataset.n; if (b.dataset.d) q.d = b.dataset.d; if (b.dataset.kind) q.kind = b.dataset.kind; if (b.dataset.rev) q.rev = 1;
+  tpSend(q);
+});
+$('tp-seek').oninput = (e) => { tpDrag = true; if (TP && TP.frames > 0) $('tp-pos').textContent = tpTime(e.target.value / 1000 * TP.frames, TP.rate) + ' / ' + tpTime(TP.frames, TP.rate); };
+$('tp-seek').onchange = (e) => { tpDrag = false; tpSend({ do: 'seek', f: (e.target.value / 1000).toFixed(4) }); };
+$('tp-go').onclick = () => { const n = parseInt($('tp-lap').value, 10); if (n > 0) tpSend({ do: 'lap', n }); };
+setInterval(() => { if (!document.hidden && document.querySelector('.tabpanel[data-panel="replay"]') && document.querySelector('.tabpanel[data-panel="replay"]').offsetParent) tpPoll(); }, 600);
+
+function paintReplays(s) {
+  const r = s.replay || { phase: 'idle' };
+  $('rp-state').textContent = r.phase === 'idle' ? (s.replayHooked ? '' : 'The camera hook is not installed (read-only test mode on, or no game).') : r.text + (r.angles > 1 ? ' — angle ' + r.angle + ' of ' + r.angles : '');
+  const body = $('crashes').querySelector('tbody'); body.textContent = '';
+  for (const x of (s.crashes || []).slice().reverse()) {
+    const tr = document.createElement('tr');
+    const cells = [x.id, x.cars.map(c => '#' + c.num + ' ' + c.name + ' (' + c.hit + ')').join(', '), x.score, (x.over ? 'over' : 'happening') + (x.worthy ? ' · worth a replay' : '') + (x.replays ? ' · replayed ' + x.replays + '×' : '')];
+    cells.forEach((v, i) => { const td = document.createElement('td'); td.textContent = v; if (i === 0 || i === 2) td.className = 'n'; tr.appendChild(td); });
+    const td = document.createElement('td'); const b = document.createElement('button'); b.className = 'btn sm'; b.textContent = 'Replay'; b.onclick = () => T.replayCrash(x.id); td.appendChild(b); tr.appendChild(td); body.appendChild(tr);
+  }
+  for (const [k] of [...RP, ...RP_LISTS]) { const i = $('s-' + k); if (i && !keep(i)) i.value = s.settings[k]; }
+}
+
+function paint(s) {
+  if (!s) return; last = s;
+  if (!built) build(s);
+  const c = s.config, on = !!s.enabled;
+  $('enabled').checked = on; $('dryRun').checked = s.dryRun;
+  $('master').className = 'card' + (on ? ' tone-green' : '');
+  $('dry-box').className = 'card ' + (s.dryRun ? 'tone-blue' : 'tone-orange');
+  $('master-title').textContent = !on ? 'TV director is OFF' : (s.note ? 'TV director is paused' : (s.attached ? (s.dryRun ? 'ON — read-only test (not driving the camera)' : 'ON — driving the TV camera') : 'ON — waiting for NR2003'));
+  $('dry-title').textContent = s.dryRun ? 'Read-only test mode is ON — NR2003 is not modified' : 'LIVE — All In One NR2003 is driving the game camera';
+  $('dry-sub').textContent = s.dryRun ? 'The director decides as usual and the log shows the shots it would cut to. Turn it off to let it drive.' : 'A small camera hook is installed in NR2003 and removed when you switch this off or close All In One NR2003.';
+  const g = $('chip-game'); g.textContent = 'NR2003: ' + (s.attached ? 'attached' : 'not running'); g.className = 'chip ' + (s.attached ? (s.dryRun ? 'warn' : 'ok') : '');
+  const h = $('chip-hook'); h.textContent = 'Camera hook: ' + (s.hook === 'hooked' ? 'installed' : s.hook === 'already' ? 'RaceVision\'s' : s.hook || '—'); h.className = 'chip ' + (s.hook === 'hooked' ? 'ok' : '');
+  const cur = s.director.cur, car = cur && s.field.find(x => x.slot === cur.slot);
+  $('chip-tv').textContent = 'On TV: ' + (cur ? '#' + (car ? car.num : cur.slot) + ' · cam ' + cur.cam + ' · ' + cur.kind : '—');
+  const er = $('err'); er.style.display = s.error ? '' : 'none'; er.textContent = s.error;
+  const nt = $('note'); nt.style.display = s.note ? '' : 'none'; nt.textContent = s.note;
+  const cut = s.cutStatus || {}; $('cut-status').style.display = cut.waiting ? '' : 'none';
+  $('cut-status').textContent = cut.waiting ? 'Holding the cut: ' + cut.reason + ' · cut in up to ' + cut.remaining.toFixed(1) + 's' : '';
+  for (const cb of $('cams').querySelectorAll('input')) cb.checked = c.enabledCams.includes(+cb.dataset.n);
+  for (const l of $('cams').querySelectorAll('label')) l.classList.toggle('showing', s.camera === +l.id.slice(3));
+  for (const b of $('camnow').querySelectorAll('button')) b.classList.toggle('on', s.camera === +b.id.slice(2));
+  for (const [k] of [...LISTS, ...NUMS, ...GFX, ...DYN]) { const i = $('s-' + k); if (i && !keep(i)) i.value = s.settings[k]; }
+  for (const k of ['camsets_dir', 'game_dir']) { const i = $('s-' + k); if (i && !keep(i)) i.value = s.settings[k] || ''; }
+  if (!keep($('favs'))) $('favs').value = c.favourites || '';
+  if (!keep($('remote-on'))) $('remote-on').checked = !!+s.settings.remote;
+  if (!keep($('remote-port'))) $('remote-port').value = s.settings.remote_port || 8090;
+  const rem = s.remote || {};
+  $('remote-key').textContent = rem.key || 'Turn the TV director on to create a code.';
+  const rl = $('remote-links'); rl.textContent = '';
+  if (!+s.settings.remote) rl.textContent = 'Off.';
+  else if (!on) rl.textContent = 'Turn the TV director on to start the remote page.';
+  else if (rem.error) rl.textContent = 'Could not start: ' + rem.error;
+  else if (!(rem.urls || []).length) rl.textContent = 'Starting…';
+  else for (const u of rem.urls) {
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;align-items:center;margin:3px 0';
+    const code = document.createElement('code'); code.textContent = u; code.style.wordBreak = 'break-all';
+    const b = document.createElement('button'); b.className = 'btn sm'; b.textContent = 'Copy';
+    b.onclick = () => { try { navigator.clipboard.writeText(u); b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy'; }, 1500); } catch (e) { /* no clipboard */ } };
+    row.appendChild(code); row.appendChild(b); rl.appendChild(row);
+  }
+  $('pause').textContent = s.director.paused ? 'Resume director' : 'Pause director';
+  const body = $('field').querySelector('tbody'); body.textContent = '';
+  for (const x of s.field) {
+    const tr = document.createElement('tr'); tr.className = 'click' + (s.focus === x.slot ? ' tv' : '');
+    [x.pos, x.num, x.name, x.laps, (x.speed * 2.23694).toFixed(0), x.pos > 1 ? x.gap.toFixed(1) : '', x.pit ? 'PIT' : ''].forEach((v, i) => { const td = document.createElement('td'); td.textContent = v; if (i === 0 || i >= 3) td.className = 'n'; tr.appendChild(td); });
+    tr.onclick = () => T.focus(x.slot).then(refresh); body.appendChild(tr);
+  }
+  paintLibrary(s); paintReplays(s);
+  $('log').textContent = (s.log || []).join('\n');
+}
+// ── dynamic cameras ──
+const flash = (m) => { const n = $('dyn-note'); n.style.display = ''; n.className = 'callout ok'; n.textContent = m; clearTimeout(flash.t); flash.t = setTimeout(() => { n.style.display = 'none'; }, 4000); };
+const done = (r, msg) => { if (r && r.error) alert(r.error); else if (msg) flash(msg); };
+$('dyn-test').onclick = async () => done(await T.dynTest(), 'Test camera on for 8 seconds.');
+$('dyn-up').onclick = async () => done(await T.dynRate(true), 'Thumbs up counted.');
+$('dyn-down').onclick = async () => done(await T.dynRate(false), 'Thumbs down counted.');
+$('dyn-forget').onclick = async () => { if (confirm('Forget what was learned about this track (pit road, crash spots, which angles worked)?')) { await T.dynForget(); paintDyn(); } };
+const ROLE_TXT = { pit_in: 'pit in', pit_stall: 'pit stall', pit_out: 'pit out', crash: 'crash', restart: 'restart', battle: 'battle', finish: 'finish' };
+async function paintDyn() {
+  const d = await T.dynStatus(); if (!d) return;
+  $('dyn-learn-title').textContent = 'Learned about ' + (d.track || 'this track');
+  const kv = [['Track map', d.map ? 'yes' : 'not yet - Race Control draws it from the cars in the first lap of a session'],
+    ['Pit road', d.pitIn != null ? 'in at ' + d.pitIn + ' m, out at ' + d.pitOut + ' m, ' + (d.pitSide > 0 ? 'left' : 'right') + ' of the track' + (d.pitKnown ? '' : ' (estimated from the pit cameras)') : 'not known yet'],
+    ['Track half width', d.halfWidth + ' m' + (d.widthKnown ? '' : ' (default)')], ['Stalls seen', d.stalls], ['Crash spots', d.crashes],
+    ['Cars that pit at a caution', d.pitRate >= 0 ? d.pitRate + ' % over ' + d.cautions + ' cautions' : 'no cautions seen yet'], ['Last dynamic shot', d.last || '-']];
+  const box = $('dyn-kv'); box.textContent = '';
+  for (const [a, b] of kv) { const x = document.createElement('span'); x.textContent = a; const y = document.createElement('span'); y.textContent = b; box.appendChild(x); box.appendChild(y); }
+  const by = {};
+  for (const t of d.templates) { const x = by[t.id] = by[t.id] || { label: t.label, role: t.role, n: 0, sum: 0 }; x.n += t.n; if (t.score != null) x.sum += t.score * t.n; }
+  const ang = $('dyn-angles'); ang.textContent = '';
+  for (const x of Object.values(by)) {
+    const sc = x.n ? x.sum / x.n : null, row = document.createElement('div'); row.className = 'dynrow';
+    const a = document.createElement('span'); a.textContent = x.label + '  ·  ' + (ROLE_TXT[x.role] || x.role);
+    const b = document.createElement('span'); b.className = 'muted'; b.textContent = sc == null ? 'untried' : Math.round(sc * 100) + ' % · ' + x.n.toFixed(0) + (x.n === 1 ? ' shot' : ' shots');
+    const m = document.createElement('div'); m.className = 'meter'; const i = document.createElement('i'); i.style.width = (sc == null ? 0 : Math.round(sc * 100)) + '%'; m.appendChild(i);
+    row.appendChild(a); row.appendChild(b); row.appendChild(m); ang.appendChild(row);
+  }
+  const L = d.active || {};
+  $('dyn-live').textContent = L.on ? 'On air: ' + L.label + ' (camera ' + L.cam + ', lens ' + L.fov + '°)' : (d.on ? (d.note ? 'Last try: ' + d.note : '') : 'Dynamic cameras are off.');
+}
+
+// ── camera sets ──
+let csTrack = '', csSeries = '';
+async function paintSets(force) {
+  const d = await T.camsets(csTrack, csSeries); if (!d) return;
+  if (!csTrack) csTrack = d.track; if (!csSeries) csSeries = d.series;
+  const note = $('cs-note');
+  note.className = 'callout ' + (d.live ? 'ok' : 'warn');
+  note.textContent = d.live ? 'NR2003 is running a session: Use now switches the cameras at once - the next shot shows them.' : (d.attached ? 'NR2003 is running but no session is loaded yet: pick a set and save it for the next session.' : "NR2003 isn't running (or the TV director is off): pick a set and NR2003 uses it when the next session loads (Save for next session).");
+  const ts = $('cs-track');
+  if (force || ts.options.length !== d.tracks.length + 1) {
+    ts.textContent = ''; ts.add(new Option('- choose a track -', ''));
+    for (const t of d.tracks) ts.add(new Option(t.name + (t.name === d.current ? '  (loaded in NR2003)' : '') + (t.file ? '' : '  (packed in its .dat)'), t.name));
+  }
+  if (!keep(ts)) ts.value = csTrack;
+  const ss = $('cs-series');
+  if (force || ss.options.length !== d.seriesList.length + 1) { ss.textContent = ''; ss.add(new Option('- choose a series -', '')); for (const x of d.seriesList) ss.add(new Option(x, x)); }
+  if (!keep(ss)) ss.value = csSeries;
+  const guess = d.seriesWhy === 'guess' && d.series === csSeries;
+  $('cs-series-note').textContent = !d.series || d.series !== csSeries ? '' : guess ? "a guess: RaceVision can't tell which mod this is (many keep the default car cameras). Pick yours from the list: Use now still works, but Save for next session waits until you do, so no other mod's files are touched."
+    : d.attached ? "the game has this series' cameras" + (d.seriesWhy === 'chosen' ? ' (your pick)' : '') : 'your pick for these cars';
+  $('cs-series-note').style.color = guess ? 'var(--orange)' : '';
+  const here = d.current && csTrack === d.current, tinfo = (d.tracks || []).find(t => t.name === csTrack), mapOk = !!(tinfo && tinfo.map);
+  setRows($('cs-track-sets'), 'track', csTrack, d.trackSets || [], { canLive: d.live && here, canSave: d.trackFile, canPreview: mapOk }, d.trackError,
+    !csTrack ? 'Choose a track.' : ((!d.trackFile ? "This track's camera file is packed inside its .dat: its sets can only be used live, while it is loaded." : (d.live && !here ? 'NR2003 has ' + d.current + ' loaded - Use now only works for that track.' : '')) +
+    (mapOk ? ' Preview runs a simulated race through a set (in your browser) before you pick it.' : ' No track map yet, so no preview: Race Control draws it from the cars during any session.')));
+  setRows($('cs-series-sets'), 'series', csSeries, d.seriesSets || [], { canLive: d.live, canSave: !guess }, d.seriesError, csSeries ? 'Car cameras are the bumper, roof, door and side views. They change with the series, not the track.' : 'Choose a series.');
+  $('cs-root').textContent = 'Camsets folder: ' + d.root + (d.game ? ' · NR2003: ' + d.game : ' · the NR2003 folder is not known yet');
+}
+function setRows(box, kind, who, list, ctx, err, foot) {
+  box.textContent = '';
+  for (const e of list) {
+    const r = document.createElement('div'); r.className = 'setrow' + (e.loaded ? ' now' : (e.saved && e.name !== 'stock' ? ' next' : ''));
+    const top = document.createElement('div'); top.className = 'top'; const b = document.createElement('b'); b.textContent = e.title; top.appendChild(b);
+    const tag = (t, c) => { const x = document.createElement('span'); x.className = 'chip ' + c; x.textContent = t; top.appendChild(x); };
+    if (e.loaded) tag('in the game now', 'ok');
+    if (e.saved && e.name !== 'stock') tag('next session', 'info');
+    if (e.builtin) tag('recipe', 'plain');
+    r.appendChild(top);
+    if (e.desc) { const x = document.createElement('div'); x.className = 'ds'; x.textContent = e.desc; r.appendChild(x); }
+    if (e.cams) { const x = document.createElement('div'); x.className = 'ds'; x.textContent = 'TV1 ' + e.cams[0] + ' · TV2 ' + e.cams[1] + ' · spectator ' + e.cams[2] + ' cameras'; r.appendChild(x); }
+    const bt = document.createElement('div'); bt.className = 'btns';
+    const btn = (t, fn) => { const x = document.createElement('button'); x.className = 'btn sm'; x.textContent = t; x.onclick = fn; bt.appendChild(x); };
+    const stock = e.name === 'stock';
+    if (ctx.canLive) btn(stock ? "Back to the game's own, now" : 'Use now', () => useSet(kind, who, e, true, $('cs-keep').checked && ctx.canSave));
+    if (ctx.canSave) btn(stock ? "Game's own next session" : 'Save for next session', () => useSet(kind, who, e, false, true));
+    if (kind === 'track' && ctx.canPreview) btn('Preview', () => T.camsetsPreview(who, e.name));
+    r.appendChild(bt); box.appendChild(r);
+  }
+  const f = document.createElement('div'); f.className = 'muted small'; f.textContent = (err ? err + ' ' : '') + (foot || ''); box.appendChild(f);
+}
+async function useSet(kind, who, e, live, save) {
+  const r = await T.camsetsApply(kind, who, e.name, live, save);
+  if (r.error) { alert(r.error); return; }
+  const parts = [];
+  if (r.live === 'done') parts.push(e.name === 'stock' ? "The game's own cameras are back" : 'Using "' + e.title + '" now');
+  else if (r.live === 'failed') parts.push("couldn't switch it live (" + r.liveMsg + ')');
+  if (r.saved === 'done') parts.push(r.live === 'done' ? 'kept for the next sessions' : 'saved - NR2003 uses it when the next session loads');
+  else if (r.saved === 'failed') parts.push("couldn't save it (" + r.saveMsg + ')');
+  alert(parts.join('; ') + '.');
+  paintSets();
+}
+$('cs-track').onchange = (e) => { csTrack = e.target.value; paintSets(); };
+$('cs-series').onchange = async (e) => {           // picking the mod also remembers it for these cars (RaceVision 1.2.0 car_series.txt)
+  csSeries = e.target.value;
+  if (csSeries && T.camsetsSeries) { const r = await T.camsetsSeries(csSeries); if (r && r.error) alert(r.error); }
+  paintSets();
+};
+document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { if (b.dataset.tab === 'dyn') paintDyn(); if (b.dataset.tab === 'sets') paintSets(true); }));
+setInterval(() => { const a = document.querySelector('.tab[aria-selected="true"]'); if (a && a.dataset.tab === 'dyn') paintDyn(); }, 2000);
+
+const refresh = () => T.getState().then(paint);
+refresh(); setInterval(refresh, 1000);
+</script>
+</body>
+</html>

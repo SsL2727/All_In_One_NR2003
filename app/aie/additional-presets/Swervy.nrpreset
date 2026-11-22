@@ -1,0 +1,7 @@
+{
+  "description": "AI cars will swerve back and forth a bit, as if drunk.\n\nUseful for adding realism to cautions or chaos on green flag racing.\n\nSets:\n  driver_consistency_to_left_offset_dev = 1.5\n\nAll other settings unchanged.",
+  "settings": {
+    "driver_consistency_to_left_offset_dev": 1.5
+  },
+  "auto_keywords": []
+}

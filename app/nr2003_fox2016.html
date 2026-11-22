@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="perf-shim.js"></script>
+<script src="pp-view.js"></script>
+<meta charset="UTF-8">
+<title>NR2003 Fox 2016 Ticker</title>
+<style>
+.chase { background: #f5d100 !important; color: #111 !important; text-shadow: none !important;
+         box-shadow: -3px 0 0 #f5d100, 3px 0 0 #f5d100; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --font: 'Fox2016', 'Gotham', 'Montserrat', 'Segoe UI Semibold', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+}
+
+body { background: transparent; width: 1184px; height: 332px; overflow: hidden; font-family: var(--font); font-weight: 700; }
+
+#scale-root { position: relative; width: 1184px; height: 332px; transform-origin: top left; visibility: hidden; }
+
+/* ── ticker row ───────────────────────────────────────────────────────── */
+#ticker { position: absolute; left: 0; top: 2px; height: 130px; display: flex; gap: 6px; }
+
+.frame {
+  height: 130px; padding: 5px; border-radius: 9px; display: flex; gap: 8px;
+  background: linear-gradient(180deg, #a9b1c6 0%, #8b93a9 45%, #6f778d 100%);
+  box-shadow: 0 2px 7px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.35);
+}
+#frame-a { width: 740px; }
+.frame-n { width: 438px; }
+.frame.empty { display: none; }
+
+/* ── left plate: race name + laps to go (green) / sponsor (yellow) ───── */
+#plate { width: 277px; height: 120px; border-radius: 6px; overflow: hidden; flex: none; display: flex; flex-direction: column;
+         box-shadow: inset 0 0 0 1px rgba(0,0,0,.35); }
+#plate-top {
+  height: 68px; padding-top: 3px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: linear-gradient(180deg, #4b8a53 0%, #17641d 14%, #05430a 52%, #003206 100%);
+  color: #d7f7d2; text-shadow: 0 1px 2px rgba(0,0,0,.65);
+  transition: background .35s;
+}
+#plate.yellow #plate-top { background: linear-gradient(180deg, #e8b04a 0%, #c98a0a 16%, #9c6500 55%, #7d4f00 100%); color: #fff6dc; }
+#plate.red    #plate-top { background: linear-gradient(180deg, #e0646a 0%, #c0101a 16%, #8d0008 55%, #6c0006 100%); color: #ffe4e4; }
+#plate-top .l { display: block; white-space: nowrap; font-size: 27px; line-height: 31px; letter-spacing: .6px; text-transform: uppercase; }
+#plate-top .l .sm { font-size: .72em; }
+
+#sponsor-zone {
+  position: relative; flex: 1; overflow: hidden;
+  background: linear-gradient(180deg, #f4d012 0%, #e6bc00 55%, #dcb100 100%);
+  box-shadow: inset 0 2px 3px rgba(0,0,0,.22);
+}
+#sponsor-zone img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: contain; object-position: center;
+                    opacity: 0; transition: opacity .6s ease; }
+#sponsor-zone img.on { opacity: 1; }
+#sponsor-ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+              font-size: 22px; letter-spacing: 3px; color: rgba(70,50,0,.35); }
+#sponsor-ph.hide { display: none; }
+
+/* ── data panels ──────────────────────────────────────────────────────── */
+.panel {
+  flex: 1; height: 120px; border-radius: 6px; overflow: hidden; position: relative;
+  background: linear-gradient(180deg, #1d2d3b 0%, #142230 55%, #0e1a25 100%);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.07);
+}
+.hdr { height: 30px; display: grid; grid-template-columns: 40px 56px 1fr 120px; align-items: center; padding: 0 10px 0 6px;
+       color: #dfe8f1; font-size: 20px; letter-spacing: .6px; background: rgba(255,255,255,.035); }
+.hdr .h-lead { grid-column: 2 / 4; padding-left: 0; }
+.hdr .h-gap  { text-align: right; }
+#ticker.no-gaps .h-gap { visibility: hidden; }
+
+.rows { transition: opacity .25s ease, transform .25s ease; }
+.rows.fade { opacity: 0; transform: translateY(-5px); }
+.row { height: 30px; display: grid; grid-template-columns: 40px 56px 1fr 120px; align-items: center; padding: 0 10px 0 6px;
+       color: #f1f5f9; font-size: 22px; letter-spacing: .4px; }
+.row:nth-child(even) { background: rgba(255,255,255,.028); }
+.r-pos  { text-align: right; padding-right: 10px; }
+.r-name { white-space: nowrap; overflow: hidden; text-overflow: clip; padding-left: 4px; text-transform: uppercase; }
+.r-gap  { text-align: right; white-space: nowrap; }
+#ticker.no-gaps .r-gap { visibility: hidden; }
+
+/* car number plate */
+.np { position: relative; width: 52px; height: 26px; border-radius: 2px; overflow: hidden; background: #3b3f47; }
+.np-c { position: absolute; inset: 0; }
+.np img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.np .np-t { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+            font-size: 20px; font-style: italic; font-weight: 800; letter-spacing: -.5px; }
+
+/* ── final lap (white flag) / results ─────────────────────────────────── */
+#plate.white #plate-top { background: linear-gradient(180deg, #fbfbfb 0%, #e6e8eb 18%, #c6c9ce 60%, #aaaeb4 100%);
+                          color: #14171b; text-shadow: 0 1px 0 rgba(255,255,255,.55); }
+#plate.results #plate-top { background: linear-gradient(180deg, #3a4e63 0%, #1f3041 18%, #142230 58%, #0e1a25 100%);
+                            color: #eef3f8; }
+/* light panels (first seconds of the white flag): a light layer fades in over the dark panel */
+.panel::before { content: ''; position: absolute; inset: 0; opacity: 0; transition: opacity .5s ease; pointer-events: none;
+                 background: linear-gradient(180deg, #f6f7f8 0%, #e3e5e8 55%, #d3d6da 100%); }
+.panel > * { position: relative; z-index: 1; }
+#ticker.light .panel::before { opacity: 1; }
+.hdr, .row { transition: color .45s ease, background-color .45s ease; }
+#ticker.light .hdr { color: #1b1f24; background: rgba(0,0,0,.05); }
+#ticker.light .row { color: #14181d; }
+#ticker.light .row:nth-child(even) { background: rgba(0,0,0,.045); }
+/* yellow flag (first seconds): gold panels + gold plate, gaps visible, position arrows */
+#ticker.yel .panel::before { opacity: 1; background: linear-gradient(180deg, #fad23f 0%, #efb41c 55%, #dc9a0c 100%); }
+#ticker.yel .hdr { color: #1a1306; background: rgba(0,0,0,.05); }
+#ticker.yel .row { color: #17110a; }
+#ticker.yel .row:nth-child(even) { background: rgba(0,0,0,.05); }
+#plate.yellow.bright #plate-top { background: linear-gradient(180deg, #fcd95c 0%, #f2bb2c 16%, #e1a114 55%, #c98a08 100%);
+                                  color: #17110a; text-shadow: 0 1px 0 rgba(255,255,255,.35); }
+/* green flag (first seconds): green panels + green plate */
+#ticker.grn .panel::before { opacity: 1; background: linear-gradient(180deg, #86dc74 0%, #52b447 55%, #3c9a34 100%); }
+#ticker.grn .hdr { color: #0b210a; background: rgba(0,0,0,.05); }
+#ticker.grn .row { color: #0c1f0b; }
+#ticker.grn .row:nth-child(even) { background: rgba(0,0,0,.05); }
+#plate.gnow #plate-top { background: linear-gradient(180deg, #93e281 0%, #5fc04f 16%, #40a037 55%, #2f8a2a 100%);
+                         color: #0b230a; text-shadow: 0 1px 0 rgba(255,255,255,.3); }
+/* position-change arrows (replace the position number) */
+.arw { display: inline-block; width: 28px; height: 22px; vertical-align: middle; }
+.arw.up { clip-path: polygon(50% 0, 100% 100%, 0 100%); background: linear-gradient(180deg, #a6f58a 0%, #43c32d 45%, #1f8f14 100%); }
+.arw.dn { clip-path: polygon(0 0, 100% 0, 50% 100%); background: linear-gradient(0deg, #ff9a8a 0%, #ec3b2c 45%, #b3120b 100%); }
+.row { will-change: transform; }
+/* ── "As they run": championship top 5 under the plate (toggled by the Points Table hotkey) ── */
+#pp-wrap { position: absolute; left: 0; top: 138px; }
+#pp-frame { width: max-content; height: auto; display: block; opacity: 0; visibility: hidden; transform: translateY(-14px);
+            transition: opacity .4s ease, transform .4s cubic-bezier(.2,.8,.2,1), visibility 0s linear .4s; }
+#pp-wrap.show #pp-frame { opacity: 1; visibility: visible; transform: none;
+            transition: opacity .4s ease, transform .4s cubic-bezier(.2,.8,.2,1), visibility 0s; }
+#pp-frame .panel { height: auto; flex: none; }
+.pp-hdr { display: block; height: 26px; line-height: 26px; font-size: 18px; padding: 0 12px 0 10px; text-transform: uppercase; white-space: nowrap; }
+.pr { height: 28px; display: grid; grid-template-columns: 22px 52px auto; column-gap: 8px; align-items: center; padding: 0 12px 0 8px;
+      color: #f1f5f9; font-size: 21px; letter-spacing: .4px; position: relative; }
+.pr:nth-child(even) { background: rgba(255,255,255,.028); }
+.pr .r-pos { text-align: right; padding-right: 0; }
+.pr-gap { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 64px; }
+.pr-cut { height: 18px; line-height: 18px; text-align: center; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; overflow: hidden;
+          background: var(--cc, #e8232a); color: var(--ct, #fff); text-shadow: 0 1px 1px rgba(0,0,0,.55); }
+.pr-gap.ld { font-size: 16px; letter-spacing: .8px; text-transform: uppercase; }
+</style>
+</head>
+<body>
+<div id="scale-root">
+  <div id="ticker">
+    <div class="frame" id="frame-a">
+      <div id="plate">
+        <div id="plate-top"><span class="l" id="l1"></span><span class="l" id="l2"></span></div>
+        <div id="sponsor-zone"><img id="sponsor-a" src="" alt=""><img id="sponsor-b" src="" alt=""><div id="sponsor-ph">SPONSOR</div></div>
+      </div>
+      <div class="panel">
+        <div class="hdr"><span class="h-lead" id="h-lead">LEADERS</span><span class="h-gap" id="h-gap">BEHIND</span></div>
+        <div class="rows" id="rows-0"></div>
+      </div>
+    </div>
+    <div class="frame frame-n" id="frame-1"><div class="panel"><div class="rows" id="rows-1"></div></div></div>
+    <div class="frame frame-n" id="frame-2"><div class="panel"><div class="rows" id="rows-2"></div></div></div>
+  </div>
+  <div id="pp-wrap">
+    <div class="frame" id="pp-frame">
+      <div class="panel">
+        <div class="hdr pp-hdr">As They Run</div>
+        <div id="pp-rows"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Chase (highlighted cars) ───────────────────────────────────────────────
+let _CHASE = new Set();
+const chaseKey = n => String(n == null ? '' : n).trim().replace(/"/g, '');
+function _chasePass() {
+  document.querySelectorAll('[data-chase-num]').forEach(el =>
+    el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(el.dataset.chaseNum)));
+}
+function _setChase(list) {
+  _CHASE = new Set((Array.isArray(list) ? list : []).map(chaseKey));
+  _chasePass();
+}
+if (window.shl && window.shl.onChaseSet) {
+  window.shl.onChaseSet(_setChase);
+  if (window.shl.getChaseSet) window.shl.getChaseSet().then(_setChase).catch(() => {});
+}
+
+// ── PSF bootstrap ──────────────────────────────────────────────────────────
+const psf           = window.__PSF || {};
+const params        = new URLSearchParams(location.search);
+const INSTALL_DIR   = psf.installDir || params.get('installdir') || '';
+const SCALE         = parseFloat(psf.scale   || params.get('scale')   || '1');
+const OPACITY       = parseFloat(psf.opacity || params.get('opacity') || '1');
+const WS_URL        = psf.wsUrl || `ws://${location.hostname || 'localhost'}:8765`;
+const SERIES_ID     = psf.series || params.get('series') || '';
+let   ROTATION_MS   = (parseInt(psf.sponsorrotationtime || params.get('sponsorrotationtime') || '10')) * 1000;
+let VISIBILITY_MODE = psf.visibilitymode || params.get('visibilitymode') || 'at_track';
+let DNF_DISPLAY     = psf.dnfdisplay || params.get('dnfdisplay') || 'reason';
+let COLUMNS         = (parseInt(psf.columns || params.get('columns') || '2') === 3) ? 3 : 2;   // 2 or 3 columns
+const PAGE_MS       = Math.max(2, parseInt(psf.pagetime || params.get('pagetime') || '6')) * 1000;   // seconds each page of the field stays up
+// Race name shown on the green plate ("DAYTONA 500"). Edit it in the layout editor ("Race Name");
+// if left empty the track name from the sim is used.
+let customName = psf.customname ? decodeURIComponent(psf.customname)
+               : (params.get('customname') ? decodeURIComponent(params.get('customname')) : '');
+let _trackShort = '';
+const TO_GO_FROM = 0.75;       // lap counter switches from "LAP X OF Y" to "N TO GO" after this fraction of the race
+const LAST_NAME_ONLY = true;
+
+function assetPath(rel) {
+  if (psf.assetBase) return psf.assetBase + '/' + rel;
+  if (INSTALL_DIR) {
+    const enc = INSTALL_DIR.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+    return 'file:///' + enc + '/' + rel;
+  }
+  return rel;
+}
+const FOX_BASE = assetPath('images/Fox2016');
+
+// Optional font: drop a font.ttf into images/Fox2016 to replace the fallback font.
+(function injectFonts() {
+  const el = document.createElement('style');
+  el.textContent = `@font-face { font-family:'Fox2016'; src:url('${FOX_BASE}/font.ttf') format('truetype'); font-weight:700; font-style:normal; font-display:swap; }`;
+  document.head.appendChild(el);
+})();
+
+// ── Scale / size (depends on the number of columns) ─────────────────────────
+const WIDTH_BY_COLS = { 2: 1184, 3: 1628 }, HEIGHT = 388;   // 132 ticker + 6 gap + 246 'As they run' column (header + 7 rows)
+const root = document.getElementById('scale-root');
+const frames = [document.getElementById('frame-a'), document.getElementById('frame-1'), document.getElementById('frame-2')];
+const rowsEl = [document.getElementById('rows-0'), document.getElementById('rows-1'), document.getElementById('rows-2')];
+function applySize() {
+  const W = WIDTH_BY_COLS[COLUMNS];
+  root.style.width = W + 'px';
+  root.style.transform = `scale(${SCALE})`;
+  document.body.style.width  = Math.round(W * SCALE) + 'px';
+  document.body.style.height = Math.round(HEIGHT * SCALE) + 'px';
+}
+applySize();
+
+// ── Visibility ───────────────────────────────────────────────────────────
+let _preview = false;
+function checkVisibility(d) {
+  if (_preview) return true;
+  switch (VISIBILITY_MODE) {
+    case 'always': return true;
+    case 'in_car': return !!(d.atTrack && d.player?.inCar);
+    default:       return !!d.atTrack;
+  }
+}
+const tickerEl = document.getElementById('ticker');
+function setVisible(v) {
+  root.style.visibility = v ? 'visible' : 'hidden';
+  tickerEl.style.opacity = v ? OPACITY : '0';
+  const ppw = document.getElementById('pp-wrap'); if (ppw) ppw.style.opacity = v ? OPACITY : '0';
+}
+
+// ── Sponsor (bottom of the plate) ───────────────────────────────────────────
+// Put the sponsor images in images/Fox2016/sponsors/ : sponsor.png (single image) and/or sponsor01.png … sponsor20.png
+// (also accepted: sponsor_01.png …). With several images they rotate. Fallback: the same names directly in images/Fox2016/.
+// Each image fills the whole sponsor area of the plate: 277 x 52 px (use 1108 x 208 px, see sponsor_template.png)
+let _sponsors = [], _sIdx = 0, _sFront = 'a', _sponsorTimer = null;
+async function probeSponsors(folder) {
+  const names = ['sponsor.png'];
+  for (let i = 1; i <= 20; i++) {
+    const n2 = String(i).padStart(2, '0');
+    names.push(`sponsor${n2}.png`, `sponsor_${n2}.png`);
+    if (i < 10) names.push(`sponsor${i}.png`, `sponsor_${i}.png`);
+  }
+  const found = await Promise.all(names.map(n => new Promise(res => {
+    const img = new Image(), src = `${folder}/${n}`;
+    img.onload = () => res(src); img.onerror = () => res(null); img.src = src;
+  })));
+  return found.filter(Boolean);
+}
+async function loadSponsors() {
+  let list = await probeSponsors(`${FOX_BASE}/sponsors`);
+  if (!list.length) list = await probeSponsors(FOX_BASE);
+  _sponsors = list;
+  if (!_sponsors.length) return;
+  document.getElementById('sponsor-ph').classList.add('hide');
+  const a = document.getElementById('sponsor-a');
+  a.src = _sponsors[0]; a.classList.add('on');
+  if (_sponsors.length > 1) startSponsorTimer();
+}
+function startSponsorTimer() {
+  if (_sponsorTimer) clearInterval(_sponsorTimer);
+  _sponsorTimer = setInterval(nextSponsor, ROTATION_MS);
+}
+function nextSponsor() {
+  _sIdx = (_sIdx + 1) % _sponsors.length;
+  const front = document.getElementById('sponsor-' + _sFront);
+  const backId = _sFront === 'a' ? 'b' : 'a';
+  const back = document.getElementById('sponsor-' + backId);
+  back.onload = () => { back.classList.add('on'); front.classList.remove('on'); _sFront = backId; back.onload = null; };
+  back.src = _sponsors[_sIdx];
+}
+
+// ── Car numbers (series/<id>/numbers/<num>.png), probed once and cached ─────
+let _driverColors = {};
+const _numInfo = {};
+const FB_DEFAULT_BG = '#3b3f47';
+const _ccCtx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+const _lumCache = {};
+function bgLuma(c) {
+  if (!c || c === 'transparent') return -1;
+  if (_lumCache[c] !== undefined) return _lumCache[c];
+  let v = -1;
+  try {
+    _ccCtx.clearRect(0, 0, 1, 1); _ccCtx.fillStyle = '#000'; _ccCtx.fillStyle = c; _ccCtx.fillRect(0, 0, 1, 1);
+    const d = _ccCtx.getImageData(0, 0, 1, 1).data;
+    if (d[3] >= 32) v = (0.299 * d[0] + 0.587 * d[1] + 0.114 * d[2]) / 255;
+  } catch (_) {}
+  return (_lumCache[c] = v);
+}
+function sampleCorners(img) {
+  try {
+    const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+    const w = c.width, h = c.height, i = 3;
+    const px = [g.getImageData(i, i, 1, 1).data, g.getImageData(w - i - 1, i, 1, 1).data,
+                g.getImageData(i, h - i - 1, 1, 1).data, g.getImageData(w - i - 1, h - i - 1, 1, 1).data];
+    const op = px.filter(p => p[3] >= 32);
+    if (op.length < 3) return null;
+    const a = op.reduce((t, p) => [t[0] + p[0], t[1] + p[1], t[2] + p[2]], [0, 0, 0]).map(v => Math.round(v / op.length));
+    return `rgb(${a[0]},${a[1]},${a[2]})`;
+  } catch (_) { return null; }
+}
+// crop the empty margin of the number PNG so the digits fill the plate
+function trimNumber(img, bgCss) {
+  try {
+    const w = img.naturalWidth, h = img.naturalHeight; if (!w || !h) return null;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+    const data = g.getImageData(0, 0, w, h).data;
+    let bg = null;
+    if (bgCss) { const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(bgCss); if (m) bg = [+m[1], +m[2], +m[3]]; }
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (data[i + 3] < 40) continue;
+      if (bg && Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1]) + Math.abs(data[i + 2] - bg[2]) < 60) continue;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+    if (x1 < x0 || y1 < y0) return null;
+    const tw = x1 - x0 + 1, th = y1 - y0 + 1;
+    if (tw >= w - 1 && th >= h - 1) return null;
+    const o = document.createElement('canvas'); o.width = tw; o.height = th;
+    o.getContext('2d').drawImage(c, x0, y0, tw, th, 0, 0, tw, th);
+    return o.toDataURL('image/png');
+  } catch (_) { return null; }
+}
+function numColor(num) { const i = _numInfo[num]; return _driverColors[num] || (i && i.color) || FB_DEFAULT_BG; }
+function loadNumber(num) {
+  if (_numInfo[num]) return;
+  const src = SERIES_ID ? assetPath(`series/${SERIES_ID}/numbers/${encodeURIComponent(num)}.png`) : '';
+  if (!src) { _numInfo[num] = { state: 'fail' }; return; }
+  const n = _numInfo[num] = { state: 'loading', src };
+  const img = new Image();
+  img.onload = () => {
+    n.color = sampleCorners(img);
+    const t = trimNumber(img, n.color); if (t) n.src = t;
+    n.state = 'ok'; patchNumber(num);
+  };
+  img.onerror = () => { n.state = 'fail'; patchNumber(num); };
+  img.src = src;
+}
+function numInnerHTML(num) {
+  const i = _numInfo[num], bg = numColor(num);
+  const layer = `<span class="np-c" style="background:${esc(bg)}"></span>`;
+  if (i && i.state === 'ok') return layer + `<img src="${i.src}" alt="${esc(num)}">`;
+  const fg = bgLuma(bg) > 0.6 ? '#111' : '#fff';
+  const hide = (i && i.state === 'fail') ? '' : 'visibility:hidden;';
+  return layer + `<span class="np-t" style="${hide}color:${fg}">${esc(num)}</span>`;
+}
+function numberHTML(num) { loadNumber(num); return `<div class="np" data-num="${esc(num)}">${numInnerHTML(num)}</div>`; }
+function patchNumber(num) { document.querySelectorAll('.np').forEach(w => { if (w.dataset.num === num) w.innerHTML = numInnerHTML(num); }); }
+function resetNumberCache() { Object.keys(_numInfo).forEach(k => { if (_numInfo[k].state !== 'ok') delete _numInfo[k]; }); }
+
+// ── Finish detection (same logic as the other Fox tickers) ──────────────────
+let _finishLatched = false;
+function _leaderTrkPct(d) {
+  const lead = (d.liveStandings || d.standings || [])[0];
+  if (!lead) return null;
+  if (d.playerCarIdx === lead.carIdx && d.player && typeof d.player.trkPct === 'number') return d.player.trkPct;
+  if (d.carTrkPct && typeof d.carTrkPct[lead.carIdx] === 'number') return d.carTrkPct[lead.carIdx];
+  return null;
+}
+function updateFinishLatch(d) {
+  const state = (d.sessionState || '').toLowerCase();
+  if (state !== 'checkered' && state !== 'cool down') { _finishLatched = false; return; }
+  if (_finishLatched) return;
+  if (state === 'cool down' || (d.session || '').toLowerCase() !== 'race') { _finishLatched = true; return; }
+  const lt = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  const lead = (d.liveStandings || d.standings || [])[0];
+  const cl = lead && d.carLaps ? d.carLaps[lead.carIdx] : undefined;
+  const laps = Math.max(d.lapsComplete || 0, cl || 0, (lead && lead.lap) || 0);
+  if (lt > 0 && laps < lt) return;
+  if (d.lapsRemaining !== undefined && lt > 0 && d.lapsRemaining > 0) return;
+  const pct = _leaderTrkPct(d);
+  if (pct === null) { _finishLatched = true; return; }
+  if (pct < 0.5) _finishLatched = true;
+}
+function raceFinished(d) {
+  const state = (d.sessionState || '').toLowerCase();
+  if (state === 'cool down') return true;
+  if (state !== 'checkered') return false;
+  if ((d.session || '').toLowerCase() !== 'race') return true;
+  return _finishLatched;
+}
+
+// ── Plate text ──────────────────────────────────────────────────────────────
+const l1 = document.getElementById('l1'), l2 = document.getElementById('l2');
+const plateEl = document.getElementById('plate');
+function lapLabel(d) {
+  const session = (d.session || '').toLowerCase();
+  const state   = (d.sessionState || '').toLowerCase();
+  const lc = d.lapsComplete || 0;
+  const lt = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  if (session === 'race') {
+    if (raceFinished(d)) return 'FINAL';
+    if (state === 'get in car' || state === 'warmup' || state === 'parade laps') return 'PRE-RACE';
+    if (lt > 0) {
+      const togo = lt - lc;
+      if (togo <= 1) return 'FINAL LAP';
+      if (lc > 0 && lc >= Math.floor(lt * TO_GO_FROM)) return `${Math.max(togo, 1)} TO GO`;
+      return `LAP ${Math.min(lc + 1, lt)} OF ${lt}`;
+    }
+    return `LAP ${lc + 1}`;
+  }
+  if (session === 'qualifying') return 'QUALIFYING';
+  const t = d.timeRemaining || 0;
+  if (t > 0) return `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+  return 'PRACTICE';
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function lapHTML(t) {
+  return esc(t).replace(/^(LAP \d+) OF (\d+)$/, '$1 <span class="sm">OF</span> $2')
+               .replace(/^(\d+) TO GO$/, '$1 <span class="sm">TO GO</span>');
+}
+function fitLine(el, maxW, start) {
+  let size = start || 27; el.style.fontSize = size + 'px';
+  while (el.scrollWidth > maxW && size > 12) { size -= 1; el.style.fontSize = size + 'px'; }
+}
+let _t1 = null, _t2 = null, _pcls = '', _s2 = 27;
+function setPlate(line1, line2, cls, s2) {
+  s2 = s2 || 27;
+  if (line1 !== _t1) { _t1 = line1; l1.textContent = line1; fitLine(l1, 255); }
+  if (line2 !== _t2 || s2 !== _s2) { _t2 = line2; _s2 = s2; l2.innerHTML = lapHTML(line2); l2.style.lineHeight = s2 < 27 ? '24px' : ''; fitLine(l2, 255, s2); }
+  if (cls !== _pcls) { _pcls = cls; plateEl.className = cls; }
+}
+
+// ── White flag: light panels with the last cars of the field for a few seconds, then the normal dark look ──
+const WHITE_LIGHT_MS = 8000;
+let _whiteSince = 0, _whiteTimer = null, _finalLap = false, _light = false, _lightShown = false, _lightBusy = false;
+function whiteFlagActive(d) {
+  const session = (d.session || '').toLowerCase();
+  if (session !== 'race' || raceFinished(d)) return false;
+  const state = (d.sessionState || '').toLowerCase(), flag = (d.sessionFlag || '').toLowerCase();
+  if (state === 'get in car' || state === 'warmup' || state === 'parade laps') return false;
+  if (flag === 'yellow' || flag === 'red') return false;
+  if (flag === 'white') return true;
+  const lc = d.lapsComplete || 0, lt = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  return lt > 0 && lc > 0 && (lt - lc) <= 1;
+}
+function updateWhiteState(d) {
+  const on = whiteFlagActive(d);
+  if (on && !_whiteSince) {
+    _whiteSince = Date.now();
+    clearTimeout(_whiteTimer);
+    _whiteTimer = setTimeout(() => { if (_lastData) render(_lastData); }, WHITE_LIGHT_MS + 80);
+  } else if (!on && _whiteSince) { _whiteSince = 0; clearTimeout(_whiteTimer); }
+  _finalLap = on;
+  _light = on && (Date.now() - _whiteSince) < WHITE_LIGHT_MS;
+  tickerEl.classList.toggle('light', _light);
+}
+// ── Yellow / green flag: coloured panels for a few seconds ────────────────
+let _flagKind = '', _flagSince = 0, _flagTimer = null, _prevFlag = '', _wasPre = false, _baseline = null, _arrowsOn = false;
+function captureBaseline(d) {
+  _baseline = {};
+  getStandings(d).forEach((e, i) => { _baseline[e.carIdx] = i; });
+}
+function startFlagPhase(kind) {
+  _flagKind = kind; _flagSince = Date.now();
+  clearTimeout(_flagTimer);
+  _flagTimer = setTimeout(() => { if (_lastData) render(_lastData); }, WHITE_LIGHT_MS + 80);
+}
+function updateFlagTheme(d) {
+  const session = (d.session || '').toLowerCase(), state = (d.sessionState || '').toLowerCase();
+  const flag = (d.sessionFlag || '').toLowerCase();
+  const isRace = session === 'race';
+  const preRace = isRace && (state === 'get in car' || state === 'warmup' || state === 'parade laps');
+  const active = isRace && !preRace && !raceFinished(d) && !_finalLap;
+  if (isRace && !preRace && !_baseline) captureBaseline(d);
+  if (active) {
+    if (_wasPre) { captureBaseline(d); startFlagPhase('green'); }                       // race start
+    else if (flag !== _prevFlag) {
+      if (flag === 'yellow') startFlagPhase('yellow');
+      else if (flag === 'green' && (_prevFlag === 'yellow' || _prevFlag === 'red')) { captureBaseline(d); startFlagPhase('green'); }  // restart
+      else if (_flagKind) _flagKind = '';
+    }
+  } else if (_flagKind) _flagKind = '';
+  _wasPre = preRace; _prevFlag = flag;
+  if (_flagKind && Date.now() - _flagSince >= WHITE_LIGHT_MS) _flagKind = '';
+  _arrowsOn = _flagKind === 'yellow';
+  tickerEl.classList.toggle('yel', _flagKind === 'yellow');
+  tickerEl.classList.toggle('grn', _flagKind === 'green');
+}
+// Position swaps: the cars involved get an arrow for a few seconds
+const ARROW_MS = 1500, SLIDE_MS = 650;
+let _lastPos = null, _swap = {};
+function trackSwaps(st, d) {
+  const session = (d.session || '').toLowerCase(), state = (d.sessionState || '').toLowerCase();
+  const off = session === 'qualifying' || state === 'get in car' || state === 'warmup' || state === 'parade laps' || raceFinished(d);
+  const cur = {};
+  st.forEach((e, i) => { cur[e.carIdx] = i; });
+  if (off) { _swap = {}; _lastPos = cur; return; }
+  if (_lastPos) {
+    const until = Date.now() + ARROW_MS;
+    st.forEach((e, i) => {
+      const p = _lastPos[e.carIdx];
+      if (p !== undefined && p !== i) _swap[e.carIdx] = { dir: i < p ? 'up' : 'dn', until };
+    });
+  }
+  _lastPos = cur;
+}
+function arrowOf(s, i) {
+  if (_arrowsOn && _baseline) {            // yellow flag: gained / lost since the last restart
+    const b = _baseline[s.carIdx];
+    return (b === undefined || b === i) ? '' : (i < b ? 'up' : 'dn');
+  }
+  const w = _swap[s.carIdx];
+  return (w && w.until > Date.now()) ? w.dir : '';
+}
+function syncLightPhase() {
+  if (_light === _lightShown || _lightBusy) return;
+  _lightBusy = true;
+  const hosts = rowsEl.slice(1, COLUMNS);
+  hosts.forEach(h => h.classList.add('fade'));
+  setTimeout(() => {
+    _lightShown = _light; _pageIdx = 0; _sigs = ['', '', ''];
+    paint(false, true);
+    hosts.forEach(h => h.classList.remove('fade'));
+    _lightBusy = false;
+  }, 270);
+}
+
+// ── Names / gaps ────────────────────────────────────────────────────────────
+const SUFFIX = /^(JR\.?|SR\.?|II|III|IV)$/;
+const ROOKIE_TAIL = /(?:\s*[\(\[]\s*R\s*[\)\]]|\s*[-\u2013]\s*R\*?|\s+R\*?|\s*\*)\s*$/i;
+function splitRookie(raw) {
+  let s = String(raw == null ? '' : raw).trim(), rookie = false;
+  for (let k = 0; k < 2; k++) {
+    const m = s.match(ROOKIE_TAIL);
+    if (!m || m.index === 0) break;
+    s = s.slice(0, m.index).trim(); rookie = true;
+  }
+  return { name: s, rookie };
+}
+const isMarkerOnly = t => !t || /^[\(\[]?[-\u2013]?\s*R\*?[\)\]]?$/i.test(t) || /^\d+\s*[-\u2013]?\s*R?$/i.test(t);
+const NAME_PARTICLES = new Set(['VAN','VON','DE','DER','DEN','DI','DA','DEL','DELLA','LA','LE','ST.','ST']);
+function lastNameOf(full) {
+  const t = String(full || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+  if (t.length <= 1) return t[0] || '';
+  const suffix = [];
+  while (t.length > 1 && SUFFIX.test(t[t.length - 1])) suffix.unshift(t.pop());
+  let i = t.length - 1;
+  while (i > 0 && NAME_PARTICLES.has(t[i - 1])) i--;
+  return t.slice(i).concat(suffix).join(' ');
+}
+function entryName(s, num) {
+  const r = splitRookie(s.name);
+  let base = r.name;
+  if (isMarkerOnly(base) && s.fullName) { const f = splitRookie(s.fullName); if (f.name && !isMarkerOnly(f.name)) base = f.name; }
+  if (isMarkerOnly(base)) base = '';
+  const name = LAST_NAME_ONLY ? lastNameOf(base) : String(base).toUpperCase();
+  return name || String(num || '?').toUpperCase();
+}
+let _session = '';
+function fmtGap(entry, idx) {
+  const status = (entry.status || '').toLowerCase();
+  if (status && status !== 'running' && status !== 'pitting') return DNF_DISPLAY === 'out' ? 'OUT' : status.toUpperCase().slice(0, 10);
+  if (_session === 'practice' || _session === 'qualifying' || _session === 'testing') {
+    const t = entry.time || 0;
+    return t > 0 ? t.toFixed(3) : '';
+  }
+  if (idx === 0) return '';
+  const ld = entry.lapsDown || 0;
+  if (ld > 0) return `-${ld} ${ld === 1 ? 'LAP' : 'LAPS'}`;
+  const t = entry.time || 0;
+  return t > 0 ? `-${t.toFixed(2)}` : '';
+}
+
+// ── Running order → columns ─────────────────────────────────────────────────
+// Column 1 (with the plate) always shows the top 3. The other columns (1 or 2, depending on the
+// "Columns" setting) show 4 cars each and page through the rest of the field.
+let _standings = [], _pageIdx = 0, _sigs = ['', '', ''], _pagesCount = 1, _pageTimer = null;
+function rowHTML(s, i) {
+  const num = (s.number || '??').toString().trim();
+  const ar = arrowOf(s, i);
+  return `<div class="row" data-ci="${s.carIdx}"><span class="r-pos">${ar ? `<i class="arw ${ar}"></i>` : i + 1}</span>${numberHTML(num)}` +
+         `<span class="r-name" data-chase-num="${esc(chaseKey(num))}">${esc(entryName(s, num))}</span>` +
+         `<span class="r-gap">${esc(fmtGap(s, i))}</span></div>`;
+}
+function groupsFor(st) {
+  const lead = st.slice(0, 3).map((s, i) => [s, i]);
+  const rest = st.slice(3);
+  const extra = COLUMNS - 1, per = 4 * extra;
+  if (_lightShown && rest.length) {
+    // white flag, first seconds: the extra columns show the LAST cars of the field
+    const start = st.length - Math.min(per, rest.length);
+    const tail = st.slice(start), groups = [lead];
+    for (let k = 0; k < extra; k++) groups.push(tail.slice(k * 4, k * 4 + 4).map((s, j) => [s, start + k * 4 + j]));
+    _pagesCount = 1;
+    return groups;
+  }
+  if (_finalLap || _flagKind) _pageIdx = 0;   // final lap / flag phase: stay on the top 7, no paging
+  _pagesCount = Math.max(1, Math.ceil(rest.length / per));
+  if (_pageIdx >= _pagesCount) _pageIdx = 0;
+  const groups = [lead];
+  for (let k = 0; k < extra; k++) {
+    const from = Math.min(_pageIdx * per, Math.max(0, rest.length - per)) + k * 4;   // last page is pulled back so the modules stay full
+    groups.push(rest.slice(from, from + 4).map((s, j) => [s, 3 + from + j]));
+  }
+  return groups;
+}
+function rowTops(host) {
+  const m = {};
+  host.querySelectorAll('.row').forEach(r => { m[r.dataset.ci] = r.getBoundingClientRect().top; });
+  return m;
+}
+function slideRows(host, old) {
+  let moved = false;
+  const rows = host.querySelectorAll('.row');
+  rows.forEach(r => {
+    const t = old[r.dataset.ci];
+    if (t === undefined) return;
+    const dy = (t - r.getBoundingClientRect().top) / (SCALE || 1);
+    if (Math.abs(dy) < 1) return;
+    r.style.transition = 'none'; r.style.transform = `translateY(${dy}px)`; moved = true;
+  });
+  if (!moved) return;
+  void host.offsetHeight;   // commit the start position
+  rows.forEach(r => {
+    if (!r.style.transform) return;
+    r.style.transition = `transform ${SLIDE_MS}ms cubic-bezier(.4,0,.2,1), color .45s ease, background-color .45s ease`;
+    r.style.transform = '';
+  });
+}
+function paint(force, noAnim) {
+  const groups = groupsFor(_standings);
+  frames[1].style.display = '';
+  for (let g = 0; g < 3; g++) {
+    if (g >= COLUMNS) { frames[g].classList.add('empty'); _sigs[g] = ''; continue; }
+    const items = groups[g] || [];
+    if (g > 0) frames[g].classList.toggle('empty', items.length === 0);
+    const sig = items.map(([s, i]) => `${s.carIdx}:${s.number}:${i}:${arrowOf(s, i)}`).join(',') + '|' + DNF_DISPLAY;
+    const host = rowsEl[g];
+    if (force || sig !== _sigs[g]) {
+      const oldTops = (noAnim || force) ? null : rowTops(host);
+      _sigs[g] = sig;
+      host.innerHTML = items.map(([s, i]) => rowHTML(s, i)).join('');
+      _chasePass();
+      if (oldTops) slideRows(host, oldTops);
+    } else {
+      const els = host.querySelectorAll('.r-gap');
+      items.forEach(([s, i], k) => { const t = fmtGap(s, i); if (els[k] && els[k].textContent !== t) els[k].textContent = t; });
+    }
+  }
+}
+function flipPage() {
+  if (_pagesCount <= 1 || _light || _lightShown || _lightBusy || _finalLap || _flagKind) return;
+  const hosts = rowsEl.slice(1, COLUMNS);
+  hosts.forEach(h => h.classList.add('fade'));
+  setTimeout(() => {
+    _pageIdx = (_pageIdx + 1) % _pagesCount;
+    paint(false, true);
+    hosts.forEach(h => h.classList.remove('fade'));
+  }, 270);
+}
+function startPageTimer() {
+  if (_pageTimer) clearInterval(_pageTimer);
+  _pageTimer = setInterval(flipPage, PAGE_MS);
+}
+
+function getStandings(d) {
+  const state = (d.sessionState || '').toLowerCase();
+  const flag  = (d.sessionFlag  || '').toLowerCase();
+  const liveEnabled = d.liveStandingsEnabled !== false;
+  const live = d.liveStandings || d.standings || [];
+  if (state === 'cool down' || flag === 'yellow') return d.standings || [];
+  if (state === 'checkered' && raceFinished(d) && liveEnabled && Array.isArray(d.computedStandings) && d.computedStandings.length)
+    return d.computedStandings;
+  return liveEnabled && live.length ? live : (d.standings || []);
+}
+
+// ── Main render ─────────────────────────────────────────────────────────────
+let _lastData = null, _lastSessionNum = null, _lastSessionCookie = null;
+function resetState() {
+  _standings = []; _finishLatched = false; _pageIdx = 0; _sigs = ['', '', ''];
+  _t1 = _t2 = null; _pcls = '';
+  _whiteSince = 0; clearTimeout(_whiteTimer); _finalLap = _light = _lightShown = false; tickerEl.classList.remove('light', 'yel', 'grn');
+  _flagKind = ''; _prevFlag = ''; _wasPre = false; _baseline = null; _arrowsOn = false; _lastPos = null; _swap = {}; clearTimeout(_flagTimer);
+  rowsEl.forEach(h => h.innerHTML = '');
+}
+function updateHeader(d) {
+  updateWhiteState(d);
+  updateFlagTheme(d);
+  const session = (d.session || '').toLowerCase();
+  const state   = (d.sessionState || '').toLowerCase();
+  const flag    = (d.sessionFlag || '').toLowerCase();
+  const isRace  = session === 'race';
+  const preRace = isRace && (state === 'get in car' || state === 'warmup' || state === 'parade laps');
+
+  const title = (customName || _trackShort || 'RACE').trim().toUpperCase();
+  let line2 = lapLabel(d), cls = '';
+  if (flag === 'red')         { cls = 'red';    if (isRace && !raceFinished(d)) line2 = 'RED FLAG'; }
+  else if (flag === 'yellow') { cls = 'yellow'; if (isRace && !raceFinished(d) && !preRace) line2 = /TO GO|LAP|FINAL/.test(line2) ? line2 : 'CAUTION'; }
+  if (_flagKind === 'yellow' && cls === 'yellow') cls = 'yellow bright';
+  else if (_flagKind === 'green' && cls === '') cls = 'gnow';
+  let line1 = title, s2 = 27;
+  if (isRace && raceFinished(d)) { line1 = 'RESULTS'; line2 = title; cls = 'results'; s2 = 20; }
+  else if (_finalLap)            { line1 = 'FINAL LAP'; line2 = title; cls = 'white'; s2 = 20; }
+  setPlate(line1, line2, cls, s2);
+
+  const hideGaps = (flag === 'yellow' && _flagKind !== 'yellow') || flag === 'red' || preRace;
+  tickerEl.classList.toggle('no-gaps', hideGaps);
+  const label = (session === 'practice' || session === 'qualifying' || session === 'testing') ? 'BEST LAP' : 'BEHIND';
+  const hg = document.getElementById('h-gap');
+  if (hg.textContent !== label) hg.textContent = label;
+}
+function render(d) {
+  _lastData = d;
+  updateFinishLatch(d);
+  ppFeed(d);
+  if (!checkVisibility(d)) { setVisible(false); return; }
+  setVisible(true);
+  _session = (d.session || '').toLowerCase();
+  if (d.driverColors) _driverColors = d.driverColors;
+
+  const hadPrior = _lastSessionNum !== null && _lastSessionCookie !== null;
+  if (hadPrior && (d.sessionNum !== _lastSessionNum || d.sessionCookie !== _lastSessionCookie)) { resetState(); resetNumberCache(); }
+  _lastSessionNum = d.sessionNum; _lastSessionCookie = d.sessionCookie;
+
+  _trackShort = d.trackNameShort || d.track || '';
+  updateHeader(d);
+
+  const standings = getStandings(d);
+  if (!standings.length) return;
+  _standings = standings;
+  trackSwaps(standings, d);
+  syncLightPhase();
+  if (!_lightBusy) paint();
+}
+
+// ── "As they run": championship top 5 (toggled by the Points Table hotkey) ───
+// Top 5 of the championship with this race's points projected from the live order (same maths as the
+// Championship widget). Only the car-number plates are shown; the leader shows "LEADER", the rest the
+// points gap to him. It drops out as a column under the green plate.
+const PP_ROWS = 7;
+let CFG = null, _ppOn = false, _ppTimers = [], _ppKey = '', _ppData = null;
+async function loadCfg() {
+  try {
+    if (window.shl && window.shl.getChampionship) {
+      const r = await window.shl.getChampionship(SERIES_ID);
+      CFG = (r && r.data) || null;
+      _ppKey = '';
+      if (_ppOn && _ppData) ppRender(_ppData);
+    }
+  } catch (e) {}
+}
+if (window.shl && window.shl.onChampionshipUpdated) window.shl.onChampionshipUpdated(loadCfg);
+loadCfg();
+
+// If this race's points were already added to the totals (and its session is still on screen),
+// take them back out so the live projection isn't counted twice.
+function ppEffectiveCfg(cfg, key) {
+  const la = cfg && cfg.lastApplied;
+  if (!la || !la.live || la.key !== key || !Array.isArray(la.deltas) || !la.deltas.length) return cfg;
+  const sub = new Map(la.deltas.map(x => [String(x.number).trim(), Number(x.pts) || 0]));
+  return { ...cfg, drivers: (cfg.drivers || []).map(x => {
+    const k = String(x.number).trim();
+    return sub.has(k) ? { ...x, points: (Number(x.points) || 0) - sub.get(k) } : x;
+  }) };
+}
+
+// Laps led (for the led-a-lap / most-laps-led bonuses)
+const normNum = n => String(n == null ? '' : n).trim();
+const LED_KEY = 'psf_fox2016_led_v1';
+let LED = { cookie: null, track: null, lastLap: 0, counts: {} };
+try { const o = JSON.parse(localStorage.getItem(LED_KEY)); if (o && o.counts) LED = o; } catch (e) {}
+function saveLed() { try { localStorage.setItem(LED_KEY, JSON.stringify(LED)); } catch (e) {} }
+function trackLed(d) {
+  const session = (d.session || '').toLowerCase();
+  const state   = (d.sessionState || '').toLowerCase();
+  const off     = d.standings || [];
+  if (session !== 'race' || !off.length) return;
+  const cookie = d.sessionCookie != null ? String(d.sessionCookie) : null;
+  const track  = d.track || null;
+  const lapsOf = s => { if (!s) return 0; const cl = (d.carLaps && s.carIdx !== undefined) ? Number(d.carLaps[s.carIdx]) : NaN;
+                        return Math.max(Number.isFinite(cl) ? cl : 0, Number(s.lap) || 0); };
+  const lead   = ((d.liveStandings && d.liveStandings.length) ? d.liveStandings : off)[0] || off[0];
+  const lap    = Math.max(Number(d.lapsComplete) || 0, lapsOf(lead), lapsOf(off[0]));
+  if (cookie !== LED.cookie || track !== LED.track || lap < LED.lastLap) {
+    LED = { cookie, track, lastLap: 0, counts: {} };
+    saveLed();
+  }
+  if (state !== 'racing' && state !== 'checkered') return;
+  if (lap > LED.lastLap) {
+    if (LED.lastLap === 0 && lap > 1) {
+      LED.lastLap = lap;                         // joined mid-race: earlier laps unknown
+    } else {
+      const k = normNum(lead.number);
+      if (k) LED.counts[k] = (LED.counts[k] || 0) + (lap - LED.lastLap);
+      LED.lastLap = lap;
+    }
+    saveLed();
+  }
+}
+function getLedCounts(d) {
+  const off = d.standings || [];
+  if (off.some(x => x.lapsLead !== undefined || x.leadLaps !== undefined)) {
+    const m = {};
+    off.forEach(x => { m[normNum(x.number)] = Number(x.lapsLead ?? x.leadLaps) || 0; });
+    return m;
+  }
+  return LED.counts;
+}
+// Stage points earned so far this race, per car number (bridge stageWinners scored with the stage table)
+function stagePtsMap(d, cfg) {
+  const t = (cfg && Array.isArray(cfg.stagePointsTable)) ? cfg.stagePointsTable : [10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+  const m = {};
+  if (!d || String(d.session || '').toLowerCase() !== 'race' || !Array.isArray(d.stageWinners)) return m;
+  const srcs = [d.liveStandings, d.standings, d.drivers], done = new Set();
+  d.stageWinners.forEach(w => {
+    if (!w || !(w.pos >= 1)) return;
+    const key = w.stage + ':' + w.pos; if (done.has(key)) return; done.add(key);
+    let e = null;
+    for (const s of srcs) { if (Array.isArray(s)) { e = s.find(x => x && x.carIdx === w.carIdx); if (e) break; } }
+    if (!e) return;
+    const k = normNum(e.number);
+    m[k] = (m[k] || 0) + (Number(t[w.pos - 1]) || 0);
+  });
+  return m;
+}
+
+function ppRows(d) {
+  const cfg0 = d && d._championship ? d._championship : CFG;
+  const cfg  = cfg0 ? ppEffectiveCfg(cfg0, String(d.sessionCookie) + '|' + String(d.track)) : null;
+  if (!cfg || !Array.isArray(cfg.drivers) || !cfg.drivers.length) return [];
+  const session = (d.session || '').toLowerCase(), state = (d.sessionState || '').toLowerCase();
+  const project = session === 'race' && (state === 'racing' || state === 'checkered' || state === 'cool down');
+  const table = Array.isArray(cfg.pointsTable) ? cfg.pointsTable : [];
+  const led = getLedCounts(d) || {};
+  const bLed = Number(cfg.bonusLedLap) || 0, bMost = Number(cfg.bonusMostLed) || 0;
+  let maxLed = 0; Object.keys(led).forEach(k => { if (led[k] > maxLed) maxLed = led[k]; });
+  const race = new Map();
+  getStandings(d).forEach((st, i) => { const k = normNum(st.number); if (!race.has(k)) race.set(k, i + 1); });
+  const stageMap = project ? stagePtsMap(d, cfg) : {};
+  const seen = new Set(), rows = [];
+  cfg.drivers.forEach((dr, idx) => {
+    const k = normNum(dr.number); if (seen.has(k)) return; seen.add(k);
+    const base = Number(dr.points) || 0, pos = race.get(k), ledN = led[k] || 0;
+    const add = project ? ((pos ? (Number(table[pos - 1]) || 0) : 0) + (ledN > 0 ? bLed : 0) + (ledN > 0 && ledN === maxLed ? bMost : 0) + (stageMap[k] || 0)) : 0;
+    rows.push({ number: k, base, total: base + add, idx, rpos: pos || 0 });
+  });
+  rows.sort((a, b) => (b.total - a.total) || (b.base - a.base) || (a.idx - b.idx));
+  return PPV.pick(rows, 5);
+}
+
+function ppRender(d) {
+  if (!d) return;
+  const rows = ppRows(d);
+  const key = rows.map(r => r.number + ':' + r.total).join('|') + '|' + PPV.key();
+  if (key === _ppKey) return;
+  _ppKey = key;
+  const host = document.getElementById('pp-rows');
+  const old = {};
+  host.querySelectorAll('.pr').forEach(r => { old[r.dataset.n] = r.getBoundingClientRect().top; });
+  const lead = rows.length ? rows[0].total : 0, fmt = v => Math.round(v * 100) / 100;
+  const cb = PPV.cutBand(rows), esc2 = t => String(t).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  host.innerHTML = rows.map((r, i) =>
+    `<div class="pr" data-n="${esc(r.number)}"><span class="r-pos">${PPV.pos(r, i + 1)}</span>${numberHTML(r.number)}` +
+    `<span class="pr-gap${PPV.isDefault() && r.cpos === 1 ? ' ld' : ''}">${PPV.val(r, r.cpos === 1 ? 'Leader' : '-' + fmt(r.lead - r.total))}</span></div>` + (cb && cb.after === i ? `<div class="pr-cut" style="--cc:${cb.color};--ct:${cb.textColor}">${esc2(cb.text)}</div>` : '')).join('');
+  if (!_ppOn) return;
+  // a driver changes place: glide to the new row
+  let moved = false;
+  host.querySelectorAll('.pr').forEach(r => {
+    const t = old[r.dataset.n]; if (t === undefined) return;
+    const dy = (t - r.getBoundingClientRect().top) / (SCALE || 1);
+    if (Math.abs(dy) < 1) return;
+    r.style.transition = 'none'; r.style.transform = `translateY(${dy}px)`; r.style.zIndex = dy > 0 ? '3' : '2'; moved = true;
+  });
+  if (!moved) return;
+  void host.offsetHeight;
+  host.querySelectorAll('.pr').forEach(r => {
+    if (!r.style.transform) return;
+    r.style.transition = `transform ${SLIDE_MS}ms cubic-bezier(.4,0,.2,1)`; r.style.transform = '';
+  });
+  _ppTimers.push(setTimeout(() => host.querySelectorAll('.pr').forEach(r => { r.style.transition = ''; r.style.zIndex = ''; }), SLIDE_MS + 60));
+}
+
+// Called with every data frame, whether or not the column is currently visible
+function ppFeed(d) {
+  trackLed(d);
+  _ppData = d;
+  if (_ppOn) ppRender(d);
+}
+
+function ppToggle() {
+  const wrap = document.getElementById('pp-wrap');
+  _ppTimers.forEach(clearTimeout); _ppTimers = [];
+  if (!_ppOn) {                       // enter: the column drops out under the plate
+    _ppOn = true; _ppKey = '';
+    ppRender(_ppData || {});
+    void wrap.offsetWidth;
+    wrap.classList.add('show');
+  } else {                            // exit
+    _ppOn = false;
+    wrap.classList.remove('show');
+  }
+}
+window.__togglePoints = ppToggle;
+PPV.onChange(() => { _ppKey = ''; if (_ppOn && _ppData) ppRender(_ppData); });
+if (window.shl && window.shl.onPointsToggle) window.shl.onPointsToggle(ppToggle);
+
+// ── WebSocket ───────────────────────────────────────────────────────────────
+let _ws = null;
+function connect() {
+  _ws = new WebSocket(WS_URL);
+  _ws.onmessage = e => {
+    if (_preview) return;
+    try {
+      const d = JSON.parse(e.data);
+      if (d.reset) { setVisible(false); _lastSessionNum = null; _lastSessionCookie = null; resetState(); return; }
+      render(d);
+    } catch (_) {}
+  };
+  _ws.onclose = () => { if (!_preview) setTimeout(connect, 2000); };
+  _ws.onerror = () => _ws.close();
+}
+
+// ── Layout editor preview ───────────────────────────────────────────────────
+window.addEventListener('message', e => {
+  if (typeof e.data !== 'string') return;
+  try {
+    const m = JSON.parse(e.data);
+    if (Array.isArray(m._chase)) _setChase(m._chase);
+    if (m.reset) return;
+    if (m._pointsToggle) { ppToggle(); return; }
+    if (!_preview) { _preview = true; if (_ws) { _ws.onclose = null; _ws.close(); } }
+    if (m._visibilityMode !== undefined) VISIBILITY_MODE = m._visibilityMode;
+    if (m._dnfDisplay     !== undefined) { DNF_DISPLAY = m._dnfDisplay; _sigs = ['', '', '']; }
+    if (m._columns        !== undefined) {
+      COLUMNS = (parseInt(m._columns) === 3) ? 3 : 2; _pageIdx = 0; _sigs = ['', '', ''];
+      applySize(); if (_lastData) render(_lastData);
+    }
+    if (m._customName     !== undefined) { customName = m._customName; _t1 = null; if (_lastData) render(_lastData); }
+    if (m._sponsorRotationTime !== undefined) {
+      ROTATION_MS = Math.max(2, parseInt(m._sponsorRotationTime) || 10) * 1000;
+      if (_sponsors.length > 1) startSponsorTimer();
+    }
+    if (m.atTrack !== undefined || m.standings !== undefined) render(m);
+    else setVisible(true);
+  } catch (_) {}
+});
+
+// ── Boot ────────────────────────────────────────────────────────────────────
+loadSponsors();
+startPageTimer();
+connect();
+</script>
+</body>
+</html>

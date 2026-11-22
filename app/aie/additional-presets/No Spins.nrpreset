@@ -1,0 +1,8 @@
+{
+  "description": "AI are nearly impossible to spin out, as if driving on rails.\n\nSets:\n  yaw_accel_k1 = 0.5\n  yaw_accel_k2 = 1.0\n\nAll other settings unchanged.",
+  "settings": {
+    "yaw_accel_k1": 0.5,
+    "yaw_accel_k2": 1.0
+  },
+  "auto_keywords": []
+}

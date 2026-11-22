@@ -1,0 +1,7 @@
+{
+  "description": "AI cars will never suffer mechanical failures during the race.\n\nSets:\n  mechanical_failure_chance = 0.0\n\nAll other settings unchanged.",
+  "settings": {
+    "mechanical_failure_chance": 0.0
+  },
+  "auto_keywords": []
+}

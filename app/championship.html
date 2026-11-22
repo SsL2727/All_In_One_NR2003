@@ -1,0 +1,1616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Championship</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: #0b0d10; color: #ccc;
+    font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px;
+    height: 100%; overflow-y: auto;
+  }
+  #wrap { padding: 16px 16px 90px; display: flex; flex-direction: column; gap: 14px; }
+
+  h1 { font-size: 15px; font-weight: 800; letter-spacing: 1.5px; color: #e8c84a; text-transform: uppercase; }
+  .series-line { font-size: 11px; color: #6a7280; margin-top: 3px; }
+  .series-line b { color: #aab; }
+
+  .banner {
+    display: none; padding: 8px 12px; border-radius: 4px; font-size: 11px; line-height: 1.5;
+    background: #2a2410; border: 1px solid #4a3f1a; color: #e8c84a;
+  }
+  .banner.show { display: block; }
+  .banner button { margin-left: 8px; }
+
+  .card { background: #0e1014; border: 1px solid #1e2128; border-radius: 6px; padding: 12px; }
+  .section-title { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #666; margin-bottom: 8px; text-transform: uppercase; }
+  .hint { font-size: 10.5px; color: #596070; line-height: 1.5; margin-top: 6px; }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+  .toolbar .spacer { flex: 1; }
+
+  button {
+    background: #161820; border: 1px solid #252830; border-radius: 3px; color: #aaa;
+    font-size: 11px; font-weight: 600; padding: 5px 10px; cursor: pointer; font-family: inherit;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  button:hover:not(:disabled) { border-color: #3a3f48; color: #ddd; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.primary { background: #1e3a5f; border-color: #3a7bd5; color: #fff; }
+  button.primary:hover:not(:disabled) { background: #26487a; }
+
+  input[type=text] {
+    background: #161820; border: 1px solid #252830; border-radius: 3px; color: #ddd;
+    font-size: 12px; padding: 5px 7px; outline: none; font-family: inherit; width: 100%;
+  }
+  input[type=text]:focus { border-color: #3a7bd5; }
+  input.bad { border-color: #e0594f !important; }
+
+  label.chk { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 11.5px; color: #aaa; }
+  label.chk input { width: 14px; height: 14px; cursor: pointer; }
+
+  /* points-per-position grid */
+  #pts-grid, #stage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 6px; }
+  .pt-cell { display: flex; align-items: center; gap: 5px; }
+  .pt-cell span { width: 24px; font-size: 10.5px; color: #667; text-align: right; flex-shrink: 0; }
+
+  .count-row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #889; }
+  .count-row input { width: 54px; text-align: center; }
+
+  /* drivers table */
+  #drivers-head, .drv-row {
+    display: grid; grid-template-columns: 34px 84px 1fr 104px 56px 28px; gap: 6px; align-items: center;
+  }
+  .po-cell { display: flex; justify-content: center; }
+  .po-cell input { width: 15px; height: 15px; cursor: pointer; accent-color: #e8c84a; }
+  body.po-off .po-cell, body.po-off #drivers-head span:nth-child(5) { opacity: 0.3; }
+  body.po-off .po-cell input { pointer-events: none; }
+  body.mode-manual .top-only { display: none; }
+  #drivers-head { font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #556; padding: 0 0 4px; }
+  #drivers-head span:first-child { text-align: right; padding-right: 4px; }
+  #drivers-head span:nth-child(4) { text-align: right; }
+  #drivers-head span:nth-child(5) { text-align: center; }
+  #drivers { display: flex; flex-direction: column; gap: 4px; }
+  .drv-rank { text-align: right; padding-right: 4px; color: #667; font-size: 11px; }
+  .drv-row input.pts { text-align: right; }
+  .drv-del { padding: 3px 0; line-height: 1; color: #777; }
+  .drv-del:hover:not(:disabled) { color: #e0594f; }
+  .drv-err { grid-column: 2 / -1; font-size: 10px; color: #e0594f; margin-top: -2px; }
+  .empty-note { color: #556; font-style: italic; padding: 10px 2px; font-size: 11.5px; }
+
+  /* display options */
+  .opts { display: flex; flex-direction: column; gap: 10px; }
+  .opt-row { display: flex; align-items: center; gap: 10px; }
+  .opt-row .lbl { width: 130px; color: #999; font-size: 11.5px; }
+  .opt-row input[type=text] { width: 60px; text-align: center; }
+
+  /* sticky save bar */
+  #save-area {
+    position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 16px;
+    background: #0b0d10; border-top: 1px solid #1e2128;
+    display: flex; align-items: center; gap: 12px;
+  }
+  #save-btn { flex: 1; padding: 10px; background: #1e4a8a; border: none; border-radius: 4px; color: #fff;
+              font-size: 12px; font-weight: 700; letter-spacing: 1px; }
+  #save-btn:disabled { background: #1a1d24; color: #555; }
+  #save-btn:not(:disabled):hover { background: #2a5ca0; color: #fff; }
+  #save-status { min-width: 190px; font-size: 11px; color: #667; }
+  #save-status.dirty { color: #e8c84a; }
+  #save-status.ok    { color: #5ad97a; }
+  #save-status.err   { color: #e0594f; }
+
+  /* paste modal */
+
+  /* tabs */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid #1e2128; }
+  .tab { background: transparent; border: none; border-bottom: 2px solid transparent; border-radius: 0; color: #778; padding: 8px 14px; font-size: 12px; letter-spacing: 0.5px; }
+  .tab.on { color: #e8c84a; border-bottom-color: #e8c84a; }
+  .tab:hover:not(.on) { color: #ccd; }
+  body.tab-season #save-area { display: none; }
+  body.tab-season #wrap { padding-bottom: 20px; }
+
+  /* season tab */
+  select.sel { background: #161820; border: 1px solid #252830; border-radius: 3px; color: #ddd; font-size: 12px; padding: 5px 7px; max-width: 260px; }
+  .badge { font-size: 10px; font-weight: 700; letter-spacing: 1px; padding: 2px 7px; border-radius: 3px; }
+  .badge.active { background: #1c3a24; color: #5ad97a; }
+  .badge.closed { background: #2a2d36; color: #99a; }
+  table.t { border-collapse: collapse; width: 100%; font-size: 11.5px; }
+  table.t th { text-align: left; font-size: 10px; letter-spacing: 1px; color: #667; font-weight: 700; padding: 4px 8px; border-bottom: 1px solid #252830; white-space: nowrap; position: sticky; top: 0; background: #0e1014; }
+  table.t td { padding: 5px 8px; border-bottom: 1px solid #171a20; white-space: nowrap; }
+  table.t tr:hover td { background: #12151b; }
+  table.t .r { text-align: right; } table.t .c { text-align: center; }
+  table.t td.win { color: #e8c84a; font-weight: 700; }
+  table.t td.dim { color: #667; }
+  table.t td.pts { color: #e8c84a; }
+  .race-actions { display: flex; gap: 6px; justify-content: flex-end; }
+  .race-actions button { padding: 3px 8px; }
+  .scroll { overflow: auto; max-height: 58vh; border: 1px solid #1e2128; border-radius: 4px; }
+
+  /* generic dialog */
+  /* race list + detail */
+  #ss-races tbody tr { cursor: pointer; }
+  #ss-races tbody tr.sel td { background: #1a2230; }
+  .dhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 4px; }
+  .dtitle { font-size: 17px; font-weight: 700; color: #e8c84a; line-height: 1.2; }
+  .dsub { font-size: 11px; color: #778; margin-top: 3px; }
+  .nopts-badge { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 1px; padding: 2px 7px; border-radius: 3px; background: #3a2a1c; color: #e8a45a; margin-left: 8px; vertical-align: middle; }
+  table.t tr.nopts td { opacity: 0.55; }
+  table.t td.struck { text-decoration: line-through; }
+  .dbtns { display: flex; gap: 6px; flex-shrink: 0; }
+  .dsec { margin-top: 14px; }
+  .facts { display: grid; grid-template-columns: 170px 1fr; gap: 5px 14px; font-size: 12px; }
+  .facts .k { color: #667; }
+  .facts .v { color: #ccd; }
+  .okmsg { color: #5ad97a; font-size: 11px; min-height: 14px; }
+  .warnmsg { color: #e8c84a; font-size: 11px; }
+  #dlg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.72); z-index: 60; align-items: center; justify-content: center; }
+  #dlg.show { display: flex; }
+  #dlg .box { background: #13161a; border: 1px solid #3a3f48; border-radius: 8px; padding: 16px; width: min(560px, 94vw); max-height: 90vh; display: flex; flex-direction: column; gap: 10px; }
+  #dlg .box.wide { width: min(980px, 96vw); }
+  #dlg .btns { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  #dlg .row { display: flex; align-items: center; gap: 8px; }
+  #dlg .btns .spacer { flex: 1; }
+  #dlg .box.xwide { width: min(1180px, 98vw); }
+  table.ed td { padding: 3px 5px; }
+  table.ed input[type=text] { padding: 3px 5px; font-size: 11.5px; }
+  table.ed input.n { width: 52px; text-align: right; }
+  table.ed input.st { width: 110px; }
+  table.ed input.nt { width: 170px; }
+  table.ed input.sg { width: 34px; text-align: center; padding: 3px 2px; }
+  table.ed td.sp { color: #e8c84a; font-weight: 700; }
+  .stagebar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 8px 0; font-size: 11px; color: #889; }
+  .stagebar input[type=text] { padding: 3px 5px; font-size: 11.5px; }
+  .stagebar input.fl { width: 330px; }
+  table.ed tr.dq td { background: #2a1416; color: #c88; }
+  table.ed tr.moved td.pos { color: #e8c84a; }
+  table.ed .mv { padding: 1px 6px; line-height: 1.2; }
+  table.t td.neg { color: #e0594f; }
+  table.t td.tag { color: #e0594f; font-weight: 700; font-size: 10px; }
+
+  #modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.72); z-index: 50; align-items: center; justify-content: center; }
+  #modal.show { display: flex; }
+  #modal .box { background: #13161a; border: 1px solid #3a3f48; border-radius: 8px; padding: 16px; width: min(560px, 92vw); display: flex; flex-direction: column; gap: 10px; }
+  #modal textarea {
+    width: 100%; height: 240px; resize: vertical; background: #0e1014; border: 1px solid #252830; border-radius: 4px;
+    color: #ddd; font-family: Consolas, monospace; font-size: 12px; padding: 8px; outline: none; white-space: pre; overflow: auto;
+  }
+  #modal textarea:focus { border-color: #3a7bd5; }
+  #modal .btns { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  #paste-msg { font-size: 11px; color: #e8c84a; min-height: 14px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+
+  <div>
+    <h1>🏆 Championship</h1>
+    <div class="series-line">Series: <b id="series-name">—</b> &nbsp;·&nbsp; points are saved separately for each series</div>
+  </div>
+
+  <div class="banner" id="series-banner">
+    The active series changed to <b id="banner-new">—</b>. You are still editing <b id="banner-old">—</b>; saving writes to that series.
+    <button id="banner-switch">Load new series (discard changes)</button>
+  </div>
+
+  <div class="banner" id="points-banner">
+    Race points were just added to the championship. Saving your unsaved edits now would overwrite them.
+    <button id="points-reload">Reload (discard my changes)</button>
+  </div>
+
+
+  <div class="tabs">
+    <button class="tab on" data-tab="setup">Championship</button>
+    <button class="tab" data-tab="season">Season results</button>
+  </div>
+
+  <div id="tab-setup" style="display:flex;flex-direction:column;gap:14px">
+
+  <!-- Points per position -->
+  <div class="card">
+    <div class="section-title">Points per finishing position</div>
+    <div class="toolbar">
+      <button id="preset-2003" title="175-170-165-160-155-150-146-142-138-134-130, then -3 per place down to 34 (43rd). Also sets +5 led a lap and +5 led the most laps">NASCAR 2003</button>
+      <button id="preset-nascar" title="40 for the win, 35 for 2nd, then one less per place down to 1">NASCAR (40-35-34…1)</button>
+      <button id="preset-f1"     title="25-18-15-12-10-8-6-4-2-1">F1 (25-18-15…)</button>
+      <button id="preset-indycar" title="50-40-35-32-30-28-26-24-22-20, then -1 per place down to 10 (20th), 9-8-7-6 (21st-24th) and 5 from 25th to 33rd. Also sets +1 led a lap and +2 led the most laps (the +1 for pole is not included: the app has no qualifying bonus)">IndyCar (50-40-35…)</button>
+      <button id="preset-linear" title="Winner gets as many points as there are positions, last gets 1">Descending (N…1)</button>
+      <span class="spacer"></span>
+      <div class="count-row">Positions <input type="text" id="pos-count" inputmode="numeric" maxlength="2"></div>
+    </div>
+    <div id="pts-grid"></div>
+    <div class="opts" style="margin-top:12px;border-top:1px solid #1e2128;padding-top:10px">
+      <div class="opt-row"><span class="lbl" style="width:190px">Bonus: led at least one lap</span><input type="text" id="bonus-led" inputmode="decimal" maxlength="5"><span class="hint" style="margin:0">points, once per race</span></div>
+      <div class="opt-row"><span class="lbl" style="width:190px">Bonus: led the most laps</span><input type="text" id="bonus-most" inputmode="decimal" maxlength="5"><span class="hint" style="margin:0">points (tied drivers each get it)</span></div>
+    </div>
+    <div class="hint">Laps led are read from the game data when available; otherwise the overlay counts them itself from the start of the race
+      (if it is first opened mid-race, laps led earlier are unknown). Set both bonuses to 0 for no bonus.</div>
+    <div class="hint">Cars finishing below the last position listed earn 0 points. Use a dot or comma for decimals.</div>
+  </div>
+
+  <!-- Stage points -->
+  <div class="card">
+    <div class="section-title">Stage points</div>
+    <div class="toolbar">
+      <button id="stage-preset-10"  title="10 for the stage winner down to 1 for 10th">10 → 1 (top 10)</button>
+      <button id="stage-preset-lin" title="Winner gets as many points as there are scoring positions, last gets 1">Descending (N…1)</button>
+      <button id="stage-preset-none" title="No stage points">None</button>
+      <span class="spacer"></span>
+      <div class="count-row">Scoring drivers <input type="text" id="stage-count" inputmode="numeric" maxlength="4"></div>
+    </div>
+    <div id="stage-grid"></div>
+    <div class="hint">Separate from the race table above. The first N cars of every stage earn these points; they are added to each driver's race total
+      when the race is saved (and shown live in the overlays). There is no limit on how many drivers score. Stage results come from the game
+      bridge: positions it does not report cannot be scored.</div>
+  </div>
+
+  <!-- Drivers -->
+  <div class="card">
+    <div class="section-title">Drivers &amp; current points <span id="drv-count" style="color:#889;letter-spacing:0;margin-left:6px"></span></div>
+    <div class="toolbar">
+      <button id="add-btn">+ Add driver</button>
+      <button id="series-btn" title="Add every car number that has a headshot, colour, rookie flag or name in the Series tab">Add from Series</button>
+      <button id="paste-btn">Paste list…</button>
+      <button id="session-btn" disabled title="Reads the cars currently in the NR2003 session">Import from session</button>
+      <button id="sort-btn">Sort by points</button>
+      <button id="clear-po-btn" title="Untick the Playoff box of every driver">Clear Playoff markers</button>
+      <span class="spacer"></span>
+      <span id="session-status" style="font-size:10.5px;color:#556"></span>
+    </div>
+    <div id="drivers-head"><span>#</span><span>CAR #</span><span>DRIVER (optional)</span><span>POINTS</span><span title="In the Playoff / Chase">PLAYOFF</span><span></span></div>
+    <div id="drivers"></div>
+    <div class="hint">
+      Drivers are matched to cars by <b>car number</b>, exactly as NR2003 shows it (<b>01</b> and <b>1</b> are different cars).
+      If the name is left empty the in-game name is used. Cars in the race that aren't listed here don't appear in the championship.
+    </div>
+  </div>
+
+  <!-- Chase -->
+  <div class="card">
+    <div class="section-title">Chase / Playoff</div>
+    <div class="opts">
+      <label class="chk"><input type="checkbox" id="chase-enabled"> Highlight the Chase / Playoff drivers in yellow in the towers and tickers</label>
+      <div class="opt-row"><span class="lbl" style="width:190px">Who is in</span>
+        <select id="chase-mode" style="background:#161820;border:1px solid #252830;border-radius:3px;color:#ddd;font-size:12px;padding:5px 7px">
+          <option value="manual">Drivers I tick (Playoff 2014–2025)</option>
+          <option value="top">Top of the standings (Chase 2004–2013)</option>
+        </select></div>
+      <div class="hint top-only" style="margin:0">Top-of-the-standings mode uses the fields below.</div>
+      <div class="hint" id="chase-manual-hint" style="margin:0;display:none">Tick the <b>PLAYOFF</b> column in the drivers list above for each driver in the Playoff, and untick them as they are eliminated.</div>
+      <div class="opt-row top-only"><span class="lbl" style="width:190px">Top drivers in the chase</span><input type="text" id="chase-size" inputmode="numeric" maxlength="2"><span class="hint" style="margin:0">e.g. 10 (2004), 12 (2007), 16 (2014)</span></div>
+      <div class="opt-row top-only"><span class="lbl" style="width:190px">…plus anyone within</span><input type="text" id="chase-within" inputmode="decimal" maxlength="5"><span class="hint" style="margin:0">points of the leader (2004 rule: 400; 0 = off)</span></div>
+      <div class="opt-row top-only"><span class="lbl" style="width:190px">Based on</span>
+        <select id="chase-basis" style="background:#161820;border:1px solid #252830;border-radius:3px;color:#ddd;font-size:12px;padding:5px 7px">
+          <option value="live">Live championship order (includes this race's points)</option>
+          <option value="pre">Standings going into the race</option>
+        </select></div>
+    </div>
+    <div class="hint">Only drivers listed in the championship can be highlighted. Save after changing the list.</div>
+  </div>
+
+  <!-- Race results -->
+  <div class="card">
+    <div class="section-title">When a race ends</div>
+    <div class="opts">
+      <label class="chk"><input type="checkbox" id="rr-season"> Save every race to the active season (see the <b>Season results</b> tab)</label>
+      <label class="chk"><input type="checkbox" id="rr-addpoints"> Add the race points to the championship totals automatically</label>
+      <div class="opt-row"><span class="lbl" style="width:90px">Last race</span>
+        <span id="rr-last" style="flex:1;font-size:11px;color:#889">—</span>
+        <button id="rr-undo" disabled title="Subtract the points that the last race added and remove it from the season">Undo</button></div>
+      <label class="chk"><input type="checkbox" id="rr-enabled"> Save the race results as an HTML file when each race ends</label>
+      <div class="opt-row"><span class="lbl" style="width:90px">Folder</span>
+        <span id="rr-dir" style="flex:1;font-size:11px;color:#889;word-break:break-all"></span>
+        <button id="rr-browse">Browse…</button><button id="rr-open">Open</button></div>
+      <div class="opt-row"><span class="lbl" style="width:90px">Next file</span>
+        <span style="color:#889">R</span><input type="text" id="rr-next" inputmode="numeric" maxlength="4" style="width:56px"><span style="color:#889">.html</span>
+        <span class="hint" style="margin:0">in <b id="rr-series">—</b></span></div>
+    </div>
+    <div class="hint">Format: same tables as NR2003's own exported standings (qualifying, race with start, interval, laps, laps led, points, status, caution flags, lead changes).
+      Points use the table and bonuses above — save the Championship first. Only drivers listed above receive points. These options apply immediately.</div>
+    <div id="rr-msg" class="hint" style="color:#5ad97a;min-height:14px"></div>
+  </div>
+
+  <!-- Display -->
+  <div class="card">
+    <div class="section-title">Overlay</div>
+    <div class="opts">
+      <div class="opt-row"><span class="lbl">Positions shown</span><span class="hint" style="margin:0">from</span><input type="text" id="rows-from" inputmode="numeric" maxlength="2"><span class="hint" style="margin:0">to</span><input type="text" id="rows-to" inputmode="numeric" maxlength="3"><span class="hint" style="margin:0">3 – 20 rows</span></div>
+      <label class="chk"><input type="checkbox" id="gap-enabled"> Show points gap (to the leader, or to the cutoff line when it is on)</label>
+      <label class="chk"><input type="checkbox" id="cutoff-enabled"> Draw a cutoff line below position</label>
+      <div class="opt-row"><span class="lbl">Cutoff after P</span><input type="text" id="cutoff-pos" inputmode="numeric" maxlength="2"><span class="hint" style="margin:0">line under that position (if it is shown)</span></div>
+      <div class="opt-row"><span class="lbl">Cutoff color</span><input type="color" id="cutoff-color" style="width:44px;height:26px;padding:0;cursor:pointer;"><button type="button" id="cutoff-color-reset" style="margin-left:8px;cursor:pointer;">Reset</button></div>
+      <div class="opt-row"><span class="lbl">Cutoff text</span><input type="text" id="cutoff-text" maxlength="40" placeholder="CUTOFF LINE" style="flex:1;min-width:0;"><input type="color" id="cutoff-text-color" style="width:44px;height:26px;padding:0;cursor:pointer;margin-left:8px;"></div>
+      <label class="chk"><input type="checkbox" id="pin-player"> Always show my car, even outside the top rows</label>
+    </div>
+    <div class="hint">Turn the overlay on and place it from the <b>Layout Editor</b> (widget “Championship”). Changes saved here update it instantly.</div>
+  </div>
+  </div><!-- /tab-setup -->
+
+  <!-- ═══ Season results ═══ -->
+  <div id="tab-season" style="display:none;flex-direction:column;gap:14px">
+    <div class="card">
+      <div class="section-title">Season</div>
+      <div class="toolbar">
+        <select id="ss-select" class="sel"></select>
+        <span id="ss-badge" class="badge"></span>
+        <button id="ss-new" class="primary">New season…</button>
+        <button id="ss-active" title="New races will be saved into this season">Make active</button>
+        <button id="ss-rename">Rename</button>
+        <button id="ss-del">Delete</button>
+        <span class="spacer"></span>
+        <button id="ss-table" title="Every driver's points in every race of this season">Points by race…</button>
+        <select id="ss-img-n" class="sel" title="How many drivers appear in the image">
+          <option value="10">Top 10</option><option value="15">Top 15</option><option value="20" selected>Top 20</option>
+          <option value="30">Top 30</option><option value="40">Top 40</option><option value="80">All</option>
+        </select>
+        <button id="ss-img" title="Export the championship table as an image: points, behind, starts, wins, top 5s/10s, DNFs and laps led">Standings image</button>
+      </div>
+      <div class="hint" id="ss-info"></div>
+      <div class="toolbar" style="margin:12px 0 0">
+        <span style="color:#889;font-size:11px">Next race name</span>
+        <input type="text" id="ss-next" maxlength="80" placeholder="e.g. Daytona 250 — given to the next race that finishes" style="flex:1;min-width:220px">
+      </div>
+      <div class="toolbar" style="margin:8px 0 0">
+        <button id="ss-import" title="Read race files exported by NR2003 (qualifying, race, weather, penalties…) into this season">Import race files…</button>
+        <button id="ss-rescore" title="Recalculate the points of every race in this series with the points system that is active now (also done automatically when you change the points table or bonuses). Races of the active season that were never added to the championship totals are added now; non-scoring races are skipped.">Recalculate race points</button>
+        <label class="chk" style="font-size:11px"><input type="checkbox" id="ss-imp-pts"> also add their points to the championship totals</label>
+      </div>
+      <div id="ss-msg" class="okmsg" style="margin-top:6px"></div>
+    </div>
+    <div class="card">
+      <div class="section-title">Races <span id="ss-count" style="color:#889;letter-spacing:0;margin-left:6px"></span></div>
+      <div id="ss-races"></div>
+    </div>
+    <div class="card" id="ss-detail" style="display:none"></div>
+  </div>
+</div>
+
+<div id="save-area">
+  <button id="save-btn" disabled>SAVE CHAMPIONSHIP</button>
+  <div id="save-status"></div>
+</div>
+
+<div id="dlg"></div>
+
+<!-- Paste modal -->
+<div id="modal">
+  <div class="box">
+    <div class="section-title" style="margin:0">Paste driver list</div>
+    <div class="hint" style="margin:0">
+      One driver per line: <b>car number, name, points</b> — separated by tabs (paste straight from a spreadsheet), commas or semicolons.
+      Name is optional (<i>48, 2235</i> works). A header line is ignored. With commas, use a dot for decimals; use <b>;</b> if names contain commas.
+    </div>
+    <textarea id="paste-text" spellcheck="false" placeholder="48&#9;J. Johnson&#9;2235&#10;24&#9;J. Gordon&#9;2190&#10;…"></textarea>
+    <div id="paste-msg"></div>
+    <div class="btns">
+      <button id="paste-cancel">Cancel</button>
+      <button id="paste-replace" title="Remove every driver currently listed and use only this list">Replace entire list</button>
+      <button id="paste-merge" class="primary" title="Update drivers that already exist (matched by car number) and add the new ones">Add / update</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ── State (all values kept as the raw strings typed in the inputs) ──────────
+let seriesId   = 'default';
+let seriesName = '';
+let table      = [];     // points per position, index 0 = P1
+let stageTable = [];     // points per stage position, index 0 = P1
+let rows       = [];     // [{ number, name, points }]
+let visibleRows = '10', rowFrom = '1', rowTo = '10', cutoffEnabled = false, cutoffPos = '16', cutoffColor = '#e8232a', cutoffText = 'CUTOFF LINE', cutoffTextColor = '#ffffff', gapEnabled = true;
+let bonusLed = '0', bonusMost = '0';
+let chaseEnabled = false, chaseSize = '10', chaseWithin = '0', chaseBasis = 'live', chaseMode = 'manual';
+let pinPlayer   = true;
+let dirty       = false;
+let rowEls      = [];
+let stale       = false;     // race points were added while there were unsaved edits
+
+// ── Number parsing (accepts 1.234 / 1,234 thousands and 12,5 decimal comma) ─
+function parsePoints(str) {
+  let s = String(str == null ? '' : str).replace(/\s/g, '');
+  if (s === '') return null;
+  if (/^-?\d{1,3}([.,]\d{3})+$/.test(s)) return Number(s.replace(/[.,]/g, ''));
+  if (/^-?\d{1,3}(\.\d{3})+,\d+$/.test(s)) s = s.replace(/\./g, '');   // 1.234,5 (European)
+  if (/^-?\d+,\d+$/.test(s)) s = s.replace(',', '.');
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function nascarPreset() {
+  const t = [40];
+  for (let p = 2; p <= 40; p++) t.push(Math.max(1, 35 - (p - 2)));
+  return t;
+}
+
+// ── Dirty tracking ──────────────────────────────────────────────────────────
+function setDirty(v) {
+  if (dirty === v) return;
+  dirty = v;
+  window.shl.setChampionshipDirty(v);
+  validate();
+}
+function markDirty() { setDirty(true); validate(); }
+
+// ── Points table ────────────────────────────────────────────────────────────
+function renderTable() {
+  const grid = $('pts-grid');
+  grid.innerHTML = '';
+  table.forEach((val, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'pt-cell';
+    const lab = document.createElement('span');
+    lab.textContent = 'P' + (i + 1);
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.inputMode = 'decimal'; inp.value = val; inp.dataset.i = i;
+    inp.addEventListener('input', () => { table[i] = inp.value; markDirty(); });
+    cell.append(lab, inp);
+    grid.appendChild(cell);
+  });
+  $('pos-count').value = table.length;
+}
+
+function renderStageTable() {
+  const grid = $('stage-grid');
+  grid.innerHTML = '';
+  stageTable.forEach((val, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'pt-cell';
+    const lab = document.createElement('span');
+    lab.textContent = 'P' + (i + 1);
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.inputMode = 'decimal'; inp.value = val; inp.dataset.i = i;
+    inp.addEventListener('input', () => { stageTable[i] = inp.value; markDirty(); });
+    cell.append(lab, inp);
+    grid.appendChild(cell);
+  });
+  $('stage-count').value = stageTable.length;
+}
+$('stage-preset-10').addEventListener('click',  () => { stageTable = ['10','9','8','7','6','5','4','3','2','1']; renderStageTable(); markDirty(); });
+$('stage-preset-lin').addEventListener('click', () => {
+  const n = Math.max(1, stageTable.length || 10);
+  stageTable = Array.from({ length: n }, (_, i) => String(n - i)); renderStageTable(); markDirty();
+});
+$('stage-preset-none').addEventListener('click', () => { stageTable = []; renderStageTable(); markDirty(); });
+$('stage-count').addEventListener('change', () => {
+  let n = parseInt($('stage-count').value, 10);
+  if (!Number.isFinite(n)) n = stageTable.length;
+  n = Math.max(0, Math.min(1000, n));
+  while (stageTable.length < n) stageTable.push(stageTable.length ? '0' : '10');
+  stageTable.length = n;
+  renderStageTable(); markDirty();
+});
+
+function sameTable(a, b) {
+  const pa = a.map(v => parsePoints(v) ?? 0), pb = b.map(v => parsePoints(v) ?? 0);
+  return pa.length === pb.length && pa.every((v, i) => v === pb[i]);
+}
+
+function applyPreset(arr, name) {
+  if (!sameTable(table, arr) && table.some(v => String(v).trim() !== '' && parsePoints(v) !== 0)) {
+    if (!confirm(`Replace the current points table with the ${name} preset?`)) return false;
+  }
+  table = arr.map(String);
+  renderTable(); markDirty();
+  return true;
+}
+
+function table2003() {
+  const t = [175, 170, 165, 160, 155, 150, 146, 142, 138, 134];
+  for (let p = 11; p <= 43; p++) t.push(130 - 3 * (p - 11));
+  return t;
+}
+$('preset-2003').addEventListener('click', () => {
+  if (!applyPreset(table2003(), 'NASCAR 2003')) return;
+  bonusLed = '5'; bonusMost = '5';
+  $('bonus-led').value = '5'; $('bonus-most').value = '5';
+  markDirty();
+});
+$('chase-enabled').addEventListener('change', () => { chaseEnabled = $('chase-enabled').checked; markDirty(); });
+$('chase-size').addEventListener('input',     () => { chaseSize   = $('chase-size').value;   markDirty(); });
+$('chase-within').addEventListener('input',   () => { chaseWithin = $('chase-within').value; markDirty(); });
+$('chase-mode').addEventListener('change',    () => { chaseMode   = $('chase-mode').value;   applyChaseMode(); markDirty(); });
+$('chase-basis').addEventListener('change',   () => { chaseBasis  = $('chase-basis').value;  markDirty(); });
+$('bonus-led').addEventListener('input',  () => { bonusLed  = $('bonus-led').value;  markDirty(); });
+$('bonus-most').addEventListener('input', () => { bonusMost = $('bonus-most').value; markDirty(); });
+
+$('preset-nascar').addEventListener('click', () => applyPreset(nascarPreset(), 'NASCAR'));
+$('preset-f1').addEventListener('click',     () => applyPreset([25,18,15,12,10,8,6,4,2,1], 'F1'));
+function tableIndycar() {
+  const t = [50, 40, 35, 32, 30, 28, 26, 24, 22, 20];
+  for (let p = 11; p <= 20; p++) t.push(30 - p);          // 19 … 10
+  t.push(9, 8, 7, 6);                                      // 21st-24th
+  while (t.length < 33) t.push(5);                         // 25th-33rd
+  return t;
+}
+$('preset-indycar').addEventListener('click', () => {
+  if (!applyPreset(tableIndycar(), 'IndyCar')) return;
+  bonusLed = '1'; bonusMost = '2';
+  $('bonus-led').value = '1'; $('bonus-most').value = '2';
+  markDirty();
+});
+$('preset-linear').addEventListener('click', () => {
+  const n = Math.max(1, table.length || 40);
+  applyPreset(Array.from({ length: n }, (_, i) => n - i), 'descending');
+});
+
+$('pos-count').addEventListener('change', () => {
+  let n = parseInt($('pos-count').value, 10);
+  if (!Number.isFinite(n)) n = table.length;
+  n = Math.max(1, Math.min(60, n));
+  while (table.length < n) table.push('0');
+  table.length = n;
+  renderTable(); markDirty();
+});
+
+// ── Drivers ─────────────────────────────────────────────────────────────────
+function emptyRow() { return { number: '', name: '', points: '', playoff: false }; }
+
+function applyChaseMode() {
+  document.body.classList.toggle('po-off', chaseMode !== 'manual');
+  document.body.classList.toggle('mode-manual', chaseMode === 'manual');
+  $('chase-manual-hint').style.display = chaseMode === 'manual' ? 'block' : 'none';
+}
+
+function rankOrder() {
+  // same ordering the overlay uses for "pre-race" rank: points desc, then list order
+  return rows
+    .map((r, i) => ({ i, p: parsePoints(r.points) ?? 0, blank: isBlank(r) }))
+    .filter(o => !o.blank)
+    .sort((a, b) => (b.p - a.p) || (a.i - b.i));
+}
+function isBlank(r) { return !r.number.trim() && !r.name.trim() && r.points.trim() === ''; }
+
+function renderRows(focusIdx) {
+  const host = $('drivers');
+  host.innerHTML = '';
+  rowEls = [];
+  if (!rows.length) {
+    host.innerHTML = '<div class="empty-note">No drivers yet — add them one by one, paste a list, or import the cars from a running session.</div>';
+  }
+  rows.forEach((r, i) => {
+    const el = document.createElement('div');
+    el.className = 'drv-row';
+    el.innerHTML = `<span class="drv-rank"></span>
+      <input type="text" class="num"  maxlength="4"  placeholder="48">
+      <input type="text" class="name" maxlength="40" placeholder="Driver name">
+      <input type="text" class="pts"  inputmode="decimal" placeholder="0">
+      <label class="po-cell" title="In the Playoff / Chase"><input type="checkbox" class="po"></label>
+      <button class="drv-del" title="Remove driver">✕</button>`;
+    const [num, name, pts] = el.querySelectorAll('input');
+    num.value = r.number; name.value = r.name; pts.value = r.points;
+    const po = el.querySelector('.po'); po.checked = !!r.playoff;
+    po.addEventListener('change', () => { r.playoff = po.checked; markDirty(); });
+    num.addEventListener('input',  () => { r.number = num.value;  markDirty(); });
+    name.addEventListener('input', () => { r.name   = name.value; markDirty(); });
+    pts.addEventListener('input',  () => { r.points = pts.value;  markDirty(); });
+    // Enter on the last row's points → new row, ready to type the next car
+    pts.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && i === rows.length - 1) { e.preventDefault(); addRow(); }
+    });
+    el.querySelector('.drv-del').addEventListener('click', () => {
+      rows.splice(i, 1); renderRows(); markDirty();
+    });
+    host.appendChild(el);
+    rowEls.push(el);
+  });
+  validate();
+  if (focusIdx != null && rowEls[focusIdx]) rowEls[focusIdx].querySelector('.num').focus();
+}
+
+function addRow() {
+  rows.push(emptyRow());
+  renderRows(rows.length - 1);
+  markDirty();
+  rowEls[rows.length - 1]?.scrollIntoView({ block: 'nearest' });
+}
+$('add-btn').addEventListener('click', addRow);
+
+$('series-btn').addEventListener('click', async () => {
+  const list = await window.shl.getSeriesDrivers(seriesId);
+  rows = rows.filter(r => !isBlank(r));
+  const have = new Set(rows.map(r => r.number.trim()));
+  let added = 0;
+  for (const c of list) {
+    if (have.has(c.number)) continue;
+    have.add(c.number); rows.push({ number: c.number, name: c.name, points: '0', playoff: false }); added++;
+  }
+  renderRows();
+  if (added) markDirty();
+  $('session-status').textContent = !list.length ? 'The Series tab has no drivers with data for this series'
+    : added ? `Added ${added} from Series — now fill in their points and save` : 'Every driver with Series data is already listed';
+});
+$('sort-btn').addEventListener('click', () => {
+  const order = rowsSortedByPoints();
+  rows = order; renderRows(); markDirty();
+});
+$('clear-po-btn').addEventListener('click', () => {
+  const n = rows.filter(r => r.playoff).length;
+  if (!n) { $('session-status').textContent = 'No driver has a Playoff marker'; return; }
+  rows.forEach(r => { r.playoff = false; });
+  renderRows(); markDirty();
+  $('session-status').textContent = `Cleared ${n} Playoff marker${n === 1 ? '' : 's'} — save to apply`;
+});
+function rowsSortedByPoints() {
+  return rows
+    .filter(r => !isBlank(r))
+    .map((r, i) => ({ r, i, p: parsePoints(r.points) ?? 0 }))
+    .sort((a, b) => (b.p - a.p) || (a.i - b.i))
+    .map(o => o.r);
+}
+
+// ── Validation ──────────────────────────────────────────────────────────────
+function validate() {
+  const errs = rows.map(() => '');
+  const seen = new Map();
+  rows.forEach((r, i) => {
+    if (isBlank(r)) return;
+    const n = r.number.trim();
+    if (!n) { errs[i] = 'Car number is required'; return; }
+    if (seen.has(n)) { errs[i] = errs[seen.get(n)] = `Car #${n} is listed twice`; }
+    else seen.set(n, i);
+    if (!errs[i] && r.points.trim() !== '' && parsePoints(r.points) === null) errs[i] = 'Points must be a number';
+  });
+
+  // per-row error display
+  rowEls.forEach((el, i) => {
+    el.querySelector('.drv-err')?.remove();
+    const bad = !!errs[i];
+    el.querySelector('.num').classList.toggle('bad', bad && !/Points/.test(errs[i]));
+    el.querySelector('.pts').classList.toggle('bad', bad && /Points/.test(errs[i]));
+    if (bad) { const m = document.createElement('div'); m.className = 'drv-err'; m.textContent = errs[i]; el.appendChild(m); }
+  });
+
+  // table cells
+  let tableBad = 0;
+  document.querySelectorAll('#pts-grid input, #stage-grid input').forEach(inp => {
+    const raw = inp.value.trim();
+    const n   = parsePoints(raw);
+    const bad = raw !== '' && (n === null || n < 0);
+    inp.classList.toggle('bad', bad);
+    if (bad) tableBad++;
+  });
+
+  // rank column
+  const order = rankOrder();
+  rowEls.forEach(el => { el.querySelector('.drv-rank').textContent = ''; });
+  order.forEach((o, k) => { if (rowEls[o.i]) rowEls[o.i].querySelector('.drv-rank').textContent = k + 1; });
+
+  // rows-shown field
+  let bonusBad = 0;
+  [['bonus-led', bonusLed], ['bonus-most', bonusMost]].forEach(([id, v]) => {
+    const n = parsePoints(v); const bad = String(v).trim() !== '' && (n === null || n < 0);
+    $(id).classList.toggle('bad', bad); if (bad) bonusBad++;
+  });
+  const cs = parseInt(chaseSize, 10), cw = parsePoints(chaseWithin);
+  const csBad = !(cs >= 1 && cs <= 60), cwBad = String(chaseWithin).trim() !== '' && (cw === null || cw < 0);
+  $('chase-size').classList.toggle('bad', csBad);
+  $('chase-within').classList.toggle('bad', cwBad);
+  bonusBad += (csBad ? 1 : 0) + (cwBad ? 1 : 0);
+  const rf = parseInt(rowFrom, 10), rt = parseInt(rowTo, 10);
+  const vrBad = !(rf >= 1 && rt >= rf + 2 && rt - rf <= 19);
+  $('rows-from').classList.toggle('bad', vrBad); $('rows-to').classList.toggle('bad', vrBad);
+  const cpBad = cutoffEnabled && !(parseInt(cutoffPos, 10) >= 1);
+  $('cutoff-pos').classList.toggle('bad', cpBad); $('cutoff-pos').disabled = !cutoffEnabled; $('cutoff-color').disabled = !cutoffEnabled; $('cutoff-text').disabled = !cutoffEnabled; $('cutoff-text-color').disabled = !cutoffEnabled;
+
+  const listed = rows.filter(r => !isBlank(r)).length;
+  $('drv-count').textContent = listed ? `(${listed})` : '';
+
+  const problems = errs.filter(Boolean).length + tableBad + (vrBad ? 1 : 0) + (cpBad ? 1 : 0) + bonusBad;
+  $('save-btn').disabled = problems > 0 || !dirty || stale;
+  validate.problems = problems;
+  refreshStatus();
+}
+
+function refreshStatus() {
+  const s = $('save-status');
+  if (stale) { s.className = 'err'; s.textContent = 'Reload first — race points were added'; return; }
+  if (validate.problems > 0) { s.className = 'err';   s.textContent = `${validate.problems} problem${validate.problems > 1 ? 's' : ''} to fix before saving`; }
+  else if (dirty)            { s.className = 'dirty'; s.textContent = '● Unsaved changes'; }
+  else if (!s.classList.contains('ok')) { s.className = ''; s.textContent = ''; }
+}
+
+// ── Overlay options ─────────────────────────────────────────────────────────
+$('rows-from').addEventListener('input', () => { rowFrom = $('rows-from').value; markDirty(); });
+$('rows-to').addEventListener('input', () => { rowTo = $('rows-to').value; markDirty(); });
+$('gap-enabled').addEventListener('change', () => { gapEnabled = $('gap-enabled').checked; markDirty(); });
+$('cutoff-enabled').addEventListener('change', () => { cutoffEnabled = $('cutoff-enabled').checked; markDirty(); });
+$('cutoff-pos').addEventListener('input', () => { cutoffPos = $('cutoff-pos').value; markDirty(); });
+$('cutoff-color').addEventListener('input', () => { cutoffColor = $('cutoff-color').value; markDirty(); });
+$('cutoff-text').addEventListener('input', () => { cutoffText = $('cutoff-text').value; markDirty(); });
+$('cutoff-text-color').addEventListener('input', () => { cutoffTextColor = $('cutoff-text-color').value; markDirty(); });
+$('cutoff-color-reset').addEventListener('click', () => { cutoffColor = '#e8232a'; $('cutoff-color').value = cutoffColor; markDirty(); });
+$('pin-player').addEventListener('change', () => { pinPlayer = $('pin-player').checked; markDirty(); });
+
+// ── Load / save ─────────────────────────────────────────────────────────────
+function applyLoaded(res) {
+  seriesId   = res.seriesId;
+  seriesName = res.seriesName;
+  const d    = res.data;
+  table      = d.pointsTable.map(String);
+  stageTable = (d.stagePointsTable || []).map(String);
+  rows       = d.drivers.map(x => ({ number: x.number, name: x.name, points: String(x.points), playoff: x.playoff === true }));
+  visibleRows = String(d.visibleRows);
+  rowFrom = String(d.rowFrom || 1); rowTo = String(d.rowTo || ((d.rowFrom || 1) - 1 + (d.visibleRows || 10)));
+  cutoffEnabled = d.cutoffEnabled === true; cutoffPos = String(d.cutoffPos || 16); cutoffColor = d.cutoffColor || '#e8232a';
+  gapEnabled = d.gapEnabled !== false;
+  cutoffText = d.cutoffText == null ? 'CUTOFF LINE' : String(d.cutoffText); cutoffTextColor = d.cutoffTextColor || '#ffffff';
+  pinPlayer   = d.pinPlayer !== false;
+  bonusLed    = String(d.bonusLedLap  || 0);
+  bonusMost   = String(d.bonusMostLed || 0);
+  $('bonus-led').value = bonusLed; $('bonus-most').value = bonusMost;
+  chaseEnabled = d.chaseEnabled === true; chaseSize = String(d.chaseSize || 10);
+  chaseWithin  = String(d.chaseWithin || 0); chaseBasis = d.chaseBasis === 'pre' ? 'pre' : 'live';
+  $('chase-enabled').checked = chaseEnabled; $('chase-size').value = chaseSize;
+  $('chase-within').value = chaseWithin; $('chase-basis').value = chaseBasis;
+  chaseMode = d.chaseMode === 'top' ? 'top' : 'manual'; $('chase-mode').value = chaseMode; applyChaseMode();
+
+  $('series-name').textContent = seriesName;
+  loadRR();
+  $('rows-from').value = rowFrom; $('rows-to').value = rowTo;
+  $('cutoff-enabled').checked = cutoffEnabled; $('cutoff-pos').value = cutoffPos; $('cutoff-color').value = cutoffColor; $('gap-enabled').checked = gapEnabled; $('cutoff-text').value = cutoffText; $('cutoff-text-color').value = cutoffTextColor;
+  $('pin-player').checked = pinPlayer;
+  $('series-banner').classList.remove('show');
+  $('points-banner').classList.remove('show'); stale = false;
+  if ($('tab-season').style.display !== 'none') loadSeason();
+  renderTable(); renderStageTable(); renderRows();
+  dirty = false; window.shl.setChampionshipDirty(false);
+  $('save-status').className = ''; $('save-status').textContent = '';
+  validate();
+}
+
+async function load() { await loadSynced(); }
+
+// Loads the stored championship after adding any NEW drivers found in the Series tab
+async function loadSynced() {
+  const res = await window.shl.syncChampionshipFromSeries();
+  applyLoaded(res);
+  if (res.added) $('session-status').textContent = `Added ${res.added} driver${res.added > 1 ? 's' : ''} from the Series data (0 points)`;
+}
+
+$('save-btn').addEventListener('click', async () => {
+  validate();
+  if (validate.problems > 0) return;
+  const payload = {
+    pointsTable: table.map(v => parsePoints(v) ?? 0),
+    stagePointsTable: stageTable.map(v => parsePoints(v) ?? 0),
+    drivers: rows.filter(r => !isBlank(r)).map(r => ({
+      number: r.number.trim(), name: r.name.trim(), points: parsePoints(r.points) ?? 0, playoff: !!r.playoff,
+    })),
+    visibleRows: parseInt(rowTo, 10) - parseInt(rowFrom, 10) + 1,
+    rowFrom: parseInt(rowFrom, 10), rowTo: parseInt(rowTo, 10),
+    cutoffEnabled, cutoffPos: parseInt(cutoffPos, 10) || 16, cutoffColor, cutoffText, cutoffTextColor, gapEnabled,
+    pinPlayer,
+    bonusLedLap:  parsePoints(bonusLed)  ?? 0,
+    bonusMostLed: parsePoints(bonusMost) ?? 0,
+    chaseEnabled,
+    chaseSize:   parseInt(chaseSize, 10),
+    chaseWithin: parsePoints(chaseWithin) ?? 0,
+    chaseBasis,
+    chaseMode,
+  };
+  try {
+    await window.shl.saveChampionship(seriesId, payload);
+    // Re-read what main actually stored (it trims, caps and de-duplicates)
+    const res = await window.shl.getChampionship(seriesId);
+    applyLoaded(res);
+    const s = $('save-status');
+    s.className = 'ok'; s.textContent = '✓ Saved';
+    setTimeout(() => { if (!dirty) { s.className = ''; s.textContent = ''; } }, 2500);
+  } catch (e) {
+    $('save-status').className = 'err';
+    $('save-status').textContent = 'Save failed: ' + (e && e.message || e);
+  }
+});
+
+// Active series changed in the main window
+window.shl.onChampionshipSeriesChanged(async () => {
+  const res = await window.shl.getChampionship();
+  if (res.seriesId === seriesId) return;
+  if (!dirty) { await loadSynced(); return; }
+  $('banner-new').textContent = res.seriesName;
+  $('banner-old').textContent = seriesName;
+  $('series-banner').classList.add('show');
+  $('banner-switch').onclick = () => loadSynced();
+});
+
+// ── Race results settings (apply immediately, independent of the Save button) ──
+async function loadRR() {
+  const r = await window.shl.getRaceResultsSettings();
+  $('rr-enabled').checked = r.enabled;
+  $('rr-dir').textContent = r.dir;
+  $('rr-next').value      = r.next;
+  $('rr-series').textContent = r.seriesId;
+  $('rr-addpoints').checked  = r.addPoints;
+  $('rr-season').checked     = r.saveToSeason;
+  const last = r.last;
+  $('rr-last').textContent = last
+    ? `${last.file || 'race'} — points added to ${last.drivers} driver${last.drivers > 1 ? 's' : ''}, ${new Date(last.at).toLocaleString()}`
+    : 'nothing to undo';
+  $('rr-undo').disabled = !last;
+}
+$('rr-season').addEventListener('change', () => window.shl.setRaceResultsSettings({ saveToSeason: $('rr-season').checked }));
+$('rr-addpoints').addEventListener('change', () => window.shl.setRaceResultsSettings({ addPoints: $('rr-addpoints').checked }));
+$('rr-undo').addEventListener('click', async () => {
+  if (!confirm('Take back the championship points added by the last race and remove it from the season?')) return;
+  const r = await window.shl.undoLastRacePoints();
+  $('rr-msg').textContent = r && r.ok ? `✓ Undone for ${r.drivers} driver${r.drivers > 1 ? 's' : ''}` : 'Nothing to undo';
+});
+// Points were added (or undone) by the app
+window.shl.onPointsApplied(async () => {
+  if (!dirty) { applyLoaded(await window.shl.getChampionship(seriesId)); $('rr-msg').textContent = '✓ Totals updated'; return; }
+  stale = true; $('points-banner').classList.add('show'); validate();
+});
+$('points-reload').addEventListener('click', async () => applyLoaded(await window.shl.getChampionship(seriesId)));
+$('rr-enabled').addEventListener('change', () => window.shl.setRaceResultsSettings({ enabled: $('rr-enabled').checked }));
+$('rr-next').addEventListener('change', async () => {
+  await window.shl.setRaceResultsSettings({ next: $('rr-next').value });
+  loadRR();
+});
+$('rr-browse').addEventListener('click', async () => { if (await window.shl.browseRaceResultsDir()) loadRR(); });
+$('rr-open').addEventListener('click', () => window.shl.openRaceResultsDir());
+window.shl.onRaceResultSaved(f => {
+  $('rr-msg').textContent = '✓ Saved ' + String(f).split(/[\\/]/).pop();
+  loadRR();
+});
+
+
+// ── Tabs ────────────────────────────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === name));
+  $('tab-setup').style.display  = name === 'setup'  ? 'flex' : 'none';
+  $('tab-season').style.display = name === 'season' ? 'flex' : 'none';
+  document.body.classList.toggle('tab-season', name === 'season');
+  if (name === 'season') loadSeason();
+}
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
+
+// ── Season results ──────────────────────────────────────────────────────────
+let season = { seasons: [], activeId: null };
+let viewId = null, selRaceId = null;
+const fmtDate = ms => ms ? new Date(ms).toLocaleDateString() : '—';
+const curSeason = () => season.seasons.find(s => s.id === viewId) || null;
+const raceLabel = r => r.name || r.track || 'Race';
+const raceDate  = r => r.dateStr || fmtDate(r.at);
+
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+function dlg(title, build, wide) {
+  const host = $('dlg'); host.innerHTML = '';
+  const box = el('div', 'box' + (wide ? ' ' + (typeof wide === 'string' ? wide : 'wide') : ''));
+  box.appendChild(el('div', 'section-title', title));
+  const close = () => { host.classList.remove('show'); host.innerHTML = ''; };
+  build(box, close);
+  host.appendChild(box); host.classList.add('show');
+  host.onclick = e => { if (e.target === host) close(); };
+  return close;
+}
+
+async function loadSeason() {
+  season = await window.shl.getSeasonState(seriesId);
+  applySeasonState();
+}
+function applySeasonState() {
+  if (!season.seasons.some(s => s.id === viewId)) viewId = season.activeId || (season.seasons[0] && season.seasons[0].id) || null;
+  const s = curSeason();
+  // Open on the most recent race so all its data is on screen straight away
+  if (!s || !s.races.some(r => r.id === selRaceId)) selRaceId = s && s.races.length ? s.races[s.races.length - 1].id : null;
+  renderSeason();
+}
+
+function renderSeason() {
+  const sel = $('ss-select'); sel.innerHTML = '';
+  season.seasons.forEach(s => {
+    const o = el('option', null, s.name + (s.id === season.activeId ? '  (active)' : ''));
+    o.value = s.id; sel.appendChild(o);
+  });
+  const s = curSeason();
+  if (s) sel.value = s.id;
+  const has = !!s, isActive = has && s.id === season.activeId;
+  $('ss-badge').className = 'badge ' + (isActive ? 'active' : 'closed');
+  $('ss-badge').textContent = has ? (isActive ? 'ACTIVE' : 'CLOSED') : '';
+  $('ss-active').disabled = !has || isActive;
+  $('ss-rename').disabled = !has; $('ss-del').disabled = !has; $('ss-table').disabled = !has || !s.races.length;
+  $('ss-info').textContent = !has
+    ? 'No season yet. The first race you finish creates one automatically ("' + new Date().getFullYear() + ' Season"), or start one now with “New season…”.'
+    : `Started ${fmtDate(s.createdAt)}${s.closedAt ? ` · closed ${fmtDate(s.closedAt)}` : ''}. ${isActive ? 'Every race you finish is saved here automatically.' : 'Not the active season — new races are not saved here. Use “Make active” to continue it.'}`;
+  $('ss-count').textContent = has ? `(${s.races.length})` : '';
+  // the name for the next race belongs to the active season
+  const act = season.seasons.find(x => x.id === season.activeId);
+  if (document.activeElement !== $('ss-next')) $('ss-next').value = (act && act.nextName) || '';
+  renderRaces(); renderDetail();
+}
+
+function renderRaces() {
+  const s = curSeason(), host = $('ss-races'); host.innerHTML = '';
+  if (!s || !s.races.length) {
+    host.appendChild(el('div', 'empty-note', s ? 'No races in this season yet. They are added automatically when a race finishes, or use “Import race files…”.' : ''));
+    return;
+  }
+  const wrap = el('div', 'scroll'); wrap.style.maxHeight = '230px'; const t = el('table', 't');
+  t.innerHTML = '<thead><tr><th>RACE</th><th>NAME</th><th>DATE</th><th>WINNER</th><th class="r">LAPS</th><th></th></tr></thead>';
+  const tb = el('tbody');
+  s.races.forEach((r, i) => {
+    const w = r.rows && r.rows[0];
+    const tr = el('tr', (r.id === selRaceId ? 'sel' : '') + (r.nonPoints ? ' nopts' : ''));
+    const add = (txt, cls) => { const td = el('td', cls, txt); tr.appendChild(td); return td; };
+    add('R' + (i + 1), 'dim');
+    const nm = add(raceLabel(r), r.name ? 'win' : ''); if (!r.name) nm.style.color = '#99a'; nm.title = r.track || '';
+    if (r.nonPoints) nm.appendChild(el('span', 'nopts-badge', 'NO POINTS'));
+    add(raceDate(r));
+    add(w ? `${w.name || '#' + w.number} (#${w.number})` : '—');
+    add(w ? w.laps : '—', 'r');
+    const td = add('', 'r');
+    const d = el('button', 'drv-del', '✕'); d.title = 'Delete this race';
+    d.addEventListener('click', ev => { ev.stopPropagation(); deleteRaceDlg(r, i + 1); });
+    td.appendChild(d);
+    tr.addEventListener('click', () => { selRaceId = r.id; renderRaces(); renderDetail(); });
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb); wrap.appendChild(t); host.appendChild(wrap);
+}
+
+// Everything stored for the selected race, shown at once
+function renderDetail() {
+  const host = $('ss-detail'), s = curSeason();
+  const idx = s ? s.races.findIndex(r => r.id === selRaceId) : -1;
+  if (idx < 0) { host.style.display = 'none'; host.innerHTML = ''; return; }
+  const r = s.races[idx], n = idx + 1;
+  host.style.display = 'block'; host.innerHTML = '';
+
+  const head = el('div', 'dhead'); const left = el('div');
+  const ttl = el('div', 'dtitle', `R${n}  ·  ${raceLabel(r)}`);
+  if (r.nonPoints) ttl.appendChild(el('span', 'nopts-badge', 'NON-SCORING'));
+  left.appendChild(ttl);
+  left.appendChild(el('div', 'dsub', [r.name ? r.track : '', raceDate(r), r.imported ? 'imported from ' + (r.file || 'file') : (r.file || '')].filter(Boolean).join('  ·  ')));
+  const btns = el('div', 'dbtns');
+  const rn = el('button', null, 'Name…'); rn.title = 'Give this race a name (Daytona 250, CookOut 375…)'; rn.addEventListener('click', () => renameRaceDlg(r));
+  const ex = el('button', null, 'Export HTML'); ex.title = 'Create an NR2003-style results file with all of this data';
+  ex.addEventListener('click', async () => {
+    const f = await window.shl.seasonExportRace(seriesId, r.id);
+    $('ss-msg').className = 'okmsg'; $('ss-msg').textContent = f ? '✓ Saved ' + String(f).split(/[\\/]/).pop() : '';
+  });
+  const ed = el('button', 'primary', 'Edit results…'); ed.title = 'Change the order, add penalties, disqualify…';
+  ed.addEventListener('click', () => editResultsDlg(r, n));
+  const sc = el('button', null, r.nonPoints ? 'Count for championship' : 'Non-scoring race');
+  sc.title = r.nonPoints
+    ? 'Give this race its points again: they are added back to the championship totals'
+    : 'Make this race non-scoring: the points it added are taken out of the championship totals';
+  sc.addEventListener('click', async () => {
+    sc.disabled = true;
+    const res = await window.shl.seasonSetScoring(seriesId, r.id, !r.nonPoints);
+    if (res && res.ok) {
+      season = res.state; applySeasonState();
+      if (!dirty) applyLoaded(await window.shl.getChampionship(seriesId));
+      $('ss-msg').className = 'okmsg';
+      $('ss-msg').textContent = res.nonPoints ? `✓ R${n} is now non-scoring — points removed from the totals` : `✓ R${n} counts again — points added back to the totals`;
+    } else { sc.disabled = false; }
+  });
+  const imgSel = el('select', 'sel'); imgSel.title = 'How many drivers appear in the image';
+  [['10', 'Top 10'], ['20', 'Top 20'], ['30', 'Top 30'], ['80', 'All']].forEach(([v, t]) => { const o = el('option', null, t); o.value = v; imgSel.appendChild(o); });
+  imgSel.value = '80';
+  const im = el('button', null, 'Results image'); im.title = 'Export the results of this race as an image';
+  im.addEventListener('click', () => exportRaceImage(r, n, imgSel.value, im));
+  btns.append(rn, sc, ed, ex, imgSel, im); head.append(left, btns); host.appendChild(head);
+  if (r.nonPoints) left.appendChild(el('div', 'dsub', 'This race does not count for the championship. The POINTS column shows what it would give if it counted.'));
+  if (r.edited) left.appendChild(el('div', 'dsub', 'Results edited ' + new Date(r.edited).toLocaleString()));
+
+  const section = (title) => { const d = el('div', 'dsec'); d.appendChild(el('div', 'section-title', title)); host.appendChild(d); return d; };
+  const table = (heads, rows, classes) => {
+    const w = el('div', 'scroll'); w.style.maxHeight = '420px'; const t = el('table', 't');
+    const th = el('tr'); heads.forEach((h, i) => th.appendChild(el('th', (classes[i] || '').includes('r') ? 'r' : '', h)));
+    const thead = el('thead'); thead.appendChild(th); t.appendChild(thead);
+    const tb = el('tbody'); rows.forEach(row => { const tr = el('tr'); row.forEach((c, i) => tr.appendChild(el('td', classes[i] || '', c))); tb.appendChild(tr); });
+    t.appendChild(tb); w.appendChild(t); return w;
+  };
+
+  // 1. Race results
+  const resWrap = table(
+    ['F', 'S', '#', 'DRIVER', 'INTERVAL', 'LAPS', 'LED', 'POINTS', 'STATUS', 'EDIT'],
+    (r.rows || []).map(x => [x.finish, x.start == null ? '--' : x.start, x.number, x.name, x.interval, x.laps, x.mostLed ? x.led + '*' : x.led, x.points, x.status,
+      [x.dq ? 'DQ' : '', x.penaltyPts ? '−' + x.penaltyPts + ' pts' : '', x.bonusPts ? '+' + x.bonusPts + ' pts' : '',
+       (x.origFinish != null && x.origFinish !== x.finish) ? 'was P' + x.origFinish : '', x.note || ''].filter(Boolean).join(' · ')]),
+    ['r', 'r dim', 'r', '', 'r dim', 'r', 'r', 'r pts', '', 'tag']);
+  if (r.nonPoints) resWrap.querySelectorAll('td.pts').forEach(td => td.classList.add('struck'));
+  section('Race results').appendChild(resWrap);
+
+  // 2. Race info
+  const facts = [];
+  if (r.cautionFlags != null) facts.push(['Caution flags', `${r.cautionFlags}${r.cautionLaps != null ? ` (${r.cautionLaps} laps)` : ''}`]);
+  if (r.leadChanges != null)  facts.push(['Lead changes', `${r.leadChanges}${r.leadDrivers != null ? ` (${r.leadDrivers} drivers)` : ''}`]);
+  if (r.weather)      facts.push(['Weather (race)', r.weather]);
+  if (r.weatherQual)  facts.push(['Weather (qualifying)', r.weatherQual]);
+  if (r.pitFrequency) facts.push(['Pitstop frequency', r.pitFrequency]);
+  if (r.aiStrength)   facts.push(['AI strength', r.aiStrength]);
+  if (r.partial)      facts.push(['Note', 'Recorded from mid-race: laps led may be incomplete']);
+  if (facts.length) {
+    const sec = section('Race info'); const g = el('div', 'facts');
+    facts.forEach(([k, v]) => { g.appendChild(el('div', 'k', k)); g.appendChild(el('div', 'v', v)); });
+    sec.appendChild(g);
+  }
+
+  // 3. Qualifying
+  if (r.qualifying && r.qualifying.length) {
+    section('Qualifying').appendChild(table(['P', '#', 'DRIVER', 'TIME'],
+      r.qualifying.map(q => [q.pos, q.number, q.name, q.time]), ['r', 'r', '', 'r dim']));
+  }
+
+  // 4. Penalties (only known for races imported from the game's own file)
+  if (Array.isArray(r.penalties)) {
+    const sec = section('Penalties');
+    if (r.penalties.length) sec.appendChild(table(['LAP', '#', 'INFRACTION', 'PENALTY'], r.penalties.map(p => [p.lap, p.number, p.infraction, p.penalty]), ['r', 'r', '', '']));
+    else sec.appendChild(el('div', 'hint', 'No penalties.'));
+  }
+}
+
+$('ss-select').addEventListener('change', () => { viewId = $('ss-select').value; selRaceId = null; applySeasonState(); });
+window.shl.onSeasonUpdated(() => { if ($('tab-season').style.display !== 'none') loadSeason(); });
+
+// ── Name a race ─────────────────────────────────────────────────────────────
+function renameRaceDlg(r) {
+  dlg('Race name', (box, close) => {
+    box.appendChild(el('div', 'hint', 'For example: Daytona 250, CookOut 375, Go Bowling.com At The Glen. Leave it empty to show the track name.'));
+    const name = document.createElement('input'); name.type = 'text'; name.maxLength = 80; name.value = r.name || ''; name.placeholder = r.track || '';
+    box.appendChild(name);
+    const b = el('div', 'btns'); const no = el('button', null, 'Cancel'), yes = el('button', 'primary', 'Save');
+    const go = async () => { close(); season = await window.shl.seasonRaceUpdate(seriesId, r.id, { name: name.value }); applySeasonState(); };
+    no.addEventListener('click', close); yes.addEventListener('click', go);
+    name.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    b.append(no, yes); box.appendChild(b); name.focus(); name.select();
+  });
+}
+
+// Name for the race that finishes next
+$('ss-next').addEventListener('change', async () => {
+  season = await window.shl.seasonSetNextName(seriesId, $('ss-next').value);
+  applySeasonState();
+  $('ss-msg').className = 'okmsg'; $('ss-msg').textContent = $('ss-next').value.trim() ? '✓ The next race to finish will be called “' + $('ss-next').value.trim() + '”' : '';
+});
+
+// ── Import race files exported by NR2003 ────────────────────────────────────
+$('ss-import').addEventListener('click', async () => {
+  const msg = $('ss-msg');
+  if (!viewId) { msg.className = 'warnmsg'; msg.textContent = 'Create a season first (or finish a race) to import into.'; return; }
+  const withPts = $('ss-imp-pts').checked;
+  if (withPts && dirty) { msg.className = 'warnmsg'; msg.textContent = 'Save or discard your unsaved Championship edits first, so the points can be updated safely.'; return; }
+  const res = await window.shl.seasonImportRaces(seriesId, viewId, { applyPoints: withPts });
+  if (!res || res.canceled) return;
+  season = res.state;
+  const firstNew = res.added.length ? curSeason().races.find(x => x.imported && x.file === res.added[0].file) : null;
+  if (firstNew) selRaceId = firstNew.id;
+  applySeasonState();
+  const bits = [];
+  if (res.added.length)   bits.push(`Imported ${res.added.length} race${res.added.length > 1 ? 's' : ''}` + (res.applied ? ` (points added for ${res.applied} drivers)` : '') + (res.notApplied ? ' (points NOT added to the championship totals: this is not the active season)' : ''));
+  if (res.skipped.length) bits.push(res.skipped.map(x => `${x.file}: ${x.reason}`).join(' · '));
+  msg.className = res.added.length ? 'okmsg' : 'warnmsg'; msg.textContent = bits.join(' — ');
+});
+
+// ── Recalculate the points of the stored races with the active points system ──
+$('ss-rescore').addEventListener('click', async () => {
+  const msg = $('ss-msg');
+  if (dirty) { msg.className = 'warnmsg'; msg.textContent = 'Save or discard your unsaved Championship edits first, so the points can be updated safely.'; return; }
+  const res = await window.shl.seasonRescore(seriesId);
+  if (!res) return;
+  season = res.state; applySeasonState();
+  const d = await window.shl.getChampionship(seriesId); applyLoaded(d);
+  msg.className = 'okmsg';
+  msg.textContent = `✓ Recalculated ${res.races} race${res.races === 1 ? '' : 's'} (${res.changedRows} result${res.changedRows === 1 ? '' : 's'} changed` + (res.adjusted ? `, ${res.adjusted} championship total${res.adjusted === 1 ? '' : 's'} corrected` : '') + ')'
+    + (res.addedRaces ? ` — ${res.addedRaces} race${res.addedRaces === 1 ? '' : 's'} that had not been counted ${res.addedRaces === 1 ? 'was' : 'were'} added to the championship totals (${res.addedDrivers} driver${res.addedDrivers === 1 ? '' : 's'} scored)` : '');
+});
+
+// ── Edit race results (order, DQ, penalties, bonuses) ───────────────────────
+function editResultsDlg(r, n) {
+  let list = (r.rows || []).map(x => ({
+    number: x.number, name: x.name, start: x.start, orig: x.origFinish != null ? x.origFinish : x.finish,
+    status: x.status || '', laps: String(x.laps ?? ''), led: String(x.led ?? ''),
+    dq: !!x.dq, penaltyPts: x.penaltyPts ? String(x.penaltyPts) : '', bonusPts: x.bonusPts ? String(x.bonusPts) : '', note: x.note || '',
+    stages: Array.isArray(x.stages) ? x.stages.map(p => (p >= 1 ? String(p) : '')) : [],
+  }));
+  let nStages = list.reduce((m, x) => Math.max(m, x.stages.length), 0);
+  const counted = (r.applied && r.applied.length) || r.counted;
+  dlg(`Edit results — R${n} · ${raceLabel(r)}`, (box, close) => {
+    box.appendChild(el('div', 'hint',
+      'Move cars with ▲▼ or type a new position, fill in each driver\'s position in the stages (S1, S2…), disqualify (DQ cars drop to the bottom and score 0 points), take points away or give extra points. ' +
+      'Points are recalculated with the active points system' + (counted ? ' and the championship totals are corrected automatically.' : '. This race is not counted in the championship totals, so they won\'t change.')));
+    const wrap = el('div', 'scroll'); wrap.style.maxHeight = '60vh';
+    const t = el('table', 't ed'); wrap.appendChild(t); box.appendChild(wrap);
+    const msg = el('div', 'hint'); msg.style.color = '#e8c84a';
+
+    // ── Stage results (the exported HTML files don't carry them) ──
+    const sbar = el('div', 'stagebar');
+    const sLbl = el('span', null, 'Stages:'), sMinus = el('button', null, '−'), sCount = el('span', null, ''), sPlus = el('button', null, '+');
+    sMinus.title = 'Remove the last stage'; sPlus.title = 'Add a stage';
+    const sSel = document.createElement('select'), sFill = document.createElement('input'); sFill.type = 'text'; sFill.className = 'fl';
+    sFill.placeholder = 'Car numbers in finishing order, P1 first (e.g. 24 5 9 48 …)';
+    const sApply = el('button', null, 'Set stage order'); sApply.title = 'Fills the chosen stage from the list of car numbers; cars not listed get no position in it';
+    sbar.append(sLbl, sMinus, sCount, sPlus, el('span', null, '  Quick fill:'), sSel, sFill, sApply);
+    box.insertBefore(sbar, wrap);
+    const stagePts = x => {
+      let sum = 0;
+      x.stages.forEach(v => { const p = parseInt(v, 10); if (p >= 1) sum += parsePoints(stageTable[p - 1]) || 0; });
+      return Math.round(sum * 100) / 100;
+    };
+    const syncStageBar = () => {
+      sCount.textContent = String(nStages);
+      sSel.innerHTML = '';
+      for (let s = 0; s < nStages; s++) { const o = document.createElement('option'); o.value = s; o.textContent = 'Stage ' + (s + 1); sSel.appendChild(o); }
+      sSel.disabled = sFill.disabled = sApply.disabled = nStages === 0;
+      sMinus.disabled = nStages === 0; sPlus.disabled = nStages >= 20;
+    };
+    sPlus.addEventListener('click',  () => { nStages++; syncStageBar(); draw(); });
+    sMinus.addEventListener('click', () => { if (nStages > 0) { nStages--; list.forEach(x => { x.stages.length = Math.min(x.stages.length, nStages); }); syncStageBar(); draw(); } });
+    sApply.addEventListener('click', () => {
+      const s = parseInt(sSel.value, 10); if (!(s >= 0)) return;
+      const nums = sFill.value.split(/[\s,;]+/).map(v => v.trim()).filter(Boolean);
+      const byNum = new Map(list.map(x => [String(x.number).trim(), x]));
+      const unknown = [], used = new Set();
+      list.forEach(x => { while (x.stages.length < nStages) x.stages.push(''); x.stages[s] = ''; });
+      let pos = 0;
+      nums.forEach(n => {
+        const x = byNum.get(n);
+        if (!x) { unknown.push(n); return; }
+        if (used.has(n)) return;
+        used.add(n); pos++;
+        x.stages[s] = String(pos);
+      });
+      msg.textContent = unknown.length ? `Not in this race (ignored): ${unknown.join(', ')}` : `✓ Stage ${s + 1}: ${pos} car${pos === 1 ? '' : 's'} placed`;
+      sFill.value = ''; draw();
+    });
+
+    const inp = (val, cls, on) => { const i = document.createElement('input'); i.type = 'text'; i.className = cls; i.value = val; i.addEventListener('input', () => on(i.value)); return i; };
+    const move = (i, to) => { to = Math.max(0, Math.min(list.length - 1, to)); if (to === i) return; const [x] = list.splice(i, 1); list.splice(to, 0, x); draw(); };
+    function draw() {
+      t.innerHTML = '<thead><tr><th class="r">POS</th><th></th><th class="r">WAS</th><th class="r">#</th><th>DRIVER</th><th>STATUS</th><th class="r">LAPS</th><th class="r">LED</th>' + Array.from({ length: nStages }, (_, s) => '<th class="c" title="Finishing position in stage ' + (s + 1) + '">S' + (s + 1) + '</th>').join('') + (nStages ? '<th class="r" title="Stage points with the Stage points table">ST PTS</th>' : '') + '<th class="c">DQ</th><th class="r">− PTS</th><th class="r">+ PTS</th><th>NOTE</th></tr></thead>';
+      const tb = el('tbody');
+      const order = list.filter(x => !x.dq).concat(list.filter(x => x.dq));
+      list.forEach((x, i) => {
+        const fin = order.indexOf(x) + 1;
+        const tr = el('tr', (x.dq ? 'dq ' : '') + (fin !== x.orig ? 'moved' : ''));
+        const td = (c, cls) => { const d = el('td', cls); if (c instanceof Node) d.appendChild(c); else d.textContent = c; tr.appendChild(d); return d; };
+        const pos = inp(String(i + 1), 'n', () => {}); pos.title = 'Type a position and press Enter';
+        pos.addEventListener('change', () => { const v = parseInt(pos.value, 10); if (v >= 1) move(i, v - 1); else pos.value = i + 1; });
+        td(pos, 'r pos');
+        const mv = el('span'); const up = el('button', 'mv', '▲'), dn = el('button', 'mv', '▼');
+        up.disabled = i === 0; dn.disabled = i === list.length - 1;
+        up.addEventListener('click', () => move(i, i - 1)); dn.addEventListener('click', () => move(i, i + 1)); mv.append(up, dn); td(mv);
+        td('P' + x.orig, 'r dim'); td(x.number, 'r'); td(x.name || '');
+        td(inp(x.status, 'st', v => x.status = v));
+        td(inp(x.laps, 'n', v => x.laps = v), 'r'); td(inp(x.led, 'n', v => x.led = v), 'r');
+        for (let s = 0; s < nStages; s++) {
+          const si = inp(x.stages[s] || '', 'sg', v => { x.stages[s] = v; const sp = tr.querySelector('td.sp'); if (sp) sp.textContent = stagePts(x) || ''; });
+          si.title = 'Position in stage ' + (s + 1) + ' (empty = did not score)';
+          td(si, 'c');
+        }
+        if (nStages) td(String(stagePts(x) || ''), 'r sp');
+        const c = document.createElement('input'); c.type = 'checkbox'; c.checked = x.dq; c.title = 'Disqualify';
+        c.addEventListener('change', () => { x.dq = c.checked; if (x.dq && (!x.status || /^running$/i.test(x.status))) x.status = 'Disqualified'; else if (!x.dq && x.status === 'Disqualified') x.status = 'Running'; draw(); });
+        td(c, 'c');
+        td(inp(x.penaltyPts, 'n', v => x.penaltyPts = v), 'r'); td(inp(x.bonusPts, 'n', v => x.bonusPts = v), 'r');
+        td(inp(x.note, 'nt', v => x.note = v)).querySelector('input').placeholder = 'e.g. Rough driving';
+        tb.appendChild(tr);
+      });
+      t.appendChild(tb);
+    }
+    syncStageBar();
+    draw();
+    box.appendChild(msg);
+    const b = el('div', 'btns');
+    const reset = el('button', null, 'Back to original order'); reset.title = 'Put cars back in the order they finished on track (keeps penalties)';
+    reset.addEventListener('click', () => { list.sort((a, b) => a.orig - b.orig); draw(); });
+    const no = el('button', null, 'Cancel'), yes = el('button', 'primary', 'Save results');
+    no.addEventListener('click', close);
+    yes.addEventListener('click', async () => {
+      const bad = list.find(x => [x.laps, x.led, x.penaltyPts, x.bonusPts].some(v => String(v).trim() !== '' && !(parseFloat(v) >= 0)));
+      if (bad) { msg.textContent = `Check the numbers for #${bad.number} (laps, led and points must be 0 or more).`; return; }
+      const badSt = list.find(x => x.stages.some(v => String(v).trim() !== '' && String(parseInt(v, 10)) !== String(v).trim()) || x.stages.some(v => String(v).trim() === '0'));
+      if (badSt) { msg.textContent = `Check the stage positions for #${badSt.number} (whole numbers from 1, or empty).`; return; }
+      for (let s = 0; s < nStages; s++) {
+        const seen = new Map();
+        for (const x of list) {
+          const p = parseInt(x.stages[s], 10); if (!(p >= 1)) continue;
+          if (seen.has(p)) { msg.textContent = `Stage ${s + 1}: position ${p} is given to both #${seen.get(p)} and #${x.number}.`; return; }
+          seen.set(p, x.number);
+        }
+      }
+      if (counted && dirty) { msg.textContent = 'Save or discard your unsaved Championship edits first, so the totals can be updated safely.'; return; }
+      yes.disabled = true;
+      const res = await window.shl.seasonEditResults(seriesId, r.id, { rows: list.map(x => ({
+        number: x.number, status: x.status, laps: x.laps, led: x.led, dq: x.dq, penaltyPts: x.penaltyPts || 0, bonusPts: x.bonusPts || 0, note: x.note,
+        stages: Array.from({ length: nStages }, (_, s) => { const p = parseInt(x.stages[s], 10); return p >= 1 ? p : 0; }) })) });
+      if (!res || !res.ok) { yes.disabled = false; msg.textContent = 'Could not save: ' + ((res && res.error) || 'unknown error'); return; }
+      close(); season = res.state; applySeasonState();
+      if (!dirty) applyLoaded(await window.shl.getChampionship(seriesId));
+      $('ss-msg').className = 'okmsg';
+      $('ss-msg').textContent = `✓ R${n} results saved` + (res.adjusted ? ` — ${res.adjusted} championship total${res.adjusted === 1 ? '' : 's'} corrected` : '');
+    });
+    b.append(reset, el('span', 'spacer'), no, yes); box.appendChild(b);
+  }, 'xwide');
+}
+
+// ── Delete a race ───────────────────────────────────────────────────────────
+function deleteRaceDlg(r, n) {
+  const nPts = (r.applied || []).filter(x => x.pts).length, hasPts = nPts > 0;
+  dlg(`Delete R${n}?`, (box, close) => {
+    box.appendChild(el('div', 'hint', `“${raceLabel(r)}” (${raceDate(r)}) will be removed from the season.` + (r.file ? ` The file ${r.file} on disk is not touched.` : '')));
+    let chk = null;
+    if (hasPts) {
+      const lab = el('label', 'chk'); chk = document.createElement('input'); chk.type = 'checkbox'; chk.checked = true;
+      lab.append(chk, document.createTextNode(` Also subtract the points this race added (${nPts} drivers)`)); box.appendChild(lab);
+    }
+    const b = el('div', 'btns'); const no = el('button', null, 'Cancel'), yes = el('button', 'primary', 'Delete race');
+    no.addEventListener('click', close);
+    yes.addEventListener('click', async () => {
+      if (chk && chk.checked && dirty) { box.appendChild(el('div', 'hint', 'Save or discard your unsaved Championship edits first, so the points can be updated safely.')); return; }
+      close(); season = await window.shl.seasonDeleteRace(seriesId, r.id, !!(chk && chk.checked)); applySeasonState();
+    });
+    b.append(no, yes); box.appendChild(b);
+  });
+}
+
+// ── Season management ───────────────────────────────────────────────────────
+$('ss-new').addEventListener('click', () => {
+  dlg('New season', (box, close) => {
+    box.appendChild(el('div', 'hint', 'The current season is closed (its final standings are kept) and an empty one becomes the active season.'));
+    const row = el('div', 'row'); const name = document.createElement('input'); name.type = 'text'; name.maxLength = 60;
+    let def = `${new Date().getFullYear()} Season`; let k = 2;
+    while (season.seasons.some(s => s.name === def)) def = `${new Date().getFullYear()} Season (${k++})`;
+    name.value = def; row.append(el('span', null, 'Name'), name); box.appendChild(row);
+    const lab = el('label', 'chk'); const chk = document.createElement('input'); chk.type = 'checkbox'; chk.checked = true;
+    lab.append(chk, document.createTextNode(' Start every driver at 0 points (and clear the Playoff ticks)')); box.appendChild(lab);
+    const msg = el('div', 'hint'); msg.style.color = '#e8c84a'; box.appendChild(msg);
+    const b = el('div', 'btns'); const no = el('button', null, 'Cancel'), yes = el('button', 'primary', 'Create season');
+    no.addEventListener('click', close);
+    yes.addEventListener('click', async () => {
+      if (chk.checked && dirty) { msg.textContent = 'Save or discard your unsaved Championship edits first.'; return; }
+      close(); season = await window.shl.seasonCreate(seriesId, name.value, { resetPoints: chk.checked });
+      viewId = season.activeId; selRaceId = null; applySeasonState();
+    });
+    b.append(no, yes); box.appendChild(b); name.focus(); name.select();
+  });
+});
+
+$('ss-active').addEventListener('click', async () => { season = await window.shl.seasonSetActive(seriesId, viewId); applySeasonState(); });
+
+$('ss-rename').addEventListener('click', () => {
+  const s = curSeason(); if (!s) return;
+  dlg('Rename season', (box, close) => {
+    const name = document.createElement('input'); name.type = 'text'; name.maxLength = 60; name.value = s.name; box.appendChild(name);
+    const b = el('div', 'btns'); const no = el('button', null, 'Cancel'), yes = el('button', 'primary', 'Rename');
+    no.addEventListener('click', close);
+    yes.addEventListener('click', async () => { close(); season = await window.shl.seasonRename(seriesId, s.id, name.value); applySeasonState(); });
+    b.append(no, yes); box.appendChild(b); name.focus(); name.select();
+  });
+});
+
+$('ss-del').addEventListener('click', () => {
+  const s = curSeason(); if (!s) return;
+  dlg(`Delete “${s.name}”?`, (box, close) => {
+    box.appendChild(el('div', 'hint', `All ${s.races.length} saved race result${s.races.length === 1 ? '' : 's'} of this season will be deleted. The championship points are not changed.`));
+    const b = el('div', 'btns'); const no = el('button', null, 'Cancel'), yes = el('button', 'primary', 'Delete season');
+    no.addEventListener('click', close);
+    yes.addEventListener('click', async () => { close(); season = await window.shl.seasonDelete(seriesId, s.id); viewId = season.activeId; selRaceId = null; applySeasonState(); });
+    b.append(no, yes); box.appendChild(b);
+  });
+});
+
+// ── Points by race (drivers × races) ────────────────────────────────────────
+$('ss-table').addEventListener('click', async () => {
+  const s = curSeason(); if (!s || !s.races.length) return;
+  const byNum = new Map();
+  s.races.forEach((r, ri) => (r.rows || []).forEach(x => {
+    let d = byNum.get(x.number);
+    if (!d) { d = { number: x.number, name: x.name || '', pts: {}, total: 0, races: 0 }; byNum.set(x.number, d); }
+    if (!d.name && x.name) d.name = x.name;
+    d.pts[ri] = x.points; if (!r.nonPoints) d.total += Number(x.points) || 0; d.races++;
+  }));
+  // Championship points: the saved final standings of a closed season, otherwise what is in the list now
+  const champ = new Map();
+  if (s.finalStandings && s.id !== season.activeId) s.finalStandings.forEach(d => champ.set(d.number, d));
+  else { const cur = await window.shl.getChampionship(seriesId); (cur.data.drivers || []).forEach(d => champ.set(d.number, d)); }
+  champ.forEach((d, n) => { const x = byNum.get(n); if (x && d.name) x.name = d.name; });
+  const list = [...byNum.values()].sort((a, b) => (b.total - a.total) || (parseInt(a.number, 10) - parseInt(b.number, 10)));
+
+  dlg(`${s.name} — points by race`, (box, close) => {
+    box.appendChild(el('div', 'hint', 'TOTAL adds up the points awarded in the races saved here (races marked * are non-scoring and are not counted). CHAMP. is the points value in the Championship list' + (s.finalStandings && s.id !== season.activeId ? ' when the season was closed' : '') + ' — it can differ if you typed starting points or edited totals by hand.'));
+    const wrap = el('div', 'scroll'); const t = el('table', 't');
+    let head = '<thead><tr><th class="r">#</th><th>DRIVER</th><th class="r">POS</th>';
+    s.races.forEach((r, i) => { head += `<th class="r" title="${raceLabel(r).replace(/"/g, '')}${r.nonPoints ? ' (non-scoring)' : ''}">R${i + 1}${r.nonPoints ? '*' : ''}</th>`; });
+    t.innerHTML = head + '<th class="r">TOTAL</th><th class="r">CHAMP.</th></tr></thead>';
+    const tb = el('tbody');
+    list.forEach((d, idx) => {
+      const tr = el('tr');
+      tr.appendChild(el('td', 'r', d.number)); tr.appendChild(el('td', '', d.name)); tr.appendChild(el('td', 'r dim', idx + 1));
+      s.races.forEach((r, i) => tr.appendChild(el('td', 'r' + (d.pts[i] == null || r.nonPoints ? ' dim' : '') + (r.nonPoints && d.pts[i] != null ? ' struck' : ''), d.pts[i] == null ? '–' : d.pts[i])));
+      tr.appendChild(el('td', 'r pts', d.total));
+      const c = champ.get(d.number);
+      tr.appendChild(el('td', 'r dim', c ? c.points : '—'));
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb); wrap.appendChild(t); box.appendChild(wrap);
+    const b = el('div', 'btns'); const c = el('button', null, 'Close'); c.addEventListener('click', close); b.appendChild(c); box.appendChild(b);
+  }, true);
+});
+
+// ── Paste list ──────────────────────────────────────────────────────────────
+function parsePasted(text) {
+  const out = []; let skipped = 0;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const sep   = line.includes('\t') ? '\t' : (line.includes(';') ? ';' : ',');
+    const parts = line.split(sep).map(s => s.trim());
+    if (parts.length < 2) { skipped++; continue; }
+    const number = parts[0];
+    let name = '', pts = null;
+    if (parts.length === 2) {
+      pts = parsePoints(parts[1]);
+      if (pts === null) { name = parts[1]; }
+    } else {
+      name = parts.slice(1, -1).join(', ');
+      pts  = parsePoints(parts[parts.length - 1]);
+    }
+    if (!number || pts === null) { skipped++; continue; }   // header or junk line
+    out.push({ number, name, points: String(pts), playoff: false });
+  }
+  return { out, skipped };
+}
+
+function openModal() { $('paste-text').value = ''; $('paste-msg').textContent = ''; $('modal').classList.add('show'); $('paste-text').focus(); }
+function closeModal() { $('modal').classList.remove('show'); }
+$('paste-btn').addEventListener('click', openModal);
+$('paste-cancel').addEventListener('click', closeModal);
+
+function doPaste(replace) {
+  const { out, skipped } = parsePasted($('paste-text').value);
+  if (!out.length) { $('paste-msg').textContent = 'No valid lines found. Each line needs a car number and a points value.'; return; }
+  if (replace) {
+    const flags = new Map(rows.map(r => [r.number.trim(), !!r.playoff]));
+    out.forEach(o => { o.playoff = flags.get(o.number) === true; });
+    rows = out;
+  } else {
+    // drop the empty placeholder rows before merging
+    rows = rows.filter(r => !isBlank(r));
+    for (const o of out) {
+      const ex = rows.find(r => r.number.trim() === o.number);
+      if (ex) { if (o.name) ex.name = o.name; ex.points = o.points; }
+      else rows.push(o);
+    }
+  }
+  closeModal(); renderRows(); markDirty();
+  if (skipped) {
+    $('session-status').textContent = `Imported ${out.length} · ${skipped} line${skipped > 1 ? 's' : ''} skipped`;
+  }
+}
+$('paste-merge').addEventListener('click',   () => doPaste(false));
+$('paste-replace').addEventListener('click', () => doPaste(true));
+$('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+
+// ── Import cars from a running NR2003 session ───────────────────────────────
+const WS_URL = window.__PSF?.wsUrl || 'ws://localhost:8765';
+let sessionCars = [];      // [{number, name}]
+
+function updateSessionBtn() {
+  const btn = $('session-btn'), st = $('session-status');
+  btn.disabled = sessionCars.length === 0;
+  if (/Imported|Added|Series/.test(st.textContent)) return;     // keep the last import message visible
+  st.textContent = sessionCars.length ? `${sessionCars.length} cars in session` : 'Session import: waiting for NR2003…';
+}
+
+$('session-btn').addEventListener('click', () => {
+  rows = rows.filter(r => !isBlank(r));
+  const have = new Set(rows.map(r => r.number.trim()));
+  let added = 0;
+  for (const c of sessionCars) {
+    if (!c.number || c.number === '??' || have.has(c.number)) continue;
+    have.add(c.number);
+    rows.push({ number: c.number, name: c.name, points: '0', playoff: false });
+    added++;
+  }
+  renderRows(); markDirty();
+  $('session-status').textContent = added
+    ? `Added ${added} new car${added > 1 ? 's' : ''} at 0 points — now fill in their points`
+    : 'All cars in the session are already listed';
+});
+
+let ws = null;
+let lastWsProc = 0;
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onmessage = evt => {
+    const now = Date.now();
+    if (now - lastWsProc < 500) return;       // telemetry arrives at up to hundreds of Hz
+    lastWsProc = now;
+    try {
+      const d = JSON.parse(evt.data);
+      if (d.reset === true) { sessionCars = []; updateSessionBtn(); return; }
+      const src = (d.standings && d.standings.length) ? d.standings : (d.drivers || []);
+      if (!d.atTrack || !src.length) { sessionCars = []; updateSessionBtn(); return; }
+      const next = src.map(s => ({ number: String(s.number == null ? '' : s.number).trim(), name: String(s.name || '').trim() }))
+                      .filter(c => c.number);
+      // Only touch the DOM when the roster actually changed
+      if (next.length !== sessionCars.length || next.some((c, i) => c.number !== sessionCars[i].number)) {
+        sessionCars = next; updateSessionBtn();
+      }
+    } catch (e) {}
+  };
+  ws.onclose = () => { sessionCars = []; updateSessionBtn(); setTimeout(connect, 2000); };
+  ws.onerror = () => ws.close();
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────
+load().then(() => { updateSessionBtn(); connect(); });
+
+// ── Standings image ─────────────────────────────────────────────────────────
+// Draws the championship table (same idea as the Spotter Guide in the Series Editor) on a canvas and saves it as a PNG.
+const SI = { W: 1520, TITLE_H: 104, HEAD_H: 58, ROW_H: 72, FOOT_H: 40, SCALE: 2, GOLD: '#fdd34d', FONT: '"Montserrat", "Segoe UI", Arial, sans-serif' };
+function siLoad(src) { return new Promise(res => { if (!src) return res(null); const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; }); }
+function siFit(ctx, t, w) { if (ctx.measureText(t).width <= w) return t; while (t.length > 1 && ctx.measureText(t + '…').width > w) t = t.slice(0, -1); return t + '…'; }
+function siContain(ctx, img, x, y, w, h) { const r = Math.min(w / img.width, h / img.height), dw = img.width * r, dh = img.height * r; ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh); }
+
+async function buildStandingsImage() {
+  const data = await window.shl.getStandingsData(seriesId, viewId, $('ss-img-n').value);
+  if (!data || !data.rows.length) throw new Error('there are no drivers in the championship yet');
+  const logo = await siLoad(data.logo);
+  await Promise.all(data.rows.map(async r => { r._num = await siLoad(r.numImg); r._mfr = await siLoad(r.mfrImg); }));
+
+  const G = SI, rowsN = data.rows.length;
+  const H = G.TITLE_H + G.HEAD_H + rowsN * G.ROW_H + G.FOOT_H;
+  const scale = Math.min(G.SCALE, 15000 / H);
+  const cv = document.createElement('canvas'); cv.width = Math.round(G.W * scale); cv.height = Math.round(H * scale);
+  const ctx = cv.getContext('2d'); ctx.scale(scale, scale);
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, G.W, H); ctx.textBaseline = 'alphabetic';
+
+  // Title
+  let tx = 24;
+  if (logo) { siContain(ctx, logo, 24, 18, 120, 68); tx = 164; }
+  ctx.fillStyle = '#111'; ctx.font = `800 40px ${G.FONT}`; ctx.textAlign = 'left';
+  const title = ((seriesName || seriesId) + ' Championship Standings').toUpperCase();
+  ctx.fillText(siFit(ctx, title, G.W - tx - 24), tx, 56);
+  ctx.fillStyle = '#6b6b6b'; ctx.font = `600 20px ${G.FONT}`;
+  ctx.fillText([data.seasonName, data.races ? `after ${data.races} race${data.races === 1 ? '' : 's'}` : ''].filter(Boolean).join('  ·  '), tx, 88);
+
+  // Columns (x = centre, except DRIVER which is left-aligned)
+  const C = { pos: 50, chg: 114, num: 178, drv: 244, mfr: 505, pts: 640, beh: 772, st: 890, win: 990, t5: 1090, t10: 1200, dnf: 1310, led: 1430 };
+  const hy = G.TITLE_H + G.HEAD_H / 2 + 7;
+  ctx.fillStyle = '#111'; ctx.font = `800 17px ${G.FONT}`; ctx.textAlign = 'center';
+  [['POS', C.pos], ['NO.', C.num], ['MFR', C.mfr], ['POINTS', C.pts], ['BEHIND', C.beh], ['STARTS', C.st], ['WINS', C.win],
+   ['TOP 5s', C.t5], ['TOP 10s', C.t10], ['DNFs', C.dnf], ['LAPS LED', C.led]].forEach(([t, x]) => ctx.fillText(t, x, hy));
+  ctx.textAlign = 'left'; ctx.fillText('DRIVER', C.drv, hy);
+  ctx.fillStyle = G.GOLD; ctx.fillRect(0, G.TITLE_H + G.HEAD_H - 4, G.W, 5);
+
+  // Rows
+  data.rows.forEach((r, i) => {
+    const top = G.TITLE_H + G.HEAD_H + i * G.ROW_H, mid = top + G.ROW_H / 2;
+    ctx.fillStyle = '#dcdcdc'; ctx.fillRect(0, top + G.ROW_H - 1, G.W, 1);
+    ctx.textAlign = 'center'; ctx.fillStyle = '#111'; ctx.font = `500 25px ${G.FONT}`;
+    ctx.fillText(String(r.pos), C.pos, mid + 9);
+    if (r.change) {                                   // movement since the previous race
+      const up = r.change > 0, x = C.chg - 6, y = mid;
+      ctx.fillStyle = up ? '#14a83a' : '#e0141e'; ctx.beginPath();
+      if (up) { ctx.moveTo(x - 10, y + 7); ctx.lineTo(x + 10, y + 7); ctx.lineTo(x, y - 9); }
+      else    { ctx.moveTo(x - 10, y - 7); ctx.lineTo(x + 10, y - 7); ctx.lineTo(x, y + 9); }
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#222'; ctx.font = `600 13px ${G.FONT}`; ctx.textAlign = 'left';
+      ctx.fillText((up ? '+' : '-') + Math.abs(r.change), x + 14, y + 5);
+    }
+    ctx.textAlign = 'center';
+    if (r._num) siContain(ctx, r._num, C.num - 46, mid - 25, 92, 50);
+    else { ctx.fillStyle = '#111'; ctx.font = `italic 800 32px ${G.FONT}`; ctx.fillText('#' + r.number, C.num, mid + 11); }
+    ctx.textAlign = 'left'; ctx.fillStyle = '#111';   // driver: first name regular, last name bold
+    ctx.font = `500 22px ${G.FONT}`; ctx.fillText(siFit(ctx, r.first.toUpperCase(), 250), C.drv, mid - 4);
+    ctx.font = `800 21px ${G.FONT}`;  ctx.fillText(siFit(ctx, r.last.toUpperCase(), 250), C.drv, mid + 21);
+    if (r._mfr) siContain(ctx, r._mfr, C.mfr - 44, mid - 18, 88, 36);
+    ctx.textAlign = 'center'; ctx.fillStyle = '#111'; ctx.font = `500 25px ${G.FONT}`;
+    const f = v => String(v);
+    ctx.fillText(f(r.points), C.pts, mid + 9);        ctx.fillText(f(r.behind), C.beh, mid + 9);
+    ctx.fillText(f(r.starts), C.st, mid + 9);         ctx.fillText(f(r.wins), C.win, mid + 9);
+    ctx.fillText(f(r.top5), C.t5, mid + 9);           ctx.fillText(f(r.top10), C.t10, mid + 9);
+    ctx.fillText(f(r.dnfs), C.dnf, mid + 9);          ctx.fillText(f(r.led), C.led, mid + 9);
+  });
+
+  ctx.fillStyle = '#9a9a9a'; ctx.font = `600 14px ${G.FONT}`; ctx.textAlign = 'right';
+  ctx.fillText('All In One NR2003', G.W - 24, H - 14);
+  return { cv, count: rowsN, hasHistory: data.hasHistory };
+}
+$('ss-img').addEventListener('click', async () => {
+  const btn = $('ss-img'), msg = $('ss-msg');
+  btn.disabled = true; const old = btn.textContent; btn.textContent = 'Building…';
+  try {
+    const { cv, count, hasHistory } = await buildStandingsImage();
+    const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
+    if (!blob) throw new Error('could not create the image');
+    const file = await window.shl.saveStandingsImage(await blob.arrayBuffer(), `${seriesId}_standings`);
+    if (file) { msg.className = 'okmsg'; msg.textContent = `✓ Standings image saved (${count} drivers${hasHistory ? '' : '; position arrows need at least 2 counted races'})`; }
+  } catch (err) {
+    console.error('standings image failed:', err);
+    msg.className = 'warnmsg'; msg.textContent = 'Could not build the image: ' + (err.message || err);
+  } finally { btn.disabled = false; btn.textContent = old; }
+});
+
+// ── Race results image ──────────────────────────────────────────────────────
+// Same canvas approach as the standings image: finish, driver (number + manufacturer under the name),
+// starting position, final status, laps completed, laps led, gap to the winner and points.
+async function buildRaceImage(r, n, limit) {
+  const data = await window.shl.getRaceImageData(seriesId, r.id, limit);
+  if (!data || !data.rows.length) throw new Error('this race has no results');
+  const logo = await siLoad(data.logo);
+  await Promise.all(data.rows.map(async x => { x._num = await siLoad(x.numImg); x._mfr = await siLoad(x.mfrImg); }));
+
+  const W = 1560, TITLE_H = 112, HEAD_H = 46, ROW_H = 80, FOOT_H = 44, X0 = 16, X1 = W - 16;
+  const FONT = SI.FONT, rowsN = data.rows.length;
+  const H = TITLE_H + HEAD_H + rowsN * ROW_H + FOOT_H;
+  const scale = Math.min(SI.SCALE, 15000 / H);
+  const cv = document.createElement('canvas'); cv.width = Math.round(W * scale); cv.height = Math.round(H * scale);
+  const ctx = cv.getContext('2d'); ctx.scale(scale, scale);
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+
+  // Title
+  let tx = X0 + 8;
+  if (logo) { siContain(ctx, logo, X0 + 8, 18, 120, 70); tx = X0 + 148; }
+  ctx.fillStyle = '#111'; ctx.font = `800 38px ${FONT}`;
+  const ttl = (`R${n}  ${(data.name || data.track || 'Race')}`).toUpperCase();
+  ctx.fillText(siFit(ctx, ttl, W - tx - 30), tx, 52);
+  ctx.fillStyle = '#6b6b6b'; ctx.font = `600 19px ${FONT}`;
+  const facts = [];
+  if (data.name && data.track) facts.push(data.track);
+  if (data.date) facts.push(data.date);
+  if (data.cautionFlags != null) facts.push(`${data.cautionFlags} caution${data.cautionFlags === 1 ? '' : 's'}${data.cautionLaps != null ? ` (${data.cautionLaps} laps)` : ''}`);
+  if (data.leadChanges != null)  facts.push(`${data.leadChanges} lead change${data.leadChanges === 1 ? '' : 's'}${data.leadDrivers != null ? ` (${data.leadDrivers} drivers)` : ''}`);
+  ctx.fillText(siFit(ctx, facts.join('   ·   '), W - tx - 30), tx, 84);
+
+  // Header band
+  const C = { fin: 90, drv: 158, st: 515, stat: 716, laps: 903, led: 1090, int: 1277, pts: 1467 };
+  const hy0 = TITLE_H;
+  ctx.fillStyle = '#ececec'; ctx.fillRect(X0, hy0, X1 - X0, HEAD_H);
+  ctx.fillStyle = '#4a4a4a'; ctx.font = `500 15px ${FONT}`; ctx.textAlign = 'center';
+  [['FINISH', C.fin], ['STARTING POS', C.st], ['FINAL STATUS', C.stat], ['LAPS COMPLETED', C.laps], ['LAPS LED', C.led], ['GAP TO WINNER', C.int], ['POINTS', C.pts]]
+    .forEach(([t, x]) => ctx.fillText(t, x, hy0 + HEAD_H / 2 + 5));
+
+  // Rows
+  data.rows.forEach((x, i) => {
+    const top = hy0 + HEAD_H + i * ROW_H, mid = top + ROW_H / 2;
+    if (i % 2 === 0) { ctx.fillStyle = '#f9f9f9'; ctx.fillRect(X0, top, X1 - X0, ROW_H); }
+    ctx.fillStyle = '#111'; ctx.textAlign = 'center'; ctx.font = `600 22px ${FONT}`;
+    ctx.fillText(String(x.finish), C.fin, mid + 8);
+    // driver + number | manufacturer
+    ctx.textAlign = 'left'; ctx.font = `700 21px ${FONT}`;
+    ctx.fillText(siFit(ctx, String(x.name).toUpperCase(), 330), C.drv, mid - 6);
+    const by = mid + 4;
+    if (x._num) siContain(ctx, x._num, C.drv - 2, by, 46, 28);
+    else { ctx.font = `italic 800 20px ${FONT}`; ctx.fillText('#' + x.number, C.drv, by + 22); }
+    ctx.fillStyle = '#c9c9c9'; ctx.fillRect(C.drv + 52, by + 3, 1, 22);
+    if (x._mfr) siContain(ctx, x._mfr, C.drv + 62, by + 1, 46, 26);
+    // values
+    ctx.textAlign = 'center'; ctx.fillStyle = '#111'; ctx.font = `500 22px ${FONT}`;
+    const y = mid + 8;
+    ctx.fillText(x.start == null ? '--' : String(x.start), C.st, y);
+    ctx.fillText(x.dq ? 'Disqualified' : String(x.status || ''), C.stat, y);
+    ctx.fillText(String(x.laps), C.laps, y);
+    ctx.fillText(x.mostLed ? `${x.led}*` : String(x.led), C.led, y);
+    ctx.fillText(x.finish === 1 ? '--' : String(x.interval || '--'), C.int, y);
+    ctx.fillText(String(x.points), C.pts, y);
+  });
+
+  ctx.fillStyle = '#9a9a9a'; ctx.font = `600 14px ${FONT}`; ctx.textAlign = 'left';
+  ctx.fillText(data.hasMostLed ? '* most laps led' : '', X0 + 8, H - 16);
+  ctx.textAlign = 'right'; ctx.fillText('All In One NR2003', X1 - 8, H - 16);
+  return { cv, count: rowsN };
+}
+async function exportRaceImage(r, n, limit, btn) {
+  const old = btn.textContent; btn.disabled = true; btn.textContent = 'Building…';
+  const msg = $('ss-msg');
+  try {
+    const { cv, count } = await buildRaceImage(r, n, limit);
+    const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
+    if (!blob) throw new Error('could not create the image');
+    const file = await window.shl.saveRaceImage(await blob.arrayBuffer(), `${seriesId}_R${n}_results`);
+    if (file) { msg.className = 'okmsg'; msg.textContent = `✓ Results image saved (${count} drivers)`; }
+  } catch (err) {
+    console.error('race image failed:', err);
+    msg.className = 'warnmsg'; msg.textContent = 'Could not build the image: ' + (err.message || err);
+  } finally { btn.disabled = false; btn.textContent = old; }
+}
+</script>
+</body>
+</html>

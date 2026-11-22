@@ -1,0 +1,12 @@
+{
+  "description": "AI drive aggressively, bump drafting, swerving, and difficult to spin.\n\nSets:\n  yaw_accel_k1 = 0.1\n  yaw_accel_k2 = 0.5\n  ai_line_modifier = 1.02\n  ai_drafting_distance = 0.9\n  ai_dlat_pad = 1.5\n  driver_consistency_to_left_offset_dev = 2.5\n\nAll other settings unchanged.",
+  "settings": {
+    "yaw_accel_k1": 0.1,
+    "yaw_accel_k2": 0.5,
+    "ai_line_modifier": 1.02,
+    "ai_drafting_distance": 0.9,
+    "ai_dlat_pad": 1.5,
+    "driver_consistency_to_left_offset_dev": 2.5
+  },
+  "auto_keywords": []
+}

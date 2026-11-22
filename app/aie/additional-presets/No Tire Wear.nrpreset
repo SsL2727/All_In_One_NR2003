@@ -1,0 +1,8 @@
+{
+  "description": "AI tires never wear out.\n\nSets:\n  ai_tire_wear_left = 0.0\n  ai_tire_wear_right = 0.0\n\nAll other settings unchanged.",
+  "settings": {
+    "ai_tire_wear_left": 0.0,
+    "ai_tire_wear_right": 0.0
+  },
+  "auto_keywords": []
+}

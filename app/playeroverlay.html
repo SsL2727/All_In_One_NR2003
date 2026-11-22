@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' file:">
+<title>Player overlay</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; user-select: none; font-family: Bahnschrift, 'Segoe UI', sans-serif; }
+  /* the banner is drawn at 900 x 64 and the broadcast panel at 528 x 706, each scaled by its own factor */
+  #banner { position: absolute; left: 0; top: 0; width: 900px; height: 64px; transform-origin: 0 0; display: none; color: #fff; overflow: hidden; border: 0; box-sizing: border-box; }
+  #banner .txt { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; font-size: 22px; font-weight: 700; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #banner .tmr { position: absolute; right: 0; top: 0; bottom: 0; width: 230px; text-align: center; background: #14161a; }
+  #banner .tmr.urgent { background: #c82824; }
+  #banner .tmr .l { font-size: 12px; font-weight: 700; color: #c8cdd7; margin-top: 4px; height: 16px; }
+  #banner .tmr .v { font-size: 30px; font-weight: 700; margin-top: 0; }
+  #banner .chk { position: absolute; left: 0; top: 0; width: 48px; height: 64px; background-image: conic-gradient(#000 25%, #fff 0 50%, #000 0 75%, #fff 0); background-size: 16px 16px; display: none; }
+  #broad { position: absolute; left: 0; top: 0; width: 528px; height: 706px; transform-origin: 0 0; display: none; opacity: .9; }
+  #broad canvas { width: 528px; height: 706px; display: block; }
+  #card { position: absolute; transform-origin: 0 0; width: 640px; height: 250px; background: #121418; border: 2px solid #3c4048; box-sizing: border-box; display: none; color: #fff; text-align: center; }
+  #card .bar { height: 8px; background: #00aa50; }
+  #card h1 { font-size: 26px; margin: 10px 0 4px; }
+  #card .call { font-size: 17px; font-weight: 700; color: #00d26a; height: 26px; }
+  #card p { font-size: 15px; color: #b4bac4; margin: 8px 10px; }
+  #card button { position: absolute; left: 208px; top: 182px; width: 220px; height: 44px; background: #009648; border: 0; color: #fff; font-size: 17px; font-weight: 700; cursor: pointer; }
+  #card button:hover { background: #00c860; }
+  .edit { outline: 2px dashed #fff; cursor: move; }
+  #hint { position: absolute; left: 0; right: 0; bottom: 0; padding: 10px; text-align: center; background: rgba(16,18,22,.92); color: #ddd; font-size: 14px; display: none; }
+</style>
+</head>
+<body>
+<div id="banner"><div class="chk"></div><div class="txt"></div><div class="tmr"><div class="l"></div><div class="v"></div></div></div>
+<div id="broad"><canvas width="528" height="706"></canvas></div>
+<div id="card"><div class="bar"></div><h1>YOUR QUALIFYING RUN - GAME PAUSED</h1><div class="call"></div>
+  <p>Set your camera now (your cockpit). The game's keys still work while this shows.</p>
+  <p class="dnq"></p><button id="resume">RESUME</button></div>
+<div id="hint">PLACING: drag to move, mouse wheel to size. Enter or double-click saves, Esc cancels.</div>
+<script>
+const $ = id => document.getElementById(id);
+const banner = $('banner'), broad = $('broad'), card = $('card'), cv = broad.querySelector('canvas'), g = cv.getContext('2d');
+const q = new URLSearchParams(location.search);
+const editWhich = q.get('edit');                       // 'banner' | 'broad' | null
+const KIND = [['#1c1e24', '#fff'], ['#189646', '#fff'], ['#e6b414', '#000'], ['#c82824', '#fff'], ['#1e64d2', '#fff'], ['#e6b414', '#000']];
+let layouts = { banner: {}, broad: {} };
+let state = { banner: { x: NaN, y: NaN, scale: 1 }, broad: { x: NaN, y: NaN, scale: 1 }, card: { x: NaN, y: NaN, scale: 1 } };
+let bannerData = null, broadData = null, orderX = 0, orderGoal = 0, lastAnim = performance.now();
+
+const BAN = { w: 900, h: 64 }, BRO = { w: 528, h: 706 };
+const sc = (l) => Math.max(0.3, Math.min(3, innerHeight / 1080 * 1.2 * (l.scale > 0 ? l.scale : 1)));
+function place(el, size, l, defX, defY) {
+  const s = sc(l);
+  el.style.transform = `scale(${s})`;
+  const x = Number.isFinite(l.x) ? l.x * innerWidth : defX(s), y = Number.isFinite(l.y) ? l.y * innerHeight : defY(s);
+  el.style.left = Math.max(-size.w * s + 40, Math.min(innerWidth - 40, x)) + 'px';
+  el.style.top = Math.max(0, Math.min(innerHeight - 40, y)) + 'px';
+}
+function layoutAll() {
+  place(banner, BAN, state.banner, s => (innerWidth - BAN.w * s) / 2, () => innerHeight * 0.03);
+  place(broad, BRO, state.broad, () => innerWidth * 0.02, () => innerHeight * 0.1);
+  // the paused card: placed in the layout editor (fractions of the game window, size factor), centred by default
+  const cl = state.card || {}, cs = cl.scale > 0 ? cl.scale : 1;
+  card.style.transform = 'scale(' + cs + ')';
+  card.style.left = Math.max(0, Math.min(innerWidth - 40, Number.isFinite(cl.x) ? cl.x * innerWidth : (innerWidth - 640 * cs) / 2)) + 'px';
+  card.style.top = Math.max(0, Math.min(innerHeight - 40, Number.isFinite(cl.y) ? cl.y * innerHeight : innerHeight * 0.62 - 125 * cs)) + 'px';
+}
+addEventListener('resize', layoutAll);
+
+function paintBanner(b) {
+  if (!b || !b.text) { banner.style.display = 'none'; return; }
+  const [bg, fg] = KIND[b.kind] || KIND[0];
+  banner.style.display = 'block'; banner.style.background = bg; banner.style.color = fg;
+  const chk = banner.querySelector('.chk'), txt = banner.querySelector('.txt'), tmr = banner.querySelector('.tmr');
+  chk.style.display = b.kind === 2 ? 'block' : 'none';
+  let label = '', value = '';
+  if (b.timer) { const i = b.timer.indexOf('|'); label = i < 0 ? '' : b.timer.slice(0, i); value = i < 0 ? b.timer : b.timer.slice(i + 1); }
+  tmr.style.display = value ? 'block' : 'none'; tmr.classList.toggle('urgent', !!b.urgent);
+  tmr.querySelector('.l').textContent = label; tmr.querySelector('.v').textContent = value;
+  txt.style.left = (b.kind === 2 ? 62 : 18) + 'px'; txt.style.right = ((value ? 230 : 0) + 12) + 'px';
+  txt.textContent = b.text;
+}
+
+// ── the broadcast panel (QualBroadcastForm) ──
+const C = { panel: '#1f2226', order: '#282b2f', div: '#343a3e', label: '#a7afb4', value: '#f6f7f4', lime: '#defa40', red: '#ff383c', track: '#353b40' };
+const ease = t => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+function T(s, px, color, x, y, w, h, al, va, bold = true) {
+  g.font = `${bold ? '700 ' : ''}${px}px Bahnschrift, 'Segoe UI', sans-serif`; g.fillStyle = color;
+  g.textAlign = al === 'c' ? 'center' : al === 'r' ? 'right' : 'left'; g.textBaseline = 'middle';
+  const tx = al === 'c' ? x + w / 2 : al === 'r' ? x + w : x;
+  g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip(); g.fillText(String(s == null ? '' : s), tx, y + h / 2); g.restore();
+}
+const fill = (c, x, y, w, h) => { g.fillStyle = c; g.fillRect(x, y, w, h); };
+const L = (s, px, x, y, w, color, al) => T(s, px, color || C.label, x, y, w, 14, al || 'l');
+function bar(d, label, v, y, acc) {
+  L(label, 11, 16, y + 4, 120);
+  T(v < 0 ? '--' : Math.round(v * 100) + '%', 24, C.value, 130, y - 8, 134, 30, 'r');
+  fill(C.track, 16, y + 24, 248, 7);
+  if (v > 0) fill(acc, 16, y + 24, 248 * Math.min(1, v), 7);
+}
+function row(label, value, y, color) { L(label, 11, 16, y + 8, 120); T(value, 24, color, 110, y - 2, 154, 30, 'r'); }
+function drawBroad(d) {
+  g.clearRect(0, 0, 528, 706);
+  d = d || {};
+  const col = d.Ahead === false ? C.red : C.lime;
+  const x0 = 280 - ease(orderX) * 248;
+  if (orderX < 1) {
+    g.save(); g.beginPath(); g.rect(280, 0, 248, 706); g.clip();
+    fill(C.order, x0, 16, 248, 674); fill(col, x0, 16, 248, 3);
+    L('RUNNING ORDER', 12, x0 + 16, 32, 216);
+    T(d.Session || 'QUALIFYING', 23, C.value, x0 + 16, 44, 216, 30, 'l');
+    fill(C.div, x0, 80, 248, 1);
+    const order = d.Order || [];
+    for (let i = 0; i < Math.min(10, order.length); i++) {
+      const a = order[i], y = 90 + i * 46, t = a[4] || 'f';
+      const c = t === 'l' ? col : t === 'u' ? C.label : C.value;
+      if (t === 'u') { g.strokeStyle = C.label; g.lineWidth = 1.2; g.strokeRect(x0 + 12.5, y + 4.5, 19, 19); } else fill(t === 'l' ? col : C.value, x0 + 12, y + 4, 20, 20);
+      T(a[0], 11, C.panel, x0 + 12, y + 4, 20, 20, 'c');
+      T(a[2], 19, c, x0 + 40, y - 3, 130, 24, 'l');
+      L(a[1], 9, x0 + 40, y + 19, 130);
+      T(a[3], t === 'f' && a[3] === 'NO TIME' ? 12 : 19, t === 'l' ? col : C.value, x0 + 140, y + 1, 96, 24, 'r');
+      if (i < 9) fill(C.div, x0 + 12, y + 35, 224, 1);
+    }
+    g.restore();
+  }
+  fill(C.panel, 0, 0, 280, 90); fill(col, 0, 0, 280, 3);
+  L(d.Track || '', 10, 16, 12, 150, C.value); L(d.Session || 'QUALIFYING', 10, 130, 12, 134, C.label, 'r');
+  if (d.Num >= 0) {
+    fill(col, 16, 36, 38, 34);
+    T(label(d.Num), 24, C.panel, 16, 36, 38, 34, 'c');
+    L(d.First || '', 11, 66, 33, 200);
+    T(d.Last || '', 28, C.value, 64, 48, 210, 34, 'l');
+  }
+  fill(C.panel, 0, 92, 280, 280);
+  if (d.Tele) {
+    T(Math.max(0, Math.round(d.Mph)), 88, C.value, 10, 96, 180, 92, 'l');
+    L('SPEED / MPH', 11, 16, 186, 150);
+    fill(C.div, 190, 104, 1, 72);
+    T(d.Gear > 0 ? d.Gear : d.Gear === 0 ? 'N' : 'R', 76, col, 190, 100, 90, 80, 'c');
+    L('GEAR', 11, 190, 182, 90, C.label, 'c');
+    L('RPM', 11, 16, 228, 100);
+    T(Math.round(d.Rpm).toLocaleString('en-US'), 24, C.value, 130, 214, 134, 30, 'r');
+    const n = Math.round(Math.max(0, Math.min(1, d.Rpm / Math.max(1, d.RpmTop))) * 20);
+    for (let j = 0; j < 20; j++) fill(j < n ? col : C.track, 16 + j * 12.55, 246, 9.55, 10);
+    bar(d, 'THROTTLE', d.Throttle, 280, col); bar(d, 'BRAKE', d.Brake, 329, col);
+  }
+  fill(C.panel, 0, 374, 280, 332);
+  L('LAP', 11, 16, 398, 100);
+  const lap = d.LapsTotal <= 0 ? '' : d.LapNo <= 0 ? 'OUT LAP' : d.LapNo > d.LapsTotal ? 'IN LAP' : d.LapNo + ' / ' + d.LapsTotal;
+  T(lap, 24, C.value, 110, 386, 154, 30, 'r');
+  fill(C.div, 16, 424, 248, 1);
+  row('CURRENT', d.Current || '', 442, col); row('LAST LAP', d.LastLap || '', 476, C.value); row('BEST LAP', d.BestLap || '', 510, C.value);
+  (d.LapRows || []).slice(0, 4).forEach((v, k) => row('LAP ' + (k + 1), v, 560 + k * 30, C.value));
+}
+function label(v) { // car number as the game prints it: 00, 03, 005
+  if (v === 100) return '00';
+  if (v >= 2000) { const n = Math.floor(v / 1000), r = v % 1000; if (n >= 2 && n <= 3 && r < Math.pow(10, n)) return String(r).padStart(n, '0'); }
+  return String(v);
+}
+function animate() {
+  const now = performance.now(), dt = Math.min(0.2, (now - lastAnim) / 1000); lastAnim = now;
+  const goal = broadData && broadData.ShowOrder === false ? 1 : 0;
+  if (goal > orderX) orderX = Math.min(goal, orderX + dt / 0.45); else orderX = Math.max(goal, orderX - dt / 0.45);
+  if (broadData) drawBroad(broadData);
+  requestAnimationFrame(animate);
+}
+
+// ── data ──
+let hover = false;
+function setHover(v) { if (v !== hover) { hover = v; window.shl.playerOverlay.hover(v); } }
+card.addEventListener('mouseenter', () => setHover(true)); card.addEventListener('mouseleave', () => setHover(false));
+$('resume').addEventListener('click', () => { window.shl.playerOverlay.resume(); card.style.display = 'none'; setHover(false); });
+
+window.shl.playerOverlay.onData(d => {
+  if (editWhich) return;
+  d = d || {};
+  if (d.layouts) { state.banner = Object.assign({ x: NaN, y: NaN, scale: 1 }, d.layouts.banner || {}); state.broad = Object.assign({ x: NaN, y: NaN, scale: 1 }, d.layouts.broad || {}); state.card = Object.assign({ x: NaN, y: NaN, scale: 1 }, d.layouts.card || {}); }
+  state.banner.x = typeof state.banner.x === 'number' ? state.banner.x : NaN; state.banner.y = typeof state.banner.y === 'number' ? state.banner.y : NaN;
+  state.broad.x = typeof state.broad.x === 'number' ? state.broad.x : NaN; state.broad.y = typeof state.broad.y === 'number' ? state.broad.y : NaN;
+  bannerData = d.banner || null; broadData = d.broad || null;
+  paintBanner(bannerData);
+  broad.style.display = broadData ? 'block' : 'none';
+  if (d.ready) { card.style.display = 'block'; card.querySelector('.call').textContent = d.ready.call || ''; card.querySelector('.dnq').textContent = `Resume with your pause key or click RESUME: you then have ${Math.round(d.ready.dnq)} s to pull out.`; }
+  else { card.style.display = 'none'; setHover(false); }
+  layoutAll();
+});
+
+// ── placing: drag, wheel to size, Enter / double click saves, Esc cancels ──
+if (editWhich) {
+  const el = editWhich === 'banner' ? banner : broad, size = editWhich === 'banner' ? BAN : BRO;
+  window.shl.playerOverlay.onData(d => {
+    const l = Object.assign({ x: NaN, y: NaN, scale: 1 }, d && d.layouts ? d.layouts[editWhich] : {});
+    state[editWhich] = { x: typeof l.x === 'number' ? l.x : NaN, y: typeof l.y === 'number' ? l.y : NaN, scale: l.scale > 0 ? l.scale : 1 };
+    if (editWhich === 'banner') { paintBanner(d.sample); } else { broadData = Object.assign({}, d.sample, { ShowOrder: false }); broad.style.display = 'block'; }
+    el.classList.add('edit'); layoutAll();
+  });
+  let from = null;
+  el.addEventListener('mousedown', e => { if (e.button === 0) from = { x: e.screenX, y: e.screenY }; });
+  addEventListener('mouseup', () => { from = null; });
+  addEventListener('mousemove', e => {
+    if (!from || !(e.buttons & 1)) return;
+    const l = state[editWhich], s = sc(l), r = el.getBoundingClientRect();
+    l.x = (r.left + e.screenX - from.x) / innerWidth; l.y = (r.top + e.screenY - from.y) / innerHeight; from = { x: e.screenX, y: e.screenY }; layoutAll();
+  });
+  addEventListener('wheel', e => { const l = state[editWhich]; l.scale = Math.max(0.4, Math.min(2.5, (l.scale || 1) + (e.deltaY < 0 ? 0.05 : -0.05))); layoutAll(); });
+  const save = () => {
+    const l = state[editWhich], r = el.getBoundingClientRect();
+    window.shl.playerOverlay.save(editWhich, { x: r.left / innerWidth, y: r.top / innerHeight, scale: l.scale || 1 });
+  };
+  el.addEventListener('dblclick', save);
+  addEventListener('keydown', e => { if (e.key === 'Enter') save(); else if (e.key === 'Escape') window.shl.playerOverlay.cancel(); });
+  $('hint').style.display = 'block'; window.focus();
+}
+
+requestAnimationFrame(animate);
+window.shl.playerOverlay.ready();
+</script>
+</body>
+</html>

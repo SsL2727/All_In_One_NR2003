@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PSF Race Stats</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0d0d; --surface: #141414; --row-alt: #181818;
+    --border: #2a2a2a; --text: #e8e8e8; --dim: #ccc;
+    --green: #00d26a; --red: #ff3040; --amber: #f5a623; --blue: #4aa8ff;
+    --mono: 'Courier New', monospace; --ui: 'Inter', system-ui, sans-serif;
+  }
+  body { background: var(--bg); color: var(--text); font-family: var(--ui); font-size: 13px; }
+
+  /* Header - Static layout block so it safely sits above the table */
+  #header { 
+    background: var(--surface); 
+    border-bottom: 1px solid var(--border); 
+    padding: 12px 20px;
+  }
+  #header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  #series-logo { height: 36px; width: auto; object-fit: contain; display: none; }
+  #session-title { font-size: 18px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+  #session-badge { font-size: 11px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase;
+    color: #fff; padding: 3px 8px; border: 1px solid var(--border); border-radius: 3px; }
+  #conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red);
+    display: inline-block; margin-right: 6px; transition: background 0.3s; }
+  #conn-dot.live { background: var(--green); }
+  #last-update { font-size: 11px; color: var(--dim); }
+  #flag-indicator { padding: 4px 12px; border-radius: 2px; font-size: 11px;
+    font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
+  #flag-indicator.green  { background: var(--green); color: #000; }
+  #flag-indicator.yellow { background: #f5c518; color: #000; }
+  #flag-indicator.red    { background: var(--red); color: #fff; }
+
+  /* Stats bar */
+  #stats-bar { display: flex; gap: 24px; flex-wrap: wrap; align-items: center; }
+  .stat { display: flex; flex-direction: column; }
+  .stat-label { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim); }
+  .stat-value { font-family: var(--mono); font-size: 15px; font-weight: 700; }
+  .stat-value.amber { color: var(--amber); }
+  .stat-value.blue  { color: var(--blue); }
+  .stat-value.green { color: var(--green); }
+
+  /* Table Container */
+  #table-wrap { overflow-x: auto; padding-bottom: 40px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  
+  /* Table Header - Normal document flow block, eliminating overlap bugs */
+  thead th {
+    background: var(--surface); 
+    border-bottom: 2px solid var(--border);
+    padding: 10px; 
+    font-size: 9px; 
+    letter-spacing: 1.5px; 
+    text-transform: uppercase;
+    color: var(--dim); 
+    font-weight: 600; 
+    white-space: nowrap;
+    text-align: left;
+  }
+  thead th.right { text-align: right; }
+  thead th.center { text-align: center; }
+
+  /* Table Rows */
+  tbody tr { border-bottom: 1px solid var(--border); background: var(--bg); }
+  tbody tr:nth-child(even) { background: var(--row-alt); }
+  tbody tr:hover { background: #1f1f1f; }
+  
+  td { padding: 7px 10px; white-space: nowrap; vertical-align: middle; }
+  td.right { text-align: right; }
+  td.center { text-align: center; }
+  td.mono { font-family: var(--mono); }
+
+  /* Position */
+  td.pos { font-family: var(--mono); font-weight: 700; font-size: 14px;
+    width: 42px; text-align: right; border-left: 3px solid transparent; padding-right: 12px; }
+
+  /* Number */
+  td.num-cell { width: 60px; text-align: center; }
+  .num-inner { display: inline-flex; align-items: center; justify-content: center;
+    padding: 2px 6px; border-radius: 3px; font-family: var(--mono);
+    font-weight: 700; font-size: 13px; min-width: 32px; }
+
+  /* Manufacturer */
+  .manu-icon { height: 16px; width: auto; object-fit: contain;
+    vertical-align: middle; margin-right: 6px; }
+
+  /* Times */
+  td.mono-r { font-family: var(--mono); text-align: right; color: var(--dim); }
+  td.mono-r.best { color: var(--green); }
+  td.mono-r.fastest { color: #c970ff; }
+
+  /* Incidents */
+  td.inc { text-align: right; font-family: var(--mono); }
+  td.inc.warn { color: var(--amber); font-weight: 700; }
+
+  /* Status */
+  td.status-cell { text-align: center; }
+  .status-pill { display: inline-block; padding: 2px 8px; border-radius: 2px;
+    font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+  .status-pill.running   { color: var(--green); border: 1px solid var(--green); }
+  .status-pill.blackflag { background: #111; color: #fff; border: 1px solid #fff; }
+  .status-pill.dq        { background: var(--red); color: #fff; }
+  .status-pill.out       { background: #333; color: var(--dim); }
+
+  /* Live championship (points as they run) */
+  td.pts { font-family: var(--mono); text-align: right; }
+  td.pts.gain { color: var(--green); font-weight: 700; }
+  td.champ { font-family: var(--mono); text-align: right; white-space: nowrap; }
+  td.champ .cp { font-weight: 700; display: inline-block; min-width: 22px; text-align: right; }
+  td.champ .cd { display: inline-block; min-width: 34px; text-align: left; margin-left: 6px; font-size: 11px; }
+  td.champ .cd.up { color: var(--green); } td.champ .cd.down { color: var(--red); } td.champ .cd.eq { color: var(--dim); }
+
+  /* Click a driver to show that car on screen (only when opened from the app, which adds a token) */
+  body.can-card tbody tr { cursor: pointer; }
+  tbody tr.carded { background: #262210 !important; box-shadow: inset 3px 0 0 var(--amber); }
+  /* Driver card (click a row) */
+  #dcard-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 60; padding: 16px; }
+  #dcard-bg.show { display: flex; }
+  #dcard { position: relative; width: 420px; max-width: 100%; background: var(--surface); border: 1px solid var(--border); border-top: 4px solid var(--dc-accent, var(--amber));
+    border-radius: 6px; box-shadow: 0 18px 50px rgba(0,0,0,.7); overflow: hidden; }
+  #dcard .dc-x { position: absolute; top: 6px; right: 10px; background: none; border: 0; color: var(--dim); font-size: 22px; cursor: pointer; line-height: 1; }
+  #dcard .dc-x:hover { color: #fff; }
+  #dcard .dc-head { display: flex; gap: 14px; align-items: center; padding: 16px 18px 12px; }
+  #dcard .dc-photo { width: 92px; height: 92px; flex: none; border-radius: 50%; object-fit: cover; background: #111; border: 2px solid var(--dc-accent, var(--border)); }
+  #dcard .dc-id { min-width: 0; }
+  #dcard .dc-car { padding: 0 18px 8px; text-align: center; }
+  #dcard .dc-car img { max-width: 100%; max-height: 120px; object-fit: contain; }
+  #dcard .dc-name { font-size: 20px; font-weight: 700; line-height: 1.15; word-break: break-word; }
+  #dcard .dc-line { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+  #dcard .dc-num { display: inline-flex; align-items: center; justify-content: center; min-width: 38px; height: 26px; padding: 0 6px; border-radius: 3px; font-family: var(--mono); font-weight: 700; font-size: 15px; background: #222; }
+  #dcard .dc-num img { height: 22px; width: auto; object-fit: contain; }
+  #dcard .dc-manu { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
+  #dcard .dc-manu img { height: 22px; width: auto; object-fit: contain; }
+  #dcard .dc-sub { padding: 0 18px 8px; font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim); }
+  #dcard .dc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border); border-top: 1px solid var(--border); }
+  #dcard .dc-cell { background: var(--surface); padding: 10px 12px; }
+  #dcard .dc-cell.wide { grid-column: span 3; }
+  #dcard .dc-lab { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim); }
+  #dcard .dc-val { font-family: var(--mono); font-size: 20px; font-weight: 700; margin-top: 2px; }
+  #toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: #222; color: #fff; border: 1px solid var(--border);
+    border-radius: 4px; padding: 7px 14px; font-size: 12px; opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 50; }
+  #toast.show { opacity: 1; }
+
+  /* Empty */
+  #empty-state { text-align: center; padding: 80px 20px; color: var(--dim); display: none; }
+  #empty-state h2 { font-size: 20px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div id="header">
+  <div id="header-top">
+    <div style="display:flex;align-items:center;gap:14px">
+      <img id="series-logo" src="" alt="">
+      <div>
+        <div id="session-title">—</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:3px">
+          <span id="session-badge">Waiting</span>
+          <span id="flag-indicator" class="green" style="display:none">GREEN</span>
+        </div>
+      </div>
+    </div>
+    <div style="text-align:right">
+      <div><span id="conn-dot"></span><span id="conn-label" style="font-size:11px;color:var(--dim)">Connecting…</span></div>
+      <div id="last-update" style="margin-top:3px">—</div>
+    </div>
+  </div>
+  <div id="stats-bar">
+    <div class="stat"><span class="stat-label">Lap</span><span class="stat-value" id="stat-lap">—</span></div>
+    <div class="stat"><span class="stat-label">Remaining</span><span class="stat-value" id="stat-remain">—</span></div>
+    <div class="stat"><span class="stat-label">Cautions</span><span class="stat-value amber" id="stat-cautions">—</span></div>
+    <div class="stat"><span class="stat-label">Caution Laps</span><span class="stat-value amber" id="stat-claps">—</span></div>
+    <div class="stat"><span class="stat-label">Lead Changes</span><span class="stat-value blue" id="stat-leads">—</span></div>
+    <div class="stat"><span class="stat-label">Fastest Lap</span><span class="stat-value green" id="stat-fastest">—</span></div>
+    <div class="stat"><span class="stat-label">By</span><span class="stat-value" id="stat-fastest-by" style="font-size:13px">—</span></div>
+  </div>
+</div>
+
+<div id="table-wrap">
+  <table id="main-table">
+    <thead id="thead-main"><tr id="thead-row"></tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div id="toast"></div>
+  <div id="dcard-bg"><div id="dcard"></div></div>
+  <div id="empty-state"><h2>No Data</h2><p>Waiting for telemetry…</p></div>
+</div>
+
+<script>
+const WS_URL    = `ws://${location.hostname}:8765`;
+const HTTP_BASE = `http://${location.hostname}:8766`;
+const SERIES_ID = new URLSearchParams(location.search).get('series') || 'default';
+
+let _driverColors = {};
+let _carmakeByIdx  = {};  
+let _manuOverrides = new Set();  
+let _manuCacheBust = Date.now(); 
+
+function _buildManuMap(d) {
+  // Primary: d.drivers — populated at session start from kDriverEntry events
+  (d.drivers || []).forEach(e => {
+    if (e.carIdx == null) return;
+    const cm = e.carMakeFromFile;
+    if (cm != null && cm >= 0) _carmakeByIdx[e.carIdx] = cm + 1;
+  });
+  // Fallback: d.standings also carries carMakeFromFile — catches cars
+  // whose driver entry hasn't been read yet on page refresh
+  (d.standings || []).forEach(e => {
+    if (e.carIdx == null || _carmakeByIdx[e.carIdx]) return;
+    const cm = e.carMakeFromFile;
+    if (cm != null && cm >= 0) _carmakeByIdx[e.carIdx] = cm + 1;
+  });
+}
+
+function manuImgSrc(num, carIdx) {
+  const slot = _carmakeByIdx[carIdx] || 0;
+  const slotSrc = slot ? assetPath(`series/${SERIES_ID}/manufacturers/manu${slot}.png`) + `?v=${_manuCacheBust}` : null;
+  const overrideSrc = _manuOverrides.has(String(num).trim())
+    ? assetPath(`series/${SERIES_ID}/manufacturers/${num}.png`) + `?v=${_manuCacheBust}`
+    : null;
+  return { override: overrideSrc, slot: slotSrc };
+}
+let _startGrid           = {};
+let _gridLocked          = false;
+let _lastIsPQ            = null;
+let _ws                  = null;
+
+function assetPath(rel) { return `${HTTP_BASE}/assets/${rel}`; }
+
+window._numFailed  = new Set();
+window._manuFailed = new Set();
+
+function _onNumImgError(el) {
+  const n = el.getAttribute('data-num');
+  if (n) window._numFailed.add(n);
+  el.style.display = 'none';
+  const sib = el.nextSibling;
+  if (sib) sib.style.display = 'inline';
+}
+function numImgSrc(num) {
+  if (window._numFailed.has(String(num).trim())) return null;
+  return assetPath(`series/${SERIES_ID}/numbers/${String(num).trim()}.png`);
+}
+
+function numBgStyle(num) {
+  const c = _driverColors[String(num).trim()];
+  return c ? `background:${c};border-radius:3px;padding:2px 6px` : '';
+}
+
+function fmtTime(s) {
+  if (!s || s <= 0) return '—';
+  const m = Math.floor(s / 60);
+  const sec = (s % 60).toFixed(3).padStart(6, '0');
+  return m > 0 ? `${m}:${sec}` : `${parseFloat(s).toFixed(3)}`;
+}
+
+function fmtGap(s, isLeader, isPQ, leaderBest) {
+  if (isLeader) return '—';
+  if (isPQ) {
+    const bl = s.bestLap || 0;
+    return (bl > 0 && leaderBest > 0) ? `+${(bl - leaderBest).toFixed(3)}` : '—';
+  }
+  const lapsDown = s.lapsDown || s.lap || 0;
+  const t = s.time || 0;
+  if (lapsDown > 0) return `-${lapsDown}L`;
+  return t > 0 ? `-${t.toFixed(3)}` : '—';
+}
+
+function setTheadPQ(isPQ) {
+  if (_lastIsPQ === isPQ) return;
+  _lastIsPQ = isPQ;
+  const tr = document.getElementById('thead-row');
+  if (isPQ) {
+    tr.innerHTML = `
+      <th class="right" style="width:42px">POS</th>
+      <th class="center" style="width:60px">NO.</th>
+      <th>DRIVER</th>
+      <th class="right">LAST LAP</th>
+      <th class="right">BEST LAP</th>
+      <th class="right">GAP</th>
+      <th class="right">LAPS</th>`;
+  } else {
+    tr.innerHTML = `
+      <th class="right" style="width:42px">POS</th>
+      <th class="center" style="width:36px">ST</th>
+      <th class="center" style="width:60px">NO.</th>
+      <th>DRIVER</th>
+      <th class="right">INTERVAL</th>
+      <th class="right">LAST LAP</th>
+      <th class="right">BEST LAP</th>
+      <th class="right">PITS</th>
+      <th class="right">LAPS LED</th>
+      <th class="right" title="Points earned in this race if it ended now">RACE PTS</th>
+      <th class="right" title="Championship points with this race projected">PTS</th>
+      <th class="right" title="Live championship position (change vs. before the race)">CHAMP</th>
+      <th class="center">STATUS</th>`;
+  }
+}
+
+let _startGridNum = {};
+function maybeCapture(d) {
+  const state = (d.sessionState || '').toLowerCase();
+  const session = (d.session || '').toLowerCase();
+  if (session !== 'race' || _gridLocked) return;
+  const off = (d.standings && d.standings.length) ? d.standings : (d.liveStandings || []);
+  const snap = () => { _startGrid = {}; _startGridNum = {}; off.forEach((s, i) => { if (!s) return; _startGrid[s.carIdx] = i + 1; const k = String(s.number == null ? '' : s.number).trim(); if (k && !(k in _startGridNum)) _startGridNum[k] = i + 1; }); };
+  if (state === 'racing' || state === 'checkered' || state === 'cool down') {
+    // page opened late: the first racing frame is the best guess if the race has only just started
+    if (!Object.keys(_startGrid).length && state === 'racing' && (Number(d.lapsComplete) || 0) <= 1 && off.length) snap();
+    _gridLocked = true;
+    return;
+  }
+  if (off.length) snap();            // keep the latest order until the green flag (the order changes while the grid forms)
+}
+
+
+// ── Live championship ("points as they run") ─────────────────────────────────────
+// Same maths as the Championship widget (championship-core.js, embedded so this page stays standalone).
+// Shared championship maths (used by the hidden race recorder to decide who is
+// "in the chase"). Same code as the Championship overlay widget.
+(function (root) {
+let OFFICIAL_MODE = false;
+
+const normNum = n => String(n == null ? '' : n).trim();
+
+/**
+ * cfg       : { pointsTable:number[], drivers:[{number,name,points}], visibleRows, pinPlayer }
+ * standings : live race order (index 0 = P1)
+ * project   : true → add the points each driver would earn if the race ended now
+ * Returns rows sorted by (projected) championship rank.
+ *
+ * Tie-break: drivers level on points keep the order they had before the race
+ * (higher base points first, then the order they were entered in the list).
+ */
+function computeChampionship(cfg, standings, project, led, stageMap) {
+  led = led || {}; stageMap = stageMap || {};
+  const table   = Array.isArray(cfg.pointsTable) ? cfg.pointsTable : [];
+  const drivers = (Array.isArray(cfg.drivers) ? cfg.drivers : [])
+    .map(d => ({ ...d, points: Number(d.points) || 0 }));
+
+  // Pre-race order — this is what the +/- arrows are measured against
+  const baseOrder = drivers
+    .map((d, idx) => ({ d, idx }))
+    .sort((a, b) => (b.d.points - a.d.points) || (a.idx - b.idx));
+  const baseRank = new Map();
+  baseOrder.forEach((o, i) => { if (!baseRank.has(normNum(o.d.number))) baseRank.set(normNum(o.d.number), i + 1); });
+
+  // First entry wins if a number is listed twice
+  const byNum = new Map();
+  drivers.forEach(d => { const k = normNum(d.number); if (!byNum.has(k)) byNum.set(k, d); });
+
+  // Race position of every listed driver — position counts ALL cars on track,
+  // including ones that aren't in the championship list.
+  // (always collected, so the overlay can show where each driver is even when
+  //  no points are being projected; points are only added when `project` is true)
+  const race = new Map();
+  (standings || []).forEach((s, i) => {
+    const k = normNum(s.number);
+    if (!byNum.has(k) || race.has(k)) return;
+    const st = String(s.status || 'running').toLowerCase();
+    race.set(k, { pos: i + 1, carIdx: s.carIdx, liveName: s.name || '', out: st !== 'running' && st !== '' });
+  });
+
+  // Bonuses (NASCAR 2003: +5 for leading a lap, +5 for leading the most laps).
+  // "Most laps" is decided among ALL cars, listed in the championship or not;
+  // drivers tied for the most laps each get it.
+  const bLed = Number(cfg.bonusLedLap) || 0, bMost = Number(cfg.bonusMostLed) || 0;
+  let maxLed = 0;
+  Object.keys(led).forEach(k => { if (led[k] > maxLed) maxLed = led[k]; });
+
+  const rows = [];
+  byNum.forEach((d, k) => {
+    const r      = race.get(k);
+    const posPt  = (project && r) ? (Number(table[r.pos - 1]) || 0) : 0;
+    const ledN   = led[k] || 0;
+    const bonus  = project ? ((ledN > 0 ? bLed : 0) + (ledN > 0 && ledN === maxLed ? bMost : 0)) : 0;
+    const stagePt = project ? (stageMap[k] || 0) : 0;
+    const racePt = posPt + bonus + stagePt;
+    rows.push({
+      number:   k,
+      name:     (d.name && String(d.name).trim()) || (r && r.liveName) || '',
+      base:     d.points,
+      racePts:  racePt,
+      bonus,
+      stagePts: stagePt,
+      ledLaps:  ledN,
+      out:      !!(r && r.out),
+      total:    d.points + racePt,
+      baseRank: baseRank.get(k) || 9999,
+      pos:      r ? r.pos : null,
+      carIdx:   r ? r.carIdx : null,
+    });
+  });
+
+  rows.sort((a, b) => (b.total - a.total) || (a.baseRank - b.baseRank));
+  rows.forEach((r, i) => { r.rank = i + 1; r.delta = r.baseRank - r.rank; });
+  return rows;
+}
+
+
+// If this race's points were already added to the totals (and its session is
+// still on screen), take them back out so the live projection isn't counted twice.
+function effectiveConfig(cfg, key) {
+  const la = cfg && cfg.lastApplied;
+  if (!la || !la.live || la.key !== key || !Array.isArray(la.deltas) || !la.deltas.length) return cfg;
+  const sub = new Map(la.deltas.map(d => [String(d.number).trim(), Number(d.pts) || 0]));
+  return { ...cfg, drivers: (cfg.drivers || []).map(d => {
+    const k = String(d.number).trim();
+    return sub.has(k) ? { ...d, points: (Number(d.points) || 0) - sub.get(k) } : d;
+  }) };
+}
+
+// Same source-selection chain the tower/ticker use, so the championship order
+// always matches the race order the viewer is looking at.
+function pickStandings(d) {
+  const state = (d.sessionState || '').toLowerCase();
+  if (d.liveStandingsEnabled !== undefined) OFFICIAL_MODE = !d.liveStandingsEnabled;
+  else if (d.isOnline !== undefined)        OFFICIAL_MODE = d.isOnline;
+
+  const live = d.liveStandings || d.standings || [];
+  if (state === 'cool down') return d.standings || [];
+  if (state === 'checkered' && !OFFICIAL_MODE && Array.isArray(d.computedStandings) && d.computedStandings.length)
+    return d.computedStandings;
+  return OFFICIAL_MODE ? (d.standings || []) : live;
+}
+
+const PRE_RACE_STATES = ['get in car', 'warmup', 'parade laps', ''];
+function getMode(d, standings) {
+  const session = (d.session      || '').toLowerCase();
+  const state   = (d.sessionState || '').toLowerCase();
+  if (session !== 'race')                 return 'standings';
+  if (!standings.length)                  return 'prerace';
+  if (PRE_RACE_STATES.includes(state))    return 'prerace';
+  if (state === 'checkered' || state === 'cool down') return 'final';
+  return 'live';
+}
+const MODE_LABEL = { live: 'LIVE', final: 'FINAL', prerace: 'PRE-RACE', standings: 'STANDINGS' };
+
+
+
+// Stage points earned so far this race, per car number: the bridge's stageWinners (stage, pos, carIdx)
+// scored with the Championship window's stage table.
+function stagePtsMap(d, cfg) {
+  const t = (cfg && Array.isArray(cfg.stagePointsTable)) ? cfg.stagePointsTable : [10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+  const m = {};
+  if (!d || String(d.session || '').toLowerCase() !== 'race' || !Array.isArray(d.stageWinners)) return m;
+  const srcs = [d.liveStandings, d.standings, d.drivers], done = new Set();
+  d.stageWinners.forEach(w => {
+    if (!w || !(w.pos >= 1)) return;
+    const key = w.stage + ':' + w.pos; if (done.has(key)) return; done.add(key);
+    let e = null;
+    for (const s of srcs) { if (Array.isArray(s)) { e = s.find(x => x && x.carIdx === w.carIdx); if (e) break; } }
+    if (!e) return;
+    const k = String(e.number == null ? '' : e.number).trim();
+    m[k] = (m[k] || 0) + (Number(t[w.pos - 1]) || 0);
+  });
+  return m;
+}
+
+const api = { normNum, stagePtsMap, computeChampionship, effectiveConfig, pickStandings, getMode };
+if (typeof module !== 'undefined' && module.exports) module.exports = api;
+else root.ChampCore = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+
+let _champCfg = null, _champPort = null, _champFetched = 0, _champBusy = false;
+async function _champFetchFrom(port) {
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 1200);
+  try {
+    const r = await fetch(`http://${location.hostname}:${port}/api/championship?series=${encodeURIComponent(SERIES_ID)}`, { signal: ctl.signal, cache: 'no-store' });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return (j && j.data) || null;
+  } catch (e) { return null; } finally { clearTimeout(t); }
+}
+async function loadChampionship() {
+  if (_champBusy) return; _champBusy = true;
+  try {
+    let cfg = null;
+    if (_champPort) cfg = await _champFetchFrom(_champPort);
+    if (!cfg) {
+      _champPort = null;
+      for (let p = 48765; p <= 48785 && !cfg; p++) { cfg = await _champFetchFrom(p); if (cfg) _champPort = p; }
+    }
+    if (cfg) { _champCfg = cfg; if (window._lastPayload) render(window._lastPayload); }
+  } finally { _champFetched = Date.now(); _champBusy = false; }
+}
+loadChampionship();
+setInterval(loadChampionship, 15000);   // picks up edits made in the Championship window
+
+// Laps led (fallback when the telemetry doesn't carry lapsLead): the leader of each completed lap
+const _normNum = ChampCore.normNum;
+let _led = { cookie: null, lastLap: 0, counts: {} };
+function trackLed(d) {
+  if ((d.session || '').toLowerCase() !== 'race') return;
+  const off = d.standings || []; if (!off.length) return;
+  const state = (d.sessionState || '').toLowerCase();
+  const lead = ((d.liveStandings && d.liveStandings.length) ? d.liveStandings : off)[0] || off[0];
+  const lap = Math.max(Number(d.lapsComplete) || 0, Number(lead && lead.lap) || 0);
+  const cookie = d.sessionCookie != null ? String(d.sessionCookie) : null;
+  if (cookie !== _led.cookie || lap < _led.lastLap) _led = { cookie, lastLap: 0, counts: {} };
+  if (state !== 'racing' && state !== 'checkered') return;
+  if (lap > _led.lastLap) {
+    if (_led.lastLap === 0 && lap > 1) _led.lastLap = lap;      // joined mid-race: earlier laps unknown
+    else { const k = _normNum(lead.number); if (k) _led.counts[k] = (_led.counts[k] || 0) + (lap - _led.lastLap); _led.lastLap = lap; }
+  }
+}
+function ledCounts(d) {
+  const off = d.standings || [];
+  if (off.some(x => x.lapsLead !== undefined || x.leadLaps !== undefined)) {
+    const m = {}; off.forEach(x => { m[_normNum(x.number)] = Number(x.lapsLead ?? x.leadLaps) || 0; }); return m;
+  }
+  return _led.counts;
+}
+// Returns Map(number -> row) with racePts / total / rank / delta, or null when there is no championship set up.
+// Uses the same order as the table (d.standings) so a driver's points always match the position shown here.
+function champLive(d, standings) {
+  const cfg0 = _champCfg;
+  if (!cfg0 || !Array.isArray(cfg0.drivers) || !cfg0.drivers.length) return null;
+  const cfg = ChampCore.effectiveConfig(cfg0, String(d.sessionCookie) + '|' + String(d.track));
+  const session = (d.session || '').toLowerCase(), state = (d.sessionState || '').toLowerCase();
+  const project = session === 'race' && (state === 'racing' || state === 'checkered' || state === 'cool down');
+  const rows = ChampCore.computeChampionship(cfg, standings, project, ledCounts(d), project ? ChampCore.stagePtsMap(d, cfg) : {});
+  const m = new Map(); rows.forEach(r => m.set(r.number, r));
+  return { map: m, project };
+}
+
+// ── Starting position ───────────────────────────────────────────────────────
+// 1) qualifying table of this track, 2) grid seen before the green flag — both reported by the app's recorder (it is always running, so it
+// has them even if this page is opened late); 3) fallback: what this page itself saw (grid order kept up to the green flag).
+let _srvStart = null;
+async function loadStartOrder() {
+  const ports = [];
+  const mp = parseInt(new URLSearchParams(location.search).get('mport'), 10);
+  if (mp) ports.push(mp);
+  if (typeof _champPort === 'number' && _champPort && !ports.includes(_champPort)) ports.push(_champPort);
+  for (const p of ports) {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 1500);
+    try {
+      const r = await fetch(`http://${location.hostname}:${p}/api/startorder`, { signal: ctl.signal, cache: 'no-store' });
+      if (r.ok) { _srvStart = await r.json(); return; }
+    } catch (e) {} finally { clearTimeout(t); }
+  }
+}
+setInterval(() => { loadStartOrder().then(() => { if (window._lastPayload) render(window._lastPayload); }); }, 3000);
+loadStartOrder();
+function startPosOf(d, s, num) {
+  const k = String(num).trim();
+  if (_srvStart && (!_srvStart.track || !d.track || String(_srvStart.track) === String(d.track))) {
+    if (_srvStart.start) return _srvStart.start[k] || '—';   // resolved by the recorder (complete 1..N list from ONE source): never mix it with the other sources
+    if (_srvStart.qual && _srvStart.qual[k]) return _srvStart.qual[k];
+    if (_srvStart.grid && _srvStart.grid[k] && String(_srvStart.key) === String(d.sessionCookie) + '|' + String(d.track)) return _srvStart.grid[k];
+  }
+  return _startGridNum[k] || _startGrid[s.carIdx] || '—';
+}
+
+let _lastCookie = null;
+function checkSessionChange(d) {
+  const cookie = d.sessionCookie;
+  if (cookie != null && cookie !== _lastCookie) {
+    _lastCookie    = cookie;
+    _manuCacheBust = Date.now();
+    _startGrid     = {};
+    _startGridNum  = {};
+    _gridLocked    = false;
+    _carmakeByIdx  = {};
+    _manuOverrides = new Set();
+    window._lapDataLogged = false;
+    window._manuFailed    = new Set();
+    window._numFailed     = new Set();
+  }
+}
+
+function fmtPts(v) { return String(Math.round(v * 100) / 100); }
+function champCells(champ, num) {
+  const r = champ && champ.map.get(_normNum(num));
+  if (!r) return `<td class="pts">—</td><td class="pts">—</td><td class="champ">—</td>`;
+  const dlt = r.delta;
+  const dHtml = !champ.project ? '' : dlt > 0 ? `<span class="cd up">▲${dlt}</span>` : dlt < 0 ? `<span class="cd down">▼${-dlt}</span>` : `<span class="cd eq">–</span>`;
+  const gained = champ.project && r.racePts > 0;
+  return `<td class="pts${gained ? ' gain' : ''}">${champ.project ? '+' + fmtPts(r.racePts) : '—'}</td>
+        <td class="pts">${fmtPts(r.total)}</td>
+        <td class="champ"><span class="cp">${r.rank}</span>${dHtml}</td>`;
+}
+
+function render(d) {
+  const session = (d.session || '').toLowerCase();
+  const state   = (d.sessionState || '').toLowerCase();
+  const flag    = (d.sessionFlag  || '').toLowerCase();
+  const isPQ    = session === 'practice' || session === 'qualifying' || session === 'testing';
+
+  if (d.driverColors) _driverColors = d.driverColors;
+  if (d.driverManuOverrides) _manuOverrides = new Set(d.driverManuOverrides);
+  window._lastPayload = d;
+  _buildManuMap(d);
+  if (!Object.keys(_carmakeByIdx).length) {
+    clearTimeout(window._manuRetry);
+    window._manuRetry = setTimeout(() => {
+      if (window._lastPayload) { _buildManuMap(window._lastPayload); render(window._lastPayload); }
+    }, 1500);
+  }
+
+  document.getElementById('session-title').textContent = d.track || d.trackNameShort || '—';
+  document.getElementById('session-badge').textContent = (d.session || 'Waiting').toUpperCase();
+
+  const fi = document.getElementById('flag-indicator');
+  // Hide badge and session title when not in a session
+  const hasSession = !!(d.atTrack && d.session);
+  document.getElementById('session-title').style.opacity = hasSession ? '1' : '0';
+  document.getElementById('session-badge').style.opacity = hasSession ? '1' : '0';
+  if (!hasSession) { fi.style.display = 'none'; }
+  else {
+    fi.style.display = '';
+    if      (state === 'gridding' || state === 'get in car') { fi.className = 'green';  fi.textContent = 'GRIDDING'; }
+    else if (state === 'warmup' || state === 'parade laps')  { fi.className = 'green';  fi.textContent = 'PACING'; }
+    else if (flag === 'yellow')                              { fi.className = 'yellow'; fi.textContent = 'YELLOW'; }
+    else if (flag === 'red')                                 { fi.className = 'red';    fi.textContent = 'RED'; }
+    else if (state === 'checkered' || state === 'cool down') { fi.className = 'green';  fi.textContent = 'CHECKERED'; }
+    else                                                     { fi.className = 'green';  fi.textContent = 'GREEN'; }
+  }
+
+  const logoEl = document.getElementById('series-logo');
+  if (SERIES_ID && SERIES_ID !== 'default') {
+    const src = assetPath(`series/${SERIES_ID}/serieslogo.png`);
+    if (logoEl.getAttribute('data-src') !== src) {
+      logoEl.setAttribute('data-src', src);
+      logoEl.onerror = () => { logoEl.style.display = 'none'; };
+      logoEl.onload  = () => { logoEl.style.display = 'block'; };
+      logoEl.src = src;
+    }
+  }
+
+  const lc = d.lapsComplete   || 0;
+  const lt = d.lapsTotal      || 0;
+  const lr = d.lapsRemaining  != null ? d.lapsRemaining : (lt > 0 ? lt - lc : null);
+  const tr = d.timeRemaining;
+  if (isPQ) {
+    // Practice/Qualifying: show time remaining
+    document.getElementById('stat-lap').textContent    = '—';
+    if (tr != null && tr > 0) {
+      const m = Math.floor(tr / 60);
+      const s2 = Math.floor(tr % 60).toString().padStart(2, '0');
+      document.getElementById('stat-remain').textContent = `${m}:${s2} remaining`;
+    } else {
+      document.getElementById('stat-remain').textContent = '—';
+    }
+  } else {
+    document.getElementById('stat-lap').textContent    = lt > 0 ? `${lc + 1} / ${lt}` : (lc + 1 || '—');
+    document.getElementById('stat-remain').textContent = lr != null ? lr : '—';
+  }
+  document.getElementById('stat-cautions').textContent = d.cautionFlags   != null ? d.cautionFlags   : '—';
+  document.getElementById('stat-claps').textContent    = d.cautionLaps    != null ? d.cautionLaps    : '—';
+  document.getElementById('stat-leads').textContent    = d.numLeadChanges != null ? d.numLeadChanges : '—';
+
+  const fastestCarIdx = d.fastestCarIdx ?? -1;
+  const fastestTime   = d.fastestLap || 0;
+  const fastestEntry  = (d.standings || []).find(s => s.carIdx === fastestCarIdx);
+  const fastestName   = fastestEntry?.fullName || fastestEntry?.name || '—';
+  document.getElementById('stat-fastest').textContent    = fastestTime > 0 ? fmtTime(fastestTime) : '—';
+  document.getElementById('stat-fastest-by').textContent = fastestName;
+
+  const lapDataMap = {};
+  (d.lapData || []).forEach(ld => { lapDataMap[ld.carIdx] = ld; });
+  // Log if lapData is empty so we know to debug
+  if (!window._lapDataLogged) {
+    window._lapDataLogged = true;
+    const s0 = (d.standings||[])[0];
+    console.log('[LAPDATA] d.lapData length:', (d.lapData||[]).length, 'sample standings lastLap:', s0?.lastLap);
+    console.log('[MANU] standings[0] carMakeFromFile:', s0?.carMakeFromFile, 'drivers[0] carMakeFromFile:', (d.drivers||[])[0]?.carMakeFromFile);
+    console.log('[MANU] _carmakeByIdx after first render:', JSON.stringify(_carmakeByIdx));
+  }
+
+  setTheadPQ(isPQ);
+
+  const standings = d.standings || [];
+  if (!standings.length) {
+    document.getElementById('empty-state').style.display = 'block';
+    document.getElementById('tbody').innerHTML = '';
+    return;
+  }
+  document.getElementById('empty-state').style.display = 'none';
+
+  const champ = isPQ ? null : champLive(d, standings);
+  const leaderBest = (d.lapTracker && d.lapTracker[standings[0]?.carIdx]?.bestLap) || 0;
+
+  const rows = standings.map((s, i) => {
+    const isLeader = i === 0;
+    const num      = (s.number || '??').trim();
+    const numBg    = numBgStyle(num);
+    const numImg   = numImgSrc(num);
+    const { override: manuOverride, slot: manuSlot } = manuImgSrc(num, s.carIdx);
+    const manuSrc = manuOverride || manuSlot;
+    const manuKey = manuSrc ? manuSrc.split('?')[0] : null;
+    const manuHtml = (manuSrc && manuKey && !window._manuFailed.has(manuKey))
+      ? `<img class="manu-icon" src="${manuSrc}" onerror="window._manuFailed&&window._manuFailed.add('${manuKey}');this.style.display='none'">`
+      : '';
+    const lt2      = (d.lapTracker && d.lapTracker[s.carIdx]) || {};
+    const lastLap  = lt2.lastLap || 0;
+    const bestLap  = lt2.bestLap || 0;
+    const lapsLed = s.lapsLead  ?? s.leadLaps  ?? 0;
+    const pits    = s.pitStops  ?? 0;
+    const inc     = s.incidents ?? 0;
+
+    const displayName = s.fullName || s.name || '??';
+    const accent = _driverColors[num] || '';
+    const posStyle = accent ? `border-left-color:${accent}` : 'border-left-color:#333';
+
+    const status    = (s.status || 'running').toLowerCase();
+    const blackFlag = !!s.blackFlag;
+    let statusHtml  = '';
+    if      (blackFlag)                              statusHtml = `<span class="status-pill blackflag">⚑ Black</span>`;
+    else if (status === 'dq')                        statusHtml = `<span class="status-pill dq">DQ</span>`;
+    else if (status === 'running' || status === '')  statusHtml = `<span class="status-pill running">Running</span>`;
+    else                                             statusHtml = `<span class="status-pill out">${s.status || 'Out'}</span>`;
+
+    const numHtml = numImg
+      ? `<div class="num-inner" style="${numBg}"><img src="${numImg}" style="height:18px;width:auto;object-fit:contain;vertical-align:middle" onerror="_onNumImgError(this)" data-num="${num}"><span style="display:none">${num}</span></div>`
+      : `<div class="num-inner" style="${numBg}">${num}</div>`;
+
+    if (isPQ) {
+      const gap = isLeader
+        ? '—'
+        : (bestLap > 0 && leaderBest > 0 ? `+${(bestLap - leaderBest).toFixed(3)}` : '—');
+      return `<tr data-caridx="${s.carIdx}" data-num="${num}">
+        <td class="pos" style="${posStyle}">${i + 1}</td>
+        <td class="num-cell">${numHtml}</td>
+        <td>${manuHtml}${displayName}</td>
+        <td class="mono-r">${fmtTime(lastLap)}</td>
+        <td class="mono-r best">${fmtTime(bestLap)}</td>
+        <td class="mono right">${gap}</td>
+        <td class="mono right" style="color:var(--dim)">${s.lapNum || s.lap || '—'}</td>
+      </tr>`;
+    }
+
+    const startPos = startPosOf(d, s, num);
+    const incClass = inc >= 4 ? 'inc warn' : 'inc';
+
+    return `<tr data-caridx="${s.carIdx}" data-num="${num}">
+      <td class="pos" style="${posStyle}">${i + 1}</td>
+      <td class="center" style="color:var(--dim);font-size:12px">${startPos}</td>
+      <td class="num-cell">${numHtml}</td>
+      <td>${manuHtml}${displayName}</td>
+      <td class="mono-r">${fmtGap(s, isLeader, false, 0)}</td>
+      <td class="mono-r">${fmtTime(lastLap)}</td>
+      <td class="mono-r best">${fmtTime(bestLap)}</td>
+      <td class="mono right" style="color:var(--dim)">${pits > 0 ? pits : '—'}</td>
+      <td class="mono right" style="color:var(--dim)">${lapsLed > 0 ? lapsLed : '—'}</td>
+      ${champCells(champ, num)}
+      <td class="status-cell">${statusHtml}</td>
+    </tr>`;
+  });
+
+  document.getElementById('tbody').innerHTML = rows.join('');
+  if (typeof _markWatching === 'function') _markWatching();
+
+  const now = new Date();
+  document.getElementById('last-update').textContent =
+    `Updated ${now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}`;
+}
+
+// ── Click a driver → driver card (name, photo, number, make + season stats). It no longer moves the NR2003 camera. ──
+function _toast(msg) {
+  const el = document.getElementById('toast'); if (!el) return;
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(_toast._t); _toast._t = setTimeout(() => el.classList.remove('show'), 1800);
+}
+const _qs = new URLSearchParams(location.search);
+const _ordN = n => { const v = n % 100; if (v >= 11 && v <= 13) return n + 'th'; return n + ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th'); };
+const _escH = t => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let _dstats = null, _dstatsPort = 0, _dstatsAt = 0, _dstatsBusy = false, _cardIdx = -1, _cardNum = '';
+
+async function loadDriverStats() {
+  if (_dstatsBusy) return; _dstatsBusy = true;
+  try {
+    const tryPort = async p => {
+      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 1500);
+      try {
+        const r = await fetch(`http://${location.hostname}:${p}/api/driverstats?series=${encodeURIComponent(SERIES_ID)}`, { signal: ctl.signal, cache: 'no-store' });
+        if (r.ok) { const j = await r.json(); if (j && j.ok) { _dstats = j; _dstatsPort = p; return true; } }
+      } catch (e) {} finally { clearTimeout(t); }
+      return false;
+    };
+    const ports = [];
+    const mp = parseInt(_qs.get('mport'), 10);
+    [_dstatsPort, mp, (typeof _champPort === 'number' ? _champPort : 0)].forEach(p => { if (p && !ports.includes(p)) ports.push(p); });
+    for (const p of ports) if (await tryPort(p)) return;
+    for (let p = 48765; p <= 48785; p++) if (!ports.includes(p) && await tryPort(p)) return;
+  } finally { _dstatsAt = Date.now(); _dstatsBusy = false; }
+}
+
+function _cardEntry() {
+  const d = window._lastPayload; if (!d) return null;
+  const lists = [d.standings, d.liveStandings, d.drivers];
+  for (const l of lists) { if (Array.isArray(l)) { const e = l.find(x => x && x.carIdx === _cardIdx); if (e) return e; } }
+  return null;
+}
+function renderCard() {
+  const box = document.getElementById('dcard'); if (!box || _cardIdx < 0) return;
+  const e = _cardEntry() || {};
+  const num = String(_cardNum || e.number || '').trim();
+  const name = e.fullName || e.name || ('#' + num);
+  const accent = _driverColors[num] || '';
+  box.style.setProperty('--dc-accent', accent || '');
+  // manufacturer: per-car assignment from the Series Editor first, else the game's car-make slot
+  const st = (_dstats && _dstats.drivers && _dstats.drivers[num]) || null;
+  const slot = _carmakeByIdx[_cardIdx] || 0;
+  const assignId = _dstats && _dstats.assign ? _dstats.assign[num] : 0;
+  const manuName = _dstats && _dstats.manus ? (_dstats.manus[assignId || slot] || '') : '';
+  const mi = manuImgSrc(num, _cardIdx), manuSrc = mi.override || mi.slot;
+  const manuHtml = (manuSrc || manuName)
+    ? `<span class="dc-manu">${manuSrc ? `<img src="${manuSrc}" onerror="this.style.display='none'">` : ''}${_escH(manuName)}</span>` : '';
+  const numImg = numImgSrc(num);
+  const numHtml = `<span class="dc-num" style="${numBgStyle(num)}">${numImg ? `<img src="${numImg}" onerror="this.outerHTML='${_escH(num)}'">` : _escH(num)}</span>`;
+  const hs = assetPath(`series/${SERIES_ID}/headshots/${encodeURIComponent(num)}.png`);
+  const defHs = assetPath('images/defaultheadshot.png');
+  const carImg = assetPath(`series/${SERIES_ID}/cars/${encodeURIComponent(num)}.png`);
+  const v = k => (st && st[k] != null) ? st[k] : '—';
+  const pos = (st && st.pos) ? _ordN(st.pos) + (_dstats.champSize ? `<span style="font-size:11px;color:var(--dim)"> / ${_dstats.champSize}</span>` : '') : '—';
+  const sub = !_dstats ? 'Season stats unavailable' : (_dstats.season ? `${_escH(_dstats.season)} · ${_dstats.races} race${_dstats.races === 1 ? '' : 's'}` : 'This season');
+  const _sp = startPosOf(window._lastPayload || {}, e, num);
+  const _spN = parseInt(_sp, 10);
+  const startHtml = _spN >= 1 ? _ordN(_spN) : '—';
+  const cell = (lab, val, wide) => `<div class="dc-cell${wide ? ' wide' : ''}"><div class="dc-lab">${lab}</div><div class="dc-val">${val}</div></div>`;
+  box.innerHTML = `<button class="dc-x" title="Close">×</button>
+    <div class="dc-head">
+      <img class="dc-photo" src="${hs}" onerror="this.onerror=null;this.src='${defHs}'">
+      <div class="dc-id"><div class="dc-name">${_escH(name)}</div><div class="dc-line">${numHtml}${manuHtml}</div></div>
+    </div>
+    <div class="dc-car" style="display:none"><img src="${carImg}" alt="" onload="this.parentNode.style.display='block'" onerror="this.parentNode.remove()"></div>
+    <div class="dc-sub">${sub}</div>
+    <div class="dc-grid">
+      ${cell('Wins', v('wins'))}${cell('Top 5', v('top5'))}${cell('Top 10', v('top10'))}
+      ${cell('DNF', v('dnf'))}${cell('Poles', v('poles'))}${cell('Points', v('points'))}
+      ${cell('Championship position', pos, true)}
+      ${cell('Started', startHtml, true)}
+    </div>`;
+}
+function openCard(idx, num) {
+  _cardIdx = idx; _cardNum = String(num || '').trim();
+  document.getElementById('dcard-bg').classList.add('show');
+  _markCarded(); renderCard();
+  loadDriverStats().then(() => { if (_cardIdx === idx) renderCard(); });
+}
+function closeCard() {
+  _cardIdx = -1; document.getElementById('dcard-bg').classList.remove('show'); _markCarded();
+}
+function _markCarded() {
+  document.querySelectorAll('#tbody tr').forEach(tr => tr.classList.toggle('carded', _cardIdx >= 0 && Number(tr.dataset.caridx) === _cardIdx));
+}
+function _markWatching() { _markCarded(); }   // called after every table render
+document.body.classList.add('can-card');
+// The table is rebuilt on every telemetry frame, so with a mouse the row under mousedown is gone by mouseup and 'click' lands on <tbody>
+// (taps on a phone survive). So the row is taken at pointerdown and the card opens at pointerup if the pointer did not move.
+let _dbgOn = false;
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+    _dbgOn = !_dbgOn;
+    let box = document.getElementById('st-dbg');
+    if (!box) { box = document.createElement('div'); box.id = 'st-dbg'; box.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99;background:#000e;color:#9f9;font:11px/1.35 monospace;padding:4px 8px;word-break:break-word;pointer-events:none'; document.body.appendChild(box); }
+    box.style.display = _dbgOn ? 'block' : 'none';
+  }
+});
+setInterval(() => { const b = document.getElementById('st-dbg'); if (b && _dbgOn) b.textContent = 'start order: ' + ((_srvStart && _srvStart.start) ? (_srvStart.src || '?') : 'page fallback') + ' || ' + ((_srvStart && _srvStart.dbg) || 'no recorder data'); }, 1000);
+let _pd = null, _lastOpen = 0;
+// Mouse: take the row at pointerdown (the table is re-drawn every frame, so the row under mousedown is gone by mouseup and 'click' misses it).
+document.getElementById('tbody').addEventListener('pointerdown', e => {
+  if (e.pointerType !== 'mouse' || (e.button != null && e.button > 0)) { _pd = null; return; }
+  const tr = e.target.closest('tr[data-caridx]'); if (!tr) { _pd = null; return; }
+  _pd = { idx: parseInt(tr.dataset.caridx, 10), num: tr.dataset.num, x: e.clientX, y: e.clientY };
+});
+document.addEventListener('pointerup', e => {
+  const p = _pd; _pd = null;
+  if (!p || e.pointerType !== 'mouse' || !Number.isFinite(p.idx) || p.idx < 0) return;
+  if (Math.abs(e.clientX - p.x) > 8 || Math.abs(e.clientY - p.y) > 8) return;   // it was a drag
+  _lastOpen = Date.now();
+  if (p.idx === _cardIdx) return closeCard();
+  openCard(p.idx, p.num);
+});
+// Touch (phone) and keyboard: the normal click, as before.
+document.getElementById('tbody').addEventListener('click', e => {
+  if (Date.now() - _lastOpen < 600) return;                 // already handled by the mouse path
+  const tr = e.target.closest('tr[data-caridx]'); if (!tr) return;
+  const idx = parseInt(tr.dataset.caridx, 10); if (!Number.isFinite(idx) || idx < 0) return;
+  if (idx === _cardIdx) return closeCard();
+  openCard(idx, tr.dataset.num);
+});
+document.getElementById('dcard-bg').addEventListener('click', e => { if (e.target.id === 'dcard-bg' || e.target.closest('.dc-x')) closeCard(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCard(); });
+setInterval(() => { if (_cardIdx >= 0) { loadDriverStats().then(() => renderCard()); } }, 10000);   // keeps the stats fresh while the card is open
+
+function connect() {
+  const dot   = document.getElementById('conn-dot');
+  const label = document.getElementById('conn-label');
+  _ws = new WebSocket(WS_URL);
+  _ws.onopen = () => { dot.className = 'live'; label.textContent = 'Live'; };
+  _ws.onmessage = e => {
+    try {
+      const d = JSON.parse(e.data);
+      if (!d || typeof d !== 'object') return;
+      checkSessionChange(d);
+      maybeCapture(d);
+      trackLed(d);
+      render(d);
+    } catch(_) {}
+  };
+  _ws.onclose = () => {
+    dot.className = '';
+    label.textContent = 'Reconnecting…';
+    setTimeout(connect, 3000);
+  };
+  _ws.onerror = () => _ws.close();
+}
+
+connect();
+</script>
+<script>
+// Embedded in the TV Director page: tell it how tall the content is so the PC version can show every driver without an inner scrollbar
+(function () {
+  if (window.parent === window) return;
+  let last = 0;
+  const send = () => {
+    const h = Math.ceil(document.body.getBoundingClientRect().height);
+    if (h > 0 && h !== last) { last = h; try { window.parent.postMessage({ psfRsH: h }, '*'); } catch (e) {} }
+  };
+  try { new ResizeObserver(send).observe(document.body); } catch (e) { setInterval(send, 500); }
+  window.addEventListener('load', send); send();
+})();
+</script>
+</body>
+</html>

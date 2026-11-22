@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="perf-shim.js"></script>
+<meta charset="UTF-8">
+<title>PSF Radar</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: transparent;
+    overflow: hidden;
+    width: 100%; height: 100%;
+  }
+
+  #scale-root {
+    transform-origin: top left;
+    display: inline-block;
+    position: relative;
+  }
+
+  /* ── Widget shell — fully transparent, no background ── */
+  #widget {
+    width: 200px;
+    height: 200px;
+    position: relative;
+    overflow: hidden;
+    transition: opacity 300ms ease;
+  }
+
+  /* ── Car layer — opacity controlled by slider ── */
+  #car-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  /* ── Car silhouettes ── */
+  .car {
+    position: absolute;
+    width: 28px;
+    height: 46px;
+    border-radius: 5px 5px 4px 4px;
+    transform: translateX(-50%) translateY(-50%);
+    transition: left 80ms ease-out, top 80ms ease-out, opacity 200ms ease;
+  }
+
+  .car.player {
+    background: #e8e8e8;
+    box-shadow: 0 0 10px rgba(255,255,255,0.3);
+    /* Player always centered */
+    left: 50%;
+    top: 50%;
+    z-index: 10;
+  }
+
+  .car.opponent {
+    background: #2ecc40;  /* green = clear */
+    box-shadow: 0 0 10px rgba(46,204,64,0.4);
+    z-index: 9;
+    opacity: 0;
+    transition: left 80ms ease-out, top 80ms ease-out, opacity 200ms ease,
+                background 150ms ease, box-shadow 150ms ease;
+  }
+
+  .car.opponent.visible { opacity: 1; }
+
+  .car.opponent.danger {
+    background: #e05040;  /* red = overlapping / danger */
+    box-shadow: 0 0 12px rgba(224,80,64,0.5);
+  }
+
+  /* Windshield */
+  .car::before {
+    content: '';
+    position: absolute;
+    top: 7px;
+    left: 4px; right: 4px;
+    height: 10px;
+    background: rgba(0,0,0,0.35);
+    border-radius: 2px 2px 1px 1px;
+  }
+
+  /* Rear window */
+  .car::after {
+    content: '';
+    position: absolute;
+    bottom: 7px;
+    left: 5px; right: 5px;
+    height: 8px;
+    background: rgba(0,0,0,0.25);
+    border-radius: 1px 1px 2px 2px;
+  }
+
+  /* Wheel blobs */
+  .wfl, .wfr, .wrl, .wrr {
+    position: absolute;
+    width: 6px;
+    height: 10px;
+    background: rgba(0,0,0,0.5);
+    border-radius: 2px;
+  }
+  .wfl { top: 10px;  left: -3px; }
+  .wfr { top: 10px;  right: -3px; }
+  .wrl { bottom: 10px; left: -3px; }
+  .wrr { bottom: 10px; right: -3px; }
+
+  /* Car number on roof */
+  .car-num {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Arial Narrow', Arial, sans-serif;
+    font-weight: 900;
+    font-size: 11px;
+    letter-spacing: -0.5px;
+    color: rgba(0,0,0,0.75);
+    white-space: nowrap;
+    pointer-events: none;
+    line-height: 1;
+    z-index: 2;
+  }
+  .car.player   .car-num { color: rgba(0,0,0,0.5);  font-size: 10px; }
+  .car.opponent .car-num { color: rgba(0,0,0,0.75); }
+  .car.danger   .car-num { color: rgba(255,255,255,0.85); }
+
+  /* Connecting overlay */
+  #connecting {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #555;
+    text-transform: uppercase;
+  }
+  #connecting.hidden { display: none; }
+</style>
+</head>
+<body>
+<div id="scale-root">
+  <div id="widget">
+
+    <!-- Car layer — opacity controlled by slider -->
+    <div id="car-layer">
+      <!-- Player car — always centered -->
+      <div class="car player" id="player-car">
+        <div class="wfl"></div><div class="wfr"></div>
+        <div class="wrl"></div><div class="wrr"></div>
+        <span class="car-num" id="player-num"></span>
+      </div>
+      <!-- Opponent slots — reused for up to 2 closest cars -->
+      <div class="car opponent" id="opp-0">
+        <div class="wfl"></div><div class="wfr"></div>
+        <div class="wrl"></div><div class="wrr"></div>
+        <span class="car-num" id="opp-num-0"></span>
+      </div>
+      <div class="car opponent" id="opp-1">
+        <div class="wfl"></div><div class="wfr"></div>
+        <div class="wrl"></div><div class="wrr"></div>
+        <span class="car-num" id="opp-num-1"></span>
+      </div>
+    </div>
+
+    <div id="connecting">Waiting...</div>
+
+  </div>
+</div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const params    = new URLSearchParams(location.search);
+const WS_HOST   = params.get('host')    || 'localhost';
+const WS_PORT   = params.get('port')    || '8765';
+const WS_URL    = window.__PSF?.wsUrl   || `ws://${WS_HOST}:${WS_PORT}`;
+const SCALE     = Math.max(0.1, Math.min(4.0, parseFloat(params.get('scale')   || '1.0')));
+const OPACITY    = Math.max(0.1, Math.min(1.0, parseFloat(params.get('opacity')    || '1.0')));
+const RADAR_MODE = params.get('radarmode') || 'nearby';  // 'nearby' or 'always'
+const SERIES_ID = params.get('series')  || '';
+
+// Radar thresholds (meters)
+// Longitudinal = forward/back, Lateral = side to side
+const THRESHOLD_LONG = 10;   // show car if within 10m ahead or behind (track distance)
+const THRESHOLD_LAT  = 7.5;  // show car if within 7.5m laterally (widened 50%)
+
+// Car length in meters — if opponent is within this longitudinally they're alongside (red)
+const CAR_LENGTH_M = 5.0;
+
+// Widget dimensions
+const WIDGET_W = 200;
+const WIDGET_H = 200;
+
+// Smoothing — previous positions for hysteresis
+let _prevClosest = [-1, -1];  // carIdx of the 2 currently tracked cars
+let _previewMode = false;     // true when running in layout editor
+
+// ── Scale and opacity ─────────────────────────────────────────────────────────
+const root    = document.getElementById('scale-root');
+const carLayer = document.getElementById('car-layer');
+const connEl  = document.getElementById('connecting');
+
+root.style.transform = `scale(${SCALE})`;
+document.body.style.width  = Math.round(WIDGET_W * SCALE) + 'px';
+document.body.style.height = Math.round(WIDGET_H * SCALE) + 'px';
+carLayer.style.opacity = OPACITY;
+
+// Hook for layout editor live opacity preview — applies to car layer
+window.__psfApplyOpacity = function(o) {
+  carLayer.style.opacity = o;
+};
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const oppEls = [
+  document.getElementById('opp-0'),
+  document.getElementById('opp-1'),
+];
+const oppNumEls = [
+  document.getElementById('opp-num-0'),
+  document.getElementById('opp-num-1'),
+];
+const playerNumEl = document.getElementById('player-num');
+
+// ── Coordinate math ───────────────────────────────────────────────────────────
+// Transform world coordinates into player-relative car coordinates.
+// Player is always at origin, forward is always up on the radar.
+// NR2003 world: right-handed, +z=up, so horizontal plane is r[0]=X, r[1]=Y
+// headingX/headingY is H[0]/H[1] — unit track heading vector in X/Y horizontal plane
+function worldToLocal(wx, wy, px, py, hx, hy) {
+  // Translate so player is at origin
+  const dx = wx - px;
+  const dy = wy - py;
+  // Rotate by negative heading angle so forward = up (negative Y in screen space)
+  // H = [hx, hy] is the unit forward vector in world space
+  // Rotate so that H aligns with screen-up (0, -1)
+  // Forward (along H): dot product with H
+  // Lateral (perpendicular to H): cross product
+  const fwd = dx * hx + dy * hy;   // positive = ahead
+  const lat = dx * hy - dy * hx;   // positive = right
+  return { fwd, lat };
+}
+
+// Map local car coordinates to widget pixel position
+// fwd: positive ahead, negative behind
+// lat: positive right, negative left
+// Widget center = player position
+function localToPixel(fwd, lat) {
+  const cx = WIDGET_W / 2;
+  const cy = WIDGET_H / 2;
+  // Scale: how many pixels per meter
+  // We want THRESHOLD_LONG meters to fill about 40% of the widget height
+  const scaleY = (WIDGET_H * 0.42) / THRESHOLD_LONG;  // longitudinal scale
+  const scaleX = (WIDGET_W * 0.42) / THRESHOLD_LAT;   // lateral scale — separate so cars aren't squashed
+  const px = cx + lat * scaleX;
+  const py = cy - fwd * scaleY;
+  return { px, py };
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render(d) {
+  const opponents    = d.opponents || [];
+  const playerX      = d.playerWorldX  || 0;
+  const playerY      = d.playerWorldY  || 0;
+  const headingX     = d.playerHeadingX || 0;
+  const headingY     = d.playerHeadingY || 1;  // default facing up
+  const playerCarIdx = d.playerCarIdx || -1;
+
+  // Filter opponents: exclude player car, compute distance
+  const nearby = [];
+  const playerTrkPct = d.player?.trkPct || 0;
+  const trackMeters = d.trackTotalMeters || 1000;  // fallback 1km if not available
+
+  for (const opp of opponents) {
+    if (opp.carIdx === playerCarIdx) continue;
+    if (opp.worldX === undefined && opp.worldY === undefined) continue;
+
+    // Longitudinal: trkPct delta converted to meters — accurate track distance
+    let trkDelta = opp.trkPct - playerTrkPct;
+    if (trkDelta >  0.5) trkDelta -= 1.0;  // wrap around
+    if (trkDelta < -0.5) trkDelta += 1.0;
+    const fwdMeters = trkDelta * trackMeters;  // positive = ahead
+
+    if (Math.abs(fwdMeters) > THRESHOLD_LONG) continue;  // too far ahead/behind
+
+    // Lateral: world coordinates rotated into car-relative space
+    const { lat } = worldToLocal(
+      opp.worldX, opp.worldY,
+      playerX, playerY,
+      headingX, headingY
+    );
+
+    if (Math.abs(lat) > THRESHOLD_LAT) continue;  // too far left/right
+
+    const dist = Math.sqrt(fwdMeters * fwdMeters + lat * lat);
+    // Red if any part of their car overlaps longitudinally with your car —
+    // i.e. if you turned into them right now you'd make contact.
+    // Lateral distance irrelevant for color — only longitudinal position matters.
+    const overlapping = Math.abs(fwdMeters) < CAR_LENGTH_M;
+    nearby.push({ carIdx: opp.carIdx, fwd: fwdMeters, lat, dist, overlapping });
+  }
+
+  // Sort by distance, take 2 closest
+  nearby.sort((a, b) => a.dist - b.dist);
+  const closest = nearby.slice(0, 2);
+
+  // Update opponent slots with hysteresis smoothing:
+  // If a car was previously tracked and is still in range, prefer keeping it
+  // over switching to a marginally closer car — prevents rapid flickering
+  // when 3+ cars are equidistant
+  const toShow = applyHysteresis(closest);
+
+  // Set player car number — use standings first, fall back to drivers (available earlier)
+  const allDrivers = d.drivers || [];
+  const playerStanding = (d.standings || []).find(s => s.carIdx === playerCarIdx)
+                      || allDrivers.find(s => s.carIdx === playerCarIdx);
+  if (playerNumEl) playerNumEl.textContent = playerStanding?.number || '';
+
+  oppEls.forEach((el, i) => {
+    const numEl = oppNumEls[i];
+    const car   = toShow[i];
+    if (!car) {
+      el.classList.remove('visible');
+      el.classList.remove('danger');
+      if (numEl) numEl.textContent = '';
+      return;
+    }
+    const { px, py } = localToPixel(car.fwd, car.lat);
+    const margin  = 20;
+    const clampedX = Math.max(margin, Math.min(WIDGET_W - margin, px));
+    const clampedY = Math.max(margin, Math.min(WIDGET_H - margin, py));
+    el.style.left = clampedX + 'px';
+    el.style.top  = clampedY + 'px';
+    el.classList.add('visible');
+    if (car.overlapping) {
+      el.classList.add('danger');
+    } else {
+      el.classList.remove('danger');
+    }
+    // Set car number — standings first, fall back to drivers
+    if (numEl) {
+      const oppStanding = (d.standings || []).find(s => s.carIdx === car.carIdx)
+                       || allDrivers.find(s => s.carIdx === car.carIdx);
+      numEl.textContent = oppStanding?.number || '';
+    }
+  });
+
+  // Hide if not in car or not in race session
+  const session = (d.session || '').toLowerCase();
+  const inCar   = d.player?.inCar !== false;
+  const widget  = document.getElementById('widget');
+
+  // practice: show when in car; race/warmup: show when in car only
+  const inSession = inCar && (session === 'race' || session === 'practice' || session === 'warmup');
+
+  // Auto-hide entire widget when no cars in threshold —
+  // only visible when someone is actually nearby.
+  // Skip in preview mode (layout editor) so widget is always positionable.
+  const anyCarsVisible = toShow.some(c => c !== null);
+  if (!_previewMode) {
+    const shouldShow = inSession && (RADAR_MODE === 'always' || anyCarsVisible);
+    widget.style.opacity = shouldShow ? '1' : '0';
+    widget.style.pointerEvents = shouldShow ? '' : 'none';
+  }
+}
+
+// Hysteresis: prefer keeping previously tracked cars over new ones
+// unless the new car is significantly closer
+function applyHysteresis(closest) {
+  const HYSTERESIS_M = 3;  // new car must be 3m closer to replace a tracked car
+  const result = [null, null];
+  const used   = new Set();
+
+  // First pass: keep previously tracked cars if still in range
+  for (let slot = 0; slot < 2; slot++) {
+    const prevIdx = _prevClosest[slot];
+    if (prevIdx === -1) continue;
+    const prevCar = closest.find(c => c.carIdx === prevIdx);
+    if (prevCar && !used.has(prevCar.carIdx)) {
+      result[slot] = prevCar;
+      used.add(prevCar.carIdx);
+    }
+  }
+
+  // Second pass: fill empty slots with closest available
+  let ci = 0;
+  for (let slot = 0; slot < 2; slot++) {
+    if (result[slot]) continue;
+    while (ci < closest.length && used.has(closest[ci].carIdx)) ci++;
+    if (ci < closest.length) {
+      result[slot] = closest[ci];
+      used.add(closest[ci].carIdx);
+      ci++;
+    }
+  }
+
+  _prevClosest = result.map(c => c?.carIdx ?? -1);
+  return result;
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+let ws = null;
+let _reconnectCount = 0;
+
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => { connEl.classList.add('hidden'); _reconnectCount = 0; };
+  ws.onmessage = (evt) => {
+    try {
+      const d = JSON.parse(evt.data);
+      if (d.reset === true) return;
+      render(d);
+    } catch(e) {}
+  };
+  ws.onclose = () => {
+    _reconnectCount++;
+    if (_reconnectCount >= 3) connEl?.classList.remove('hidden');
+    setTimeout(connect, 2000);
+  };
+  ws.onerror = () => ws.close();
+}
+
+// Layout editor preview support
+window.addEventListener('message', e => {
+  if (typeof e.data === 'string') {
+    if (connEl) { connEl.classList.add('hidden'); connEl.style.display = 'none'; }
+    _previewMode = true;
+    try {
+      const d = JSON.parse(e.data);
+      if (d.reset) return;
+      const widget = document.getElementById('widget');
+      if (widget) { widget.style.opacity = '1'; widget.style.pointerEvents = ''; }
+      render(d);
+    } catch(e) {}
+  }
+});
+
+connect();
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+{
+  "description": "AI cars never lift or check up: there is no slower speed target ahead of them to react to.\n\nRaises the speed data in the lap files (the speed the AI aims for) on all three lines - minrace, race and maxrace - to at least 300 MPH, measured as the AI will actually drive it with your current opponent strength and ai_line_modifier. Points already faster than that are left alone.\n\nBest on superspeedways. On a track with real corners the AI will not slow down for them and will wreck.\n\nOnly the lap files' speed data is changed; all other settings are unchanged. It is applied on top of whatever lap file edits are already loaded. Reset on the Presets tab, or a lap trigger reverting to baseline, puts the original lap files back.",
+  "lap_speed_floor_mph": 300,
+  "auto_keywords": []
+}

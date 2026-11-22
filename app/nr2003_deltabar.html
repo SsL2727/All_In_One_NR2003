@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="perf-shim.js"></script>
+<meta charset="UTF-8">
+<title>NR2003 Delta Bar</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: transparent;
+    width: 570px;
+    height: 80px;
+    overflow: hidden;
+  }
+  .widget {
+    visibility: hidden;
+    width: 570px;
+    height: 80px;
+    display: flex;
+    flex-direction: column;
+    transform-origin: top left;
+    transition: opacity 0.4s ease;
+  }
+  .bar-section {
+    position: relative;
+    width: 570px;
+    height: 50px;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .tick {
+    position: absolute;
+    width: 1px;
+    top: 0;
+    bottom: 0;
+    background: rgba(255,255,255,0.15);
+  }
+  .center-line {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.5);
+    z-index: 2;
+  }
+  .bar-fill {
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    transition: width 0.1s linear;
+    border-radius: 2px;
+  }
+  .bar-fill.ahead {
+    background: #00e676;
+    box-shadow: 0 0 6px rgba(0,230,118,0.4);
+    right: 50%;
+  }
+  .bar-fill.behind {
+    background: #ff2200;
+    box-shadow: 0 0 6px rgba(255,34,0,0.4);
+    left: 50%;
+  }
+  .ref-time {
+    width: 570px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: 2px;
+    font-variant-numeric: tabular-nums;
+    font-family: 'Arial Narrow', Arial, sans-serif;
+    text-shadow: 0px 1px 3px rgba(0,0,0,0.9), 0px 2px 6px rgba(0,0,0,0.6);
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+<div class="widget" id="widget">
+  <div class="bar-section">
+    <div class="tick" style="left: 25%"></div>
+    <div class="tick" style="left: 75%"></div>
+    <div class="tick" style="left: 12.5%"></div>
+    <div class="tick" style="left: 87.5%"></div>
+    <div class="center-line"></div>
+    <div class="bar-fill" id="barFill"></div>
+  </div>
+  <div class="ref-time" id="refTime"></div>
+</div>
+<script>
+// ── URL params ─────────────────────────────────────────────────────────────
+const params  = new URLSearchParams(location.search);
+const INSTALL_DIR = params.get('installdir') || '';
+function assetPath(rel) {
+  const psf = window.__PSF;
+  if (psf && psf.assetBase) return psf.assetBase + '/' + rel;
+  if (INSTALL_DIR) return 'file:///' + INSTALL_DIR.replace(/\\/g, '/') + '/' + rel;
+  return rel;
+}
+const WS_HOST = params.get('host')    || (location.hostname && location.hostname !== '' ? location.hostname : 'localhost');
+const WS_PORT = params.get('port')    || '8765';
+const WS_URL  = window.__PSF?.wsUrl || `ws://${WS_HOST}:${WS_PORT}`;
+const SCALE   = parseFloat(params.get('scale') || '1');
+let VISIBILITY_MODE = params.get('visibilitymode') || 'in_car';
+const ALWAYS_VISIBLE = VISIBILITY_MODE === 'always'; // legacy compat
+
+// ── Visibility mode ───────────────────────────────────────────────────────────
+// Modes: 'in_car' | 'at_track' | 'always'
+// Responds to postMessage { _visibilityMode: '...' } from layout editor
+window.addEventListener('message', e => {
+  if (typeof e.data === 'string') {
+    try {
+      const m = JSON.parse(e.data);
+      if (m._visibilityMode !== undefined) {
+        VISIBILITY_MODE = m._visibilityMode;
+      }
+    } catch(ex) {}
+  }
+});
+
+function checkVisibility(d) {
+  if (!d) return false;
+  switch (VISIBILITY_MODE) {
+    case 'always':   return true;
+    case 'at_track': return !!d.atTrack;
+    case 'in_car':
+    default:         return !!(d.atTrack && d.player?.inCar);
+  }
+}
+
+
+const widget  = document.getElementById('widget');
+const barFill = document.getElementById('barFill');
+const refText = document.getElementById('refTime');
+
+if (SCALE > 0 && SCALE !== 1) {
+  widget.style.transform    = `scale(${SCALE})`;
+  document.body.style.width  = Math.round(570 * SCALE) + 'px';
+  document.body.style.height = Math.round(80  * SCALE) + 'px';
+}
+
+// ── Constants ───────────────────────────────────────────────────────────────
+const MAX_DELTA  = 2.0;   // seconds — full bar width
+const SMOOTH_N   = 8;     // smoothing window
+const FREEZE_PCT = 0.99;  // freeze delta near S/F line
+const HIDE_MS    = 600;   // hide briefly after S/F crossing
+
+// ── State ───────────────────────────────────────────────────────────────────
+let refSamples    = null;  // [[elapsed, trkPct], ...] from bestQualLap
+let refLapTime    = null;
+let lapStartTime    = null;   // performance.now() at lap start
+let prevCrossedAt = 0;
+let lapActive     = false;
+let frozen        = false;
+let deltaHistory  = [];
+let hideTimer       = null;
+let prevInCar       = false;
+let prevTrkPct      = -1;
+let currentTrack    = null;
+let labelHideTimer  = null;   // delay before showing updated lap label
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function formatLapTime(secs, isQual) {
+  if (!secs || secs <= 0) return '';
+  const m      = Math.floor(secs / 60);
+  const s      = (secs % 60).toFixed(3).padStart(6, '0');
+  const label  = isQual ? 'Best Qual' : 'Last Lap';
+  return `${label}  ${m > 0 ? m + ':' + s : s}`;
+}
+
+function smoothDelta(raw) {
+  deltaHistory.push(raw);
+  if (deltaHistory.length > SMOOTH_N) deltaHistory.shift();
+  return deltaHistory.reduce((a, b) => a + b, 0) / deltaHistory.length;
+}
+
+// Binary search: get reference trkPct at given elapsed time
+function refPctAtTime(elapsed) {
+  if (!refSamples || refSamples.length < 2) return null;
+  if (elapsed <= refSamples[0][0]) return refSamples[0][1];
+  if (elapsed >= refSamples[refSamples.length - 1][0]) return null;
+  let lo = 0, hi = refSamples.length - 1;
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1;
+    if (refSamples[mid][0] <= elapsed) lo = mid; else hi = mid;
+  }
+  const [t0, p0] = refSamples[lo];
+  const [t1, p1] = refSamples[hi];
+  if (t1 === t0) return p0;
+  return p0 + (elapsed - t0) / (t1 - t0) * (p1 - p0);
+}
+
+function renderDelta(delta) {
+  const pct   = Math.min(Math.abs(delta) / MAX_DELTA, 1.0);
+  barFill.className   = `bar-fill ${delta < 0 ? 'ahead' : 'behind'}`;
+  barFill.style.width = `${(pct * 50).toFixed(2)}%`;
+}
+
+function showWidget() {
+  if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+  widget.style.visibility = 'visible';
+}
+
+function hideWidget() {
+  widget.style.visibility = 'hidden';
+  barFill.className   = 'bar-fill';
+  barFill.style.width = '0%';
+}
+
+function briefHideThenShow() {
+  hideWidget();
+  hideTimer = setTimeout(() => {
+    if (lapActive && refSamples) showWidget();
+  }, HIDE_MS);
+}
+
+function fullReset() {
+  lapActive      = false;
+  lapStartTime   = null;
+  prevTrkPct     = -1;
+  frozen         = false;
+  deltaHistory   = [];
+  if (labelHideTimer) { clearTimeout(labelHideTimer); labelHideTimer = null; }
+  refText.textContent = '';
+}
+
+// ── WebSocket ────────────────────────────────────────────────────────────────
+let ws = null;
+const connEl = document.getElementById('connecting');
+
+function handleMessage(data) {
+    try {
+      const d = JSON.parse(data);
+
+      // Session reset broadcast
+      if (d.reset === true) {
+        fullReset();
+        refSamples = null;
+        refLapTime = null;
+        refText.textContent = '';
+        hideWidget();
+        return;
+      }
+
+      const p       = d.player  || {};
+      const session = (d.session || '').toLowerCase();
+
+      // Only active during qualifying, practice, testing, and race
+      const validSessions = ['qualifying','practice','testing','race'];
+      if (!validSessions.includes(session)) {
+        hideWidget();
+        return;
+      }
+
+      // Visibility
+      if (!checkVisibility(d)) {
+        if (prevInCar) { fullReset(); hideWidget(); }
+        prevInCar = false;
+        return;
+      }
+
+      if (!prevInCar) {
+        prevInCar = true;
+        fullReset();
+        if (!d.preview) hideWidget();
+      }
+
+      // Load reference lap based on session type
+      const isQual = session === 'qualifying';
+      const ref    = isQual ? d.bestQualLap : d.lastLap;
+
+      // Preview mode — force show with fake delta
+      if (d.preview) {
+        if (ref && ref.samples && ref.samples.length > 0) {
+          refSamples = ref.samples;
+          refLapTime = ref.lapTime;
+          refText.textContent = formatLapTime(refLapTime, isQual);
+        }
+        lapActive    = true;
+        lapStartTime = performance.now() / 1000 - 8;
+              currentTrack = d.track || '';  // prevent track change reset
+        showWidget();
+      }
+
+      // Track change — skip in preview mode
+      const track = d.track || '';
+      if (!d.preview && track !== currentTrack) {
+        currentTrack = track;
+        fullReset();
+        hideWidget();
+      }
+
+      if (ref && ref.samples && ref.samples.length > 0) {
+        if (ref.lapTime !== refLapTime) {
+          refSamples  = ref.samples;
+          refLapTime  = ref.lapTime;
+          refText.textContent = formatLapTime(refLapTime, isQual);
+        }
+      } else {
+        refSamples  = null;
+        refLapTime  = null;
+        refText.textContent = '';
+      }
+
+      // S/F crossing detection via trkPct wrap
+      const trkPct  = p.trkPct || 0;
+
+      if (prevTrkPct > 0.90 && trkPct < 0.10 && prevTrkPct >= 0) {
+        lapStartTime   = performance.now() / 1000;
+        lapActive      = true;
+        frozen         = false;
+        deltaHistory   = [];
+        prevTrkPct     = trkPct;
+
+        // Blank label immediately on crossing — restore after 3s with new official time
+        if (!isQual) {
+          refText.textContent = '';
+          if (labelHideTimer) clearTimeout(labelHideTimer);
+          labelHideTimer = setTimeout(() => {
+            if (refLapTime) refText.textContent = formatLapTime(refLapTime, false);
+            labelHideTimer = null;
+          }, 3000);
+        }
+
+        briefHideThenShow();
+        return;
+      }
+      prevTrkPct = trkPct;
+
+      // No reference yet or lap not started
+      if (!lapActive || lapStartTime === null || !refSamples) {
+        return;
+      }
+
+      const elapsed = performance.now() / 1000 - lapStartTime;
+
+      // Freeze near end of lap
+      if (trkPct >= FREEZE_PCT) { frozen = true; }
+      if (refLapTime && elapsed >= refLapTime * 0.95) { frozen = true; }
+      if (frozen) return;
+
+      const refPct = refPctAtTime(elapsed);
+      if (refPct === null) { frozen = true; return; }
+
+      // Delta: negative = ahead of reference, positive = behind
+      const rawDelta = -((trkPct - refPct) * (refLapTime || 30.0));
+      const delta    = smoothDelta(rawDelta);
+
+      if (deltaHistory.length < SMOOTH_N) return;  // wait for buffer to fill
+
+      showWidget();
+      renderDelta(delta);
+
+    } catch(e) {}
+}
+
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onmessage = (evt) => handleMessage(evt.data);
+  ws.onclose = () => { setTimeout(() => { if (!ws || ws.readyState !== WebSocket.OPEN) connEl?.classList.remove('hidden'); }, 3000); setTimeout(connect, 2000); };
+  ws.onerror = () => ws.close();
+}
+
+// Accept postMessage for layout editor preview — registered once at top level
+window.addEventListener('message', e => {
+  if (typeof e.data === 'string') {
+    if (connEl) { connEl.classList.add('hidden'); connEl.style.display = 'none'; }
+    handleMessage(e.data);
+  }
+});
+
+connect();
+</script>
+</body>
+</html>

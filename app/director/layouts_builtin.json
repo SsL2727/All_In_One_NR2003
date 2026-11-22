@@ -1,0 +1,1103 @@
+{
+ "tag_classic": {
+  "title": "Driver tag (classic)",
+  "panel": "tag",
+  "w": 560,
+  "h": 126,
+  "accent": "car",
+  "elements": [
+   {
+    "name": "Panel",
+    "type": "rect",
+    "x": 0,
+    "y": 0,
+    "w": 560,
+    "h": 96,
+    "radius": 10,
+    "fill": "@bg"
+   },
+   {
+    "name": "Place block",
+    "type": "rect",
+    "x": 0,
+    "y": 0,
+    "w": 96,
+    "h": 96,
+    "radius": 10,
+    "fill": "@gold"
+   },
+   {
+    "name": "Driver colour",
+    "type": "rect",
+    "x": 96,
+    "y": 90,
+    "w": 464,
+    "h": 6,
+    "fill": "@car"
+   },
+   {
+    "name": "Place",
+    "type": "text",
+    "x": 0,
+    "y": 18,
+    "w": 96,
+    "size": 44,
+    "align": "center",
+    "color": "#141414",
+    "text": "{car.place_p}"
+   },
+   {
+    "name": "Portrait",
+    "type": "portrait",
+    "x": 112,
+    "y": 2,
+    "w": 82,
+    "h": 88,
+    "tab": false,
+    "who": "car"
+   },
+   {
+    "name": "Driver name",
+    "type": "text",
+    "x": 204,
+    "y": 14,
+    "w": 262,
+    "size": 30,
+    "upper": true,
+    "color": "@white",
+    "text": "{car.full}"
+   },
+   {
+    "name": "Number card",
+    "type": "image",
+    "x": 470,
+    "y": 10,
+    "w": 80,
+    "h": 38,
+    "art": "number",
+    "who": "car",
+    "alignRight": true
+   },
+   {
+    "name": "Number (no card art)",
+    "type": "text",
+    "x": 470,
+    "y": 10,
+    "w": 80,
+    "size": 28,
+    "align": "right",
+    "color": "@gold",
+    "text": "#{car.number}",
+    "show": "!car.has_card"
+   },
+   {
+    "name": "What he is doing",
+    "type": "run",
+    "x": 206,
+    "y": 54,
+    "w": 346,
+    "size": 15,
+    "show": "shot.sub",
+    "parts": [
+     {
+      "text": "RACE   ",
+      "color": "@gold"
+     },
+     {
+      "text": "{shot.sub}",
+      "color": "@grey"
+     }
+    ]
+   },
+   {
+    "name": "Story bar",
+    "type": "rect",
+    "x": 12,
+    "y": 98,
+    "w": 536,
+    "h": 26,
+    "radius": 6,
+    "fill": "#181b24e1",
+    "show": "story.any"
+   },
+   {
+    "name": "Story edge",
+    "type": "rect",
+    "x": 12,
+    "y": 98,
+    "w": 4,
+    "h": 26,
+    "fill": "@gold",
+    "show": "story.any"
+   },
+   {
+    "name": "Story place",
+    "type": "text",
+    "x": 24,
+    "y": 102,
+    "w": 50,
+    "size": 14,
+    "color": "@gold",
+    "text": "{story.label}",
+    "show": "story.any"
+   },
+   {
+    "name": "Story",
+    "type": "run",
+    "x": 74,
+    "y": 102,
+    "w": 468,
+    "size": 13,
+    "show": "story.any",
+    "parts": [
+     {
+      "story": true
+     }
+    ]
+   }
+  ]
+ },
+ "tag_dash": {
+  "title": "Driver tag (dash look)",
+  "panel": "tag",
+  "w": 520,
+  "h": 140,
+  "accent": "car",
+  "elements": [
+   {
+    "name": "Panel",
+    "type": "rect",
+    "x": 0,
+    "y": 0,
+    "w": 520,
+    "h": 110,
+    "fill": "#0a0c10eb",
+    "stroke": "@dash",
+    "strokeW": 3
+   },
+   {
+    "name": "Place block",
+    "type": "rect",
+    "x": 0,
+    "y": 0,
+    "w": 150,
+    "h": 110,
+    "slant": 22,
+    "fill": "@dashfrom",
+    "fill2": "@dashto"
+   },
+   {
+    "name": "Place",
+    "type": "ordinal",
+    "x": 8,
+    "y": 0,
+    "size": 34,
+    "font": "dash",
+    "src": "car.place",
+    "under": "PLACE",
+    "color": "@white"
+   },
+   {
+    "name": "Portrait",
+    "type": "portrait",
+    "x": 56,
+    "y": 14,
+    "w": 96,
+    "h": 96,
+    "tab": false,
+    "who": "car"
+   },
+   {
+    "name": "Number card",
+    "type": "image",
+    "x": 420,
+    "y": 10,
+    "w": 84,
+    "h": 44,
+    "art": "number",
+    "who": "car",
+    "alignRight": true
+   },
+   {
+    "name": "Number (no card art)",
+    "type": "text",
+    "x": 420,
+    "y": 10,
+    "w": 84,
+    "size": 34,
+    "align": "right",
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "color": "@white",
+    "text": "{car.number}",
+    "show": "!car.has_card"
+   },
+   {
+    "name": "First name",
+    "type": "text",
+    "x": 160,
+    "y": 6,
+    "w": 250,
+    "size": 18,
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "upper": true,
+    "color": "@white",
+    "text": "{car.first}"
+   },
+   {
+    "name": "Last name",
+    "type": "text",
+    "x": 156,
+    "y": 24,
+    "w": 258,
+    "size": 36,
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "upper": true,
+    "color": "@white",
+    "text": "{car.last}"
+   },
+   {
+    "name": "What he is doing",
+    "type": "run",
+    "x": 162,
+    "y": 76,
+    "w": 350,
+    "size": 16,
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "upper": true,
+    "show": "shot.sub",
+    "parts": [
+     {
+      "text": "RACE   ",
+      "color": "@dash"
+     },
+     {
+      "text": "{shot.sub}",
+      "color": "@grey"
+     }
+    ]
+   },
+   {
+    "name": "Driver colour",
+    "type": "rect",
+    "x": 146,
+    "y": 104,
+    "w": 371,
+    "h": 3,
+    "fill": "@car",
+    "show": "car.color"
+   },
+   {
+    "name": "Story bar",
+    "type": "rect",
+    "x": 0,
+    "y": 112,
+    "w": 520,
+    "h": 28,
+    "fill": "#0a0c10eb",
+    "show": "story.any"
+   },
+   {
+    "name": "Story plate",
+    "type": "rect",
+    "x": 0,
+    "y": 112,
+    "w": 90,
+    "h": 28,
+    "slant": 8,
+    "fill": "@dashfrom",
+    "fill2": "@dashto",
+    "show": "story.any"
+   },
+   {
+    "name": "Story plate text",
+    "type": "text",
+    "x": 8,
+    "y": 114,
+    "w": 74,
+    "size": 17,
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "upper": true,
+    "color": "@white",
+    "text": "LAP {race.lap}",
+    "show": "story.any"
+   },
+   {
+    "name": "Story",
+    "type": "run",
+    "x": 99,
+    "y": 114,
+    "w": 411,
+    "size": 17,
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "upper": true,
+    "show": "story.any",
+    "parts": [
+     {
+      "story": true
+     }
+    ]
+   }
+  ]
+ },
+ "battle_classic": {
+  "title": "Battle box (classic)",
+  "panel": "battle",
+  "w": 420,
+  "h": 110,
+  "accent": "car",
+  "rowGap": 34,
+  "elements": [
+   {
+    "name": "Panel",
+    "type": "rect",
+    "x": 0,
+    "y": 0,
+    "w": 420,
+    "h": 110,
+    "radius": 10,
+    "fill": "@bg"
+   },
+   {
+    "name": "Title",
+    "type": "text",
+    "x": 14,
+    "y": 6,
+    "w": 392,
+    "size": 14,
+    "color": "@gold",
+    "text": "{battle.title}"
+   },
+   {
+    "name": "Lower place",
+    "row": "bottom",
+    "type": "text",
+    "x": 14,
+    "y": 64,
+    "w": 58,
+    "size": 22,
+    "color": "@white",
+    "text": "{bottom.place_p}"
+   },
+   {
+    "name": "Lower number card",
+    "row": "bottom",
+    "type": "image",
+    "x": 70,
+    "y": 66,
+    "w": 56,
+    "h": 28,
+    "art": "number",
+    "who": "bottom"
+   },
+   {
+    "name": "Lower number",
+    "row": "bottom",
+    "type": "text",
+    "x": 70,
+    "y": 64,
+    "w": 68,
+    "size": 22,
+    "color": "@gold",
+    "text": "#{bottom.number}",
+    "show": "!bottom.has_card"
+   },
+   {
+    "name": "Lower name",
+    "row": "bottom",
+    "type": "text",
+    "x": 140,
+    "y": 64,
+    "w": 170,
+    "size": 22,
+    "bold": false,
+    "color": "@white",
+    "text": "{bottom.short}"
+   },
+   {
+    "name": "Upper place",
+    "row": "top",
+    "type": "text",
+    "x": 14,
+    "y": 30,
+    "w": 58,
+    "size": 22,
+    "color": "@white",
+    "text": "{top.place_p}"
+   },
+   {
+    "name": "Upper number card",
+    "row": "top",
+    "type": "image",
+    "x": 70,
+    "y": 32,
+    "w": 56,
+    "h": 28,
+    "art": "number",
+    "who": "top"
+   },
+   {
+    "name": "Upper number",
+    "row": "top",
+    "type": "text",
+    "x": 70,
+    "y": 30,
+    "w": 68,
+    "size": 22,
+    "color": "@gold",
+    "text": "#{top.number}",
+    "show": "!top.has_card"
+   },
+   {
+    "name": "Upper name",
+    "row": "top",
+    "type": "text",
+    "x": 140,
+    "y": 30,
+    "w": 170,
+    "size": 22,
+    "bold": false,
+    "color": "@white",
+    "text": "{top.short}"
+   },
+   {
+    "name": "Gap",
+    "type": "text",
+    "x": 300,
+    "y": 47,
+    "w": 110,
+    "size": 28,
+    "align": "right",
+    "color": "@white",
+    "text": "{battle.gap:2}s"
+   }
+  ]
+ },
+ "battle_dash": {
+  "title": "Battle box (dash look)",
+  "panel": "battle",
+  "w": 460,
+  "h": 130,
+  "accent": "car",
+  "rowGap": 42,
+  "elements": [
+   {
+    "name": "Panel",
+    "type": "rect",
+    "x": 0,
+    "y": 0,
+    "w": 460,
+    "h": 130,
+    "fill": "#0a0c10eb",
+    "stroke": "@dash",
+    "strokeW": 3
+   },
+   {
+    "name": "Title plate",
+    "type": "rect",
+    "x": 0,
+    "y": 0,
+    "w": 300,
+    "h": 30,
+    "slant": 10,
+    "fill": "@dashfrom",
+    "fill2": "@dashto"
+   },
+   {
+    "name": "Title",
+    "type": "text",
+    "x": 12,
+    "y": 1,
+    "w": 274,
+    "size": 22,
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "upper": true,
+    "color": "@white",
+    "text": "{battle.title_ord}"
+   },
+   {
+    "name": "Lower place",
+    "row": "bottom",
+    "type": "text",
+    "x": 10,
+    "y": 80,
+    "w": 34,
+    "size": 28,
+    "align": "right",
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "color": "@dash:bottom",
+    "text": "{bottom.place}"
+   },
+   {
+    "name": "Lower number card",
+    "row": "bottom",
+    "type": "image",
+    "x": 52,
+    "y": 83,
+    "w": 56,
+    "h": 30,
+    "art": "number",
+    "who": "bottom"
+   },
+   {
+    "name": "Lower number",
+    "row": "bottom",
+    "type": "text",
+    "x": 52,
+    "y": 80,
+    "w": 60,
+    "size": 24,
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "color": "@white",
+    "text": "{bottom.number}",
+    "show": "!bottom.has_card"
+   },
+   {
+    "name": "Lower name",
+    "row": "bottom",
+    "type": "text",
+    "x": 116,
+    "y": 80,
+    "w": 200,
+    "size": 28,
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "upper": true,
+    "color": "@white",
+    "text": "{bottom.short}"
+   },
+   {
+    "name": "Lower colour",
+    "row": "bottom",
+    "type": "rect",
+    "x": 46,
+    "y": 86,
+    "w": 3,
+    "h": 28,
+    "fill": "@bottom",
+    "show": "bottom.color"
+   },
+   {
+    "name": "Upper place",
+    "row": "top",
+    "type": "text",
+    "x": 10,
+    "y": 38,
+    "w": 34,
+    "size": 28,
+    "align": "right",
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "color": "@dash:top",
+    "text": "{top.place}"
+   },
+   {
+    "name": "Upper number card",
+    "row": "top",
+    "type": "image",
+    "x": 52,
+    "y": 41,
+    "w": 56,
+    "h": 30,
+    "art": "number",
+    "who": "top"
+   },
+   {
+    "name": "Upper number",
+    "row": "top",
+    "type": "text",
+    "x": 52,
+    "y": 38,
+    "w": 60,
+    "size": 24,
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "color": "@white",
+    "text": "{top.number}",
+    "show": "!top.has_card"
+   },
+   {
+    "name": "Upper name",
+    "row": "top",
+    "type": "text",
+    "x": 116,
+    "y": 38,
+    "w": 200,
+    "size": 28,
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "upper": true,
+    "color": "@white",
+    "text": "{top.short}"
+   },
+   {
+    "name": "Upper colour",
+    "row": "top",
+    "type": "rect",
+    "x": 46,
+    "y": 44,
+    "w": 3,
+    "h": 28,
+    "fill": "@top",
+    "show": "top.color"
+   },
+   {
+    "name": "Gap",
+    "type": "text",
+    "x": 320,
+    "y": 52,
+    "w": 130,
+    "size": 38,
+    "align": "center",
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "color": "@white",
+    "text": "{battle.gap:2}"
+   },
+   {
+    "name": "SEC",
+    "type": "text",
+    "x": 320,
+    "y": 96,
+    "w": 130,
+    "size": 14,
+    "align": "center",
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "color": "@grey",
+    "text": "SEC"
+   }
+  ]
+ },
+ "onboard_classic": {
+  "title": "On-board gauges (classic)",
+  "panel": "onboard",
+  "w": 300,
+  "h": 120,
+  "accent": "car",
+  "elements": [
+   {
+    "name": "Panel",
+    "type": "rect",
+    "x": 0,
+    "y": 0,
+    "w": 300,
+    "h": 120,
+    "radius": 10,
+    "fill": "@bg"
+   },
+   {
+    "name": "Speed",
+    "type": "text",
+    "x": 10,
+    "y": 2,
+    "w": 150,
+    "size": 54,
+    "align": "right",
+    "color": "@white",
+    "text": "{car.speed_mph:0}"
+   },
+   {
+    "name": "MPH",
+    "type": "text",
+    "x": 164,
+    "y": 40,
+    "w": 60,
+    "size": 16,
+    "color": "@grey",
+    "text": "MPH"
+   },
+   {
+    "name": "RPM",
+    "type": "text",
+    "x": 164,
+    "y": 14,
+    "w": 130,
+    "size": 16,
+    "color": "@white",
+    "text": "{car.rpm:0} RPM"
+   },
+   {
+    "name": "RPM bar",
+    "type": "bar",
+    "x": 14,
+    "y": 80,
+    "w": 272,
+    "h": 10,
+    "src": "car.rpm_10k",
+    "color": "@gold",
+    "track": "#323640"
+   },
+   {
+    "name": "Throttle bar",
+    "type": "bar",
+    "x": 14,
+    "y": 98,
+    "w": 272,
+    "h": 10,
+    "src": "car.throttle",
+    "color": "@green",
+    "track": "#323640"
+   },
+   {
+    "name": "Number card",
+    "type": "image",
+    "x": 214,
+    "y": 48,
+    "w": 72,
+    "h": 28,
+    "art": "number",
+    "who": "car",
+    "alignRight": true
+   },
+   {
+    "name": "Number",
+    "type": "text",
+    "x": 230,
+    "y": 54,
+    "w": 56,
+    "size": 16,
+    "color": "@gold",
+    "text": "#{car.number}",
+    "show": "!car.has_card"
+   }
+  ]
+ },
+ "dash_dash": {
+  "title": "In-car dash",
+  "panel": "dash",
+  "w": 660,
+  "h": 140,
+  "accent": "car",
+  "elements": [
+   {
+    "name": "Panel",
+    "type": "rect",
+    "x": 0,
+    "y": 0,
+    "w": 660,
+    "h": 110,
+    "fill": "#0a0c10eb",
+    "stroke": "@dash",
+    "strokeW": 3
+   },
+   {
+    "name": "Place block",
+    "type": "rect",
+    "x": 0,
+    "y": 0,
+    "w": 150,
+    "h": 110,
+    "slant": 22,
+    "fill": "@dashfrom",
+    "fill2": "@dashto"
+   },
+   {
+    "name": "Place",
+    "type": "ordinal",
+    "x": 8,
+    "y": 0,
+    "size": 34,
+    "font": "dash",
+    "src": "car.place",
+    "under": "PLACE",
+    "color": "@white"
+   },
+   {
+    "name": "Portrait",
+    "type": "portrait",
+    "x": 56,
+    "y": 14,
+    "w": 96,
+    "h": 96,
+    "tab": false,
+    "who": "car"
+   },
+   {
+    "name": "Number card",
+    "type": "image",
+    "x": 160,
+    "y": 66,
+    "w": 84,
+    "h": 36,
+    "art": "number",
+    "who": "car"
+   },
+   {
+    "name": "Number (no card art)",
+    "type": "text",
+    "x": 160,
+    "y": 62,
+    "w": 84,
+    "size": 32,
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "color": "@white",
+    "text": "{car.number}",
+    "show": "!car.has_card"
+   },
+   {
+    "name": "First name",
+    "type": "text",
+    "x": 160,
+    "y": 6,
+    "w": 200,
+    "size": 18,
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "upper": true,
+    "color": "@white",
+    "text": "{car.first}"
+   },
+   {
+    "name": "Last name",
+    "type": "text",
+    "x": 156,
+    "y": 24,
+    "w": 204,
+    "size": 36,
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "upper": true,
+    "color": "@white",
+    "text": "{car.last}"
+   },
+   {
+    "name": "Throttle arc",
+    "type": "arc",
+    "x": 372,
+    "y": 24,
+    "w": 76,
+    "h": 76,
+    "src": "car.throttle",
+    "from": 150,
+    "sweep": 240,
+    "thick": 12,
+    "segs": 24,
+    "color": "#5ac828",
+    "color2": "#ffe628",
+    "track": "#343840"
+   },
+   {
+    "name": "Speed",
+    "type": "text",
+    "x": 360,
+    "y": 42,
+    "w": 100,
+    "size": 28,
+    "align": "center",
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "color": "@white",
+    "text": "{car.speed_mph:0}"
+   },
+   {
+    "name": "Brake bar",
+    "type": "segbar",
+    "x": 370,
+    "y": 78,
+    "w": 80,
+    "h": 12,
+    "src": "car.brake",
+    "segs": 16,
+    "gap": 1.2,
+    "color": "#be3228",
+    "color2": "#eb2828",
+    "track": "#343840"
+   },
+   {
+    "name": "MPH",
+    "type": "text",
+    "x": 360,
+    "y": 74,
+    "w": 100,
+    "size": 14,
+    "align": "center",
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "color": "@white",
+    "text": "MPH"
+   },
+   {
+    "name": "RPM bar",
+    "type": "segbar",
+    "x": 482,
+    "y": 16,
+    "w": 108,
+    "h": 26,
+    "src": "car.rpm_frac",
+    "segs": 12,
+    "gap": 3,
+    "color": "#ff8c1e",
+    "color2": "#ff8c1e",
+    "hot": 2,
+    "hotColor": "#eb3c28",
+    "track": "#343840"
+   },
+   {
+    "name": "RPM",
+    "type": "text",
+    "x": 470,
+    "y": 46,
+    "w": 125,
+    "size": 28,
+    "align": "center",
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "color": "@white",
+    "text": "{car.rpm:0}"
+   },
+   {
+    "name": "RPM label",
+    "type": "text",
+    "x": 470,
+    "y": 88,
+    "w": 125,
+    "size": 14,
+    "align": "center",
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "color": "@white",
+    "text": "RPM"
+   },
+   {
+    "name": "Divider",
+    "type": "rect",
+    "x": 600,
+    "y": 14,
+    "w": 2,
+    "h": 82,
+    "fill": "#343840"
+   },
+   {
+    "name": "Gear",
+    "type": "text",
+    "x": 602,
+    "y": 8,
+    "w": 56,
+    "size": 56,
+    "align": "center",
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "color": "@white",
+    "text": "{car.gear}",
+    "show": "car.in_gear"
+   },
+   {
+    "name": "Gear (N / R)",
+    "type": "text",
+    "x": 602,
+    "y": 8,
+    "w": 56,
+    "size": 56,
+    "align": "center",
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "color": "@dash",
+    "text": "{car.gear}",
+    "show": "!car.in_gear"
+   },
+   {
+    "name": "GEAR label",
+    "type": "text",
+    "x": 602,
+    "y": 88,
+    "w": 56,
+    "size": 14,
+    "align": "center",
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "color": "@white",
+    "text": "GEAR"
+   },
+   {
+    "name": "Story bar",
+    "type": "rect",
+    "x": 0,
+    "y": 112,
+    "w": 660,
+    "h": 28,
+    "fill": "#0a0c10eb",
+    "show": "story.any"
+   },
+   {
+    "name": "Story plate",
+    "type": "rect",
+    "x": 0,
+    "y": 112,
+    "w": 90,
+    "h": 28,
+    "slant": 8,
+    "fill": "@dashfrom",
+    "fill2": "@dashto",
+    "show": "story.any"
+   },
+   {
+    "name": "Story plate text",
+    "type": "text",
+    "x": 8,
+    "y": 114,
+    "w": 74,
+    "size": 17,
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "upper": true,
+    "color": "@white",
+    "text": "LAP {race.lap}",
+    "show": "story.any"
+   },
+   {
+    "name": "Story",
+    "type": "run",
+    "x": 99,
+    "y": 114,
+    "w": 551,
+    "size": 17,
+    "font": "dash",
+    "bold": true,
+    "italic": true,
+    "upper": true,
+    "show": "story.any",
+    "parts": [
+     {
+      "story": true
+     }
+    ]
+   }
+  ]
+ }
+}

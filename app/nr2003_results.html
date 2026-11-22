@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NR2003 Results</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="broadcast.css">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root { --bg-a: 1; --bg: rgba(var(--psf-tv-bg-rgb), var(--bg-a)); --bg-header: rgba(var(--psf-tv-header-rgb), var(--bg-a)); --odd: rgba(var(--psf-tv-row-odd-rgb), var(--bg-a)); --even: rgba(var(--psf-tv-row-even-rgb), var(--bg-a));
+  --dim: var(--psf-tv-muted); --accent: var(--psf-tv-accent); --font: 'Barlow Condensed', 'Arial Narrow', sans-serif; }
+html, body { background: transparent; overflow: hidden; user-select: none; }
+#scale-root { transform-origin: top left; display: inline-block; transition: opacity .3s ease; }
+#w { width: 460px; background: var(--bg); font-family: var(--font); color: #fff; border-radius: 9px; overflow: hidden; }
+#hd { background: var(--bg-header); padding: 9px 12px 7px; border-bottom: 1px solid rgba(255,255,255,.08); }
+#title { font-size: 20px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+#sub { font-size: 14px; font-weight: 600; letter-spacing: .05em; color: var(--dim); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r { display: grid; grid-template-columns: 34px 44px 1fr 70px; align-items: center; height: 29px; padding: 0 10px 0 4px; gap: 4px; }
+.r:nth-child(odd) { background: var(--odd); } .r:nth-child(even) { background: var(--even); }
+.p { text-align: center; font-size: 18px; font-weight: 800; } .n { text-align: center; font-size: 17px; font-weight: 700; color: var(--accent); }
+.nm { font-size: 18px; font-weight: 700; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .v { text-align: right; font-size: 17px; font-weight: 700; color: var(--dim); }
+.bt { background: var(--bg-header); padding: 4px 12px; font-size: 13px; font-weight: 800; letter-spacing: .12em; color: var(--accent); text-transform: uppercase; }
+#ft { background: var(--bg-header); padding: 6px 12px; font-size: 13px; font-weight: 600; letter-spacing: .06em; color: var(--dim); text-transform: uppercase; }
+#empty { padding: 24px; text-align: center; font-size: 17px; font-weight: 700; color: var(--dim); text-transform: uppercase; }
+</style>
+</head>
+<body>
+<div id="scale-root"><div id="w"><div id="hd"><div id="title">Results</div><div id="sub">&nbsp;</div></div><div id="body"></div><div id="ft">&nbsp;</div></div></div>
+<script>
+// All In One NR2003's results graphic: the stage just ended, the last race's results, or the season's stat leaders (season server /season/state -> cards).
+// resultsmode: auto (stage card for 30 s after a stage, the race results for 10 min after a race, else the stats board) | race | stage | stats
+const params = new URLSearchParams(location.search);
+const SCALE = parseFloat(params.get('scale') || 1) || 1, OPACITY = parseFloat(params.get('opacity') || 1) || 1;
+const MODE = params.get('resultsmode') || 'auto';
+const IS_HTTP = location.protocol.startsWith('http');
+const BASE = params.get('seasonbase') || (IS_HTTP ? '' : `http://127.0.0.1:${params.get('seasonport') || 8769}`);
+document.getElementById('scale-root').style.transform = `scale(${SCALE})`;
+document.documentElement.style.setProperty('--bg-a', OPACITY);
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const row = (p, n, name, v) => `<div class="r"><div class="p">${esc(p)}</div><div class="n">${esc(n)}</div><div class="nm">${esc(name)}</div><div class="v">${esc(v)}</div></div>`;
+let state = null;
+function pick(c) {
+  if (MODE !== 'auto') return MODE;
+  if (c.stage && c.stage.age < 30) return 'stage';
+  if (c.race && c.race.age != null && c.race.age < 600) return 'race';
+  return 'stats';
+}
+function render() {
+  const c = (state && state.cards) || {};
+  const mode = pick(c);
+  let h = '', title = 'Results', sub = '&nbsp;', ft = '&nbsp;';
+  if (mode === 'stage' && c.stage) {
+    title = 'Stage ' + c.stage.stage + ' Results'; sub = esc(c.stage.track);
+    h = c.stage.top.map(r => row(r.pos, r.number, r.name, r.pts != null ? '+' + r.pts : '')).join('');
+  } else if (mode === 'race' && c.race) {
+    title = 'Race Results'; sub = esc(c.race.track) + (c.race.laps ? ' &middot; ' + c.race.laps + ' laps' : '');
+    h = c.race.top.map(r => row(r.pos, r.number, r.name, r.start ? (r.start - r.pos > 0 ? '+' : '') + (r.start - r.pos) : (r.pts + ' pts'))).join('');
+    const s = c.race.stats;
+    ft = s ? `${s.leadChanges} lead changes &middot; ${s.leaders} leaders &middot; ${s.cautions} cautions` : (c.race.mostLed ? 'Most laps led: ' + esc(c.race.mostLed.name) : '&nbsp;');
+  } else if (c.stats && c.stats.boards.length) {
+    title = 'Season Leaders'; sub = 'After ' + c.stats.racesRun + ' races';
+    h = c.stats.boards.slice(0, 4).map(b => `<div class="bt">${esc(b.title)}</div>` + b.rows.slice(0, 3).map((r, i) => row(i + 1, r.number, r.name, r.value)).join('')).join('');
+  } else h = '<div id="empty">No results yet</div>';
+  $('title').textContent = title; $('sub').innerHTML = sub; $('ft').innerHTML = ft; $('body').innerHTML = h;
+}
+function setState(s) { state = s; render(); }
+fetch(BASE + '/season/state').then(r => r.json()).then(setState).catch(() => {});
+try { const es = new EventSource(BASE + '/season/events'); es.addEventListener('state', e => { try { setState(JSON.parse(e.data)); } catch (_) {} }); } catch (_) {}
+setInterval(render, 5000);
+</script>
+</body>
+</html>

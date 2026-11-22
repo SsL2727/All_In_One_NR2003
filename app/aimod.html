@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>AIMOD Pit Strategy</title>
+<style>
+:root { --bg:#0c0e12; --card:#141821; --border:#222834; --border2:#2c3443; --text:#e8ebf2; --dim:#8b94a7; --accent:#e8c84a; --green:#2ecc71; --red:#e74c3c; --blue:#5dade2; --orange:#f39c12; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.45 'Segoe UI', Arial, sans-serif; }
+button, select, input { font: inherit; color: var(--text); }
+button { background: #1b212d; border: 1px solid var(--border2); border-radius: 6px; font-weight: 600; padding: 5px 11px; cursor: pointer; }
+button:hover:not(:disabled) { border-color: #3a4457; background: #232b3a; }
+button:disabled { opacity: .45; cursor: default; }
+input[type=number], input[type=text], select { background: #0b0d12; border: 1px solid var(--border2); border-radius: 6px; padding: 4px 7px; }
+input[type=number] { width: 84px; }
+input[type=checkbox] { accent-color: var(--green); width: 15px; height: 15px; vertical-align: -2px; }
+#app { height: 100%; display: grid; grid-template-rows: auto 1fr; }
+header { display: flex; align-items: center; gap: 10px; padding: 9px 16px; background: #10131a; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+header h1 { margin: 0; font-size: 16px; letter-spacing: .08em; text-transform: uppercase; }
+.chip { display: inline-flex; gap: 6px; align-items: center; padding: 3px 10px; border-radius: 12px; background: #1a1e26; border: 1px solid var(--border2); font-size: 12px; color: var(--dim); }
+.chip.ok { color: var(--green); border-color: #1e4630; } .chip.warn { color: var(--orange); border-color: #5a4010; } .chip.bad { color: #ff7d72; border-color: #5a2320; } .chip.live { color: #ff6b61; border-color: #5a2320; }
+.spacer { flex: 1; }
+main { overflow: auto; padding: 12px 16px 28px; }
+.master { display: flex; align-items: center; gap: 12px; background: #1a1708; border: 1px solid #4d4220; border-radius: 6px; padding: 9px 14px; margin-bottom: 10px; }
+.master.on { background: #0f2218; border-color: #1e4630; }
+.master.dry { background: #101722; border-color: #26405e; }
+.switch { position: relative; width: 44px; height: 24px; flex: none; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch span { position: absolute; inset: 0; background: #2a2d35; border-radius: 24px; transition: .15s; cursor: pointer; }
+.switch span:before { content: ''; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: #aab; border-radius: 50%; transition: .15s; }
+.switch input:checked + span { background: #1d6b3d; } .switch input:checked + span:before { transform: translateX(20px); background: #fff; }
+.box { background: var(--card); border: 1px solid var(--border); border-radius: 9px; padding: 11px 14px; margin-bottom: 10px; }
+.box h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.muted { color: var(--dim); } .small { font-size: 12px; } .big { font-size: 15px; font-weight: 700; }
+.warnline { color: var(--orange); font-size: 12px; margin-top: 4px; } .errline { color: #ff7d72; font-size: 12px; margin-top: 4px; }
+.tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+.tabs button.on { background: #22304a; border-color: #3b5a8a; }
+table { border-collapse: collapse; width: 100%; font: 12px Consolas, 'Segoe UI', monospace; }
+th { position: sticky; top: 0; background: #181c23; text-align: right; padding: 4px 7px; color: var(--dim); font-weight: 600; border-bottom: 1px solid var(--border2); white-space: nowrap; }
+td { padding: 2px 7px; text-align: right; white-space: nowrap; border-bottom: 1px solid #14181e; }
+th.l, td.l { text-align: left; }
+tr.out td { color: #5f5f5f; } tr.pitting td { color: #ffd54f; } tr.stayout td { color: #4fc3f7; } tr.finished td { color: #81c784; } tr.damage td { color: #ff6e6e; } tr.player td { color: #b39ddb; }
+.tablewrap { max-height: 56vh; overflow: auto; border: 1px solid var(--border2); border-radius: 4px; }
+.params { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 4px 18px; }
+.params label { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 2px 0; }
+.params label.chk { justify-content: flex-start; }
+.log { font: 12px Consolas, monospace; background: #0b0d11; border: 1px solid var(--border2); border-radius: 4px; padding: 7px 9px; max-height: 24vh; overflow: auto; white-space: pre-wrap; }
+#toast { position: fixed; right: 16px; bottom: 16px; background: #1d3a2a; border: 1px solid #2c6b46; padding: 10px 14px; border-radius: 6px; max-width: 420px; display: none; z-index: 5; }
+#toast.err { background: #3a1d1d; border-color: #6b2c2c; }
+.help { cursor: help; color: var(--dim); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>🏁 AIMOD Pit Strategy</h1>
+    <span class="chip" id="chip-game">NR2003: —</span>
+    <span class="chip" id="chip-track">Track: —</span>
+    <span class="chip" id="chip-race">—</span>
+    <span class="spacer"></span>
+    <button id="launch-beta" style="display:none" title="Open the supplied AIMOD 2.2 beta app, including its scanner radio and native controls">Open AIMOD 2.2 beta</button>
+    <span class="muted small">AIMOD v2.2.0 beta · built into All In One NR2003 · stages come from Stage Racing</span>
+  </header>
+  <main>
+    <div class="master" id="master">
+      <label class="switch"><input type="checkbox" id="enabled"><span></span></label>
+      <div><div class="big" id="master-title">AIMOD is OFF</div>
+        <div class="muted small">Decides when each AI car pits and what it takes (fuel, tires, repairs). All In One NR2003 runs the AIMOD 2.2 strategy, crew chief brain and driver-plan engine. The standalone beta adds its Piper voices and native controls.</div></div>
+    </div>
+    <div class="master dry" id="dry-box">
+      <label class="switch"><input type="checkbox" id="dryRun"><span></span></label>
+      <div><div class="big" id="dry-title">Read-only test mode</div><div class="muted small" id="dry-sub"></div></div>
+    </div>
+    <div class="master dry" id="second-box">
+      <label class="switch"><input type="checkbox" id="secondStops"><span></span></label>
+      <div><div class="big">Let cars come back in to top off under caution</div><div class="muted small">Off (default) = each car pits at most once per caution. On = AIMOD may send a car that already pitted back in for a second top-off stop (superspeedways, up to 40% of back-markers).</div></div>
+    </div>
+    <div class="master dry" id="restore-box">
+      <label class="switch"><input type="checkbox" id="restoreOnExit"><span></span></label>
+      <div><div class="big">Put the game's own pit logic back when I close it</div><div class="muted small">On (default) = when AIMOD stops or NR2003 closes, the patches it made to the game's pit logic are removed again. Off leaves them in the running game.</div></div>
+    </div>
+    <div class="master dry" id="pitboard-box"><div><div class="big">Pit board over the game</div><div class="muted small">AIMOD's pit board is switched on and placed in the <b>Layout Editor</b>, with the other graphics.</div></div></div>
+    <div class="errline" id="err" style="display:none"></div>
+    <div class="warnline" id="note" style="display:none"></div>
+
+    <div class="tabs">
+      <button data-tab="monitor" class="on">Monitor</button><button data-tab="setup">Setup &amp; presets</button><button data-tab="stops">Pit stops</button><button data-tab="radio">Radio</button><button data-tab="log">Log</button>
+    </div>
+
+    <section id="tab-monitor">
+      <div class="box">
+        <h3><span>Live race</span><span class="muted small" id="laptxt">—</span></h3>
+        <div class="row small muted" id="statline"></div>
+        <div class="row"><label><input type="checkbox" id="hideOut"> Hide cars that are out</label></div>
+        <div class="tablewrap"><table id="mon"><thead><tr>
+          <th title="Running position. Changes only when a car crosses the start/finish line, like real scoring (from game memory).">Pos</th><th>#</th><th class="l">Driver</th><th>Lap</th><th title="Seconds behind the leader (game time), or laps down. Only updated under green; frozen while a caution is out.">Gap</th><th title="Strategy rating (0-100). Higher = follows the plan more often and pits closer to the ideal lap">Rat</th><th>Grip</th><th title="Average left-side tire wear">Left</th><th title="Average right-side tire wear">Right</th>
+          <th title="Left wear vs. your Left threshold. Drives the tire choice when the car pits">L-Prob</th><th title="Right wear vs. your Right threshold">R-Prob</th><th title="Damage since last green flag">Damage</th>
+          <th title="Caution pit urgency (0-100), built from grip loss">Urg</th><th title="Green-flag laps run since the last stop (counts up)">Tank laps</th><th title="Fuel in the tank, % of a full tank - the car's real fuel level read from NR2003 (~ = estimated from laps since its last stop)">Fuel</th><th title="Laps of fuel left: real fuel level / this car's fuel mileage">Laps of fuel</th><th title="Laps a full tank lasts for this car, learned from its own real fuel use on clean green-flag laps (~ = field average until it has its own)">Laps/tank</th><th title="Laps of fuel over (+) or short (-) of the finish. +4 = makes it with 4 laps to spare, -37 = 37 laps short (needs a stop)">To finish</th>
+          <th title="Seconds per lap slower (+) or faster (-) than the cars around it (3 places either side, same lap), from its last clean green-flag laps. A worn car that keeps pace is less likely to pit for tires.">Pace</th><th title="How much slower it is now than early in this run on these tires (% of a lap).">Falloff</th><th title="Tire sets left per side (L/R) when a limit is set">Tires</th><th>Stops</th><th class="l" title="Lap and service of the last stop. D = damage repairs, F = fuel, L = left side, R = right side, L/R = four tires">Last pit</th><th class="l" title="Planned green-flag stop (race lap), its likely service and the team's stint plan: short-pit, split or stretch. GAME = the game pits it, at the latest on that lap. STAGE n BREAK = waits for the stage caution; flip = pits just before the stage ends to stay out at the break.">Next pit</th>
+          <th class="l" title="BLACK = black flag (penalty, from game memory). FREE PASS = RaceControl's lucky dog (gets its lap back this caution). WAVE = given the wave around, shown for a few laps.">Flag</th><th class="l" title="Driver behavior (when on): SAVE FUEL, SAVE TIRES, COOL TIRES, PUSH or the stint plan (manage / attack).">Driver plan</th><th class="l">State</th>
+        </tr></thead><tbody></tbody></table></div>
+      </div>
+    </section>
+
+    <section id="tab-setup" style="display:none">
+      <div class="box">
+        <h3><span>Presets</span><span class="muted small" id="preset-state"></span></h3>
+        <div class="row">
+          <select id="preset-list" style="min-width:200px"></select>
+          <button id="preset-load">Load</button>
+          <button id="preset-save">Save</button>
+          <button id="preset-saveas">Save as…</button>
+          <button id="preset-track" title="Load this preset automatically whenever this track is detected">Use for the current track</button>
+        </div>
+        <div class="row small muted" id="learned-row"><span id="learned-txt"></span> <button id="learned-apply" disabled>Apply learned thresholds</button></div>
+      </div>
+      <div class="box">
+        <h3><span>Settings</span><span class="muted small">Strategy parameters apply on the next tick; save the preset to keep them. Superspeedway teamwork is saved automatically.</span></h3>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="crewModern"> Modern pit crew for this series (faster stops)</label>
+          <label class="chk" title="The game's own 5-speed (or 6-speed): AIMOD raises the Cup cars' gear count inside NR2003, so the garage shows a 5th gear you can tune and setups save it. Memory only. Set at NR2003's main menu, before you load a session; a change applies from the next session or garage load. Saved per NR2003 mod."><input type="checkbox" id="gearOn"> Gearbox for this series:
+            <select id="gearN"><option value="5">5-speed</option><option value="6">6-speed</option></select>
+            <button id="gearRestore" class="small">Put the 4-speed back</button> <span class="muted small" id="gearStatus"></span></label>
+          <label class="chk" title="Uses live .car team names to group teammates and automatically enables AIMOD team, manufacturer and stint strategy at Daytona and Talladega. A manual AIMOD team plan for this series takes precedence. Turning this off leaves the existing fuel-first superspeedway behavior in place."><input type="checkbox" id="modernSuperspeedway"> Live team and manufacturer pit strategy at Daytona/Talladega</label>
+          <label class="chk" title="At an AI stop the crew chief may adjust the car from the track's AI setup (wedge, rear track bar, right-rear air, grille tape) depending on whether it runs tight or loose against the field. A good call makes the car handle a little better, a misread a little worse (a few hundredths a lap per call). Off keeps the calls in the pit log but leaves the handling alone. Set AI Enhanced's chassis variance to 0 if you use both."><input type="checkbox" id="adjustHandling"> Crew chief adjustments change the handling</label>
+          <span class="muted small" id="series-txt"></span>
+        </div>
+        <div class="row" id="aimod22-row">
+          <label class="chk" title="AIMOD 2.2: each car's crew chief (rated from its .car file: pit crew strategy, consistency, speed, the driver's aggression, finishing, reliability and track-type skills) makes the late caution calls - stay out, 2 or 4 tires - with a teammate offset (follow at superspeedways), the wave-around and some randomness for weaker crew chiefs, and shapes each car's green-flag stint (short-pit, split, stretch) by where it is in its fuel window and the era. Off = AIMOD 2.1's calls."><input type="checkbox" id="crewBrain"> Crew chief strategy brain (AIMOD 2.2)</label>
+          <label title="Lapped cars under caution: with the wave-around they have a reason to stay out; before 2009 there was none, so a lapped car is scored like a lead-lap car. Auto = the built-in RaceControl's Wave around setting while it runs, otherwise AIMOD 2.2's own test (the race has stages).">Wave-around era <select id="waveEra"><option value="auto">Auto</option><option value="modern">Modern (wave-around)</option><option value="classic">Pre-2009 (no wave-around)</option></select></label>
+          <span class="muted small" id="era-txt"></span>
+        </div>
+        <div class="row">
+          <label class="chk" title="AIMOD 2.2 always plans with starting set, multi-stop plans, game stop guard, tire-only stops, free fuel, track position, pace-aware tire calls and value tires switched on. Off = each preset's own checkboxes, as in AIMOD 2.1."><input type="checkbox" id="forceStrategyOptions"> Always-on AIMOD 2.2 strategy options</label>
+          <label class="chk" title="All In One NR2003 holds green-flag stops at Daytona and Talladega until a car is at 15% fuel or less. On = with the crew chief brain on, cars on a short-pit plan are not held, so the brain's short-pit (and the driver behavior's early push) happen when planned. Off (default) = every car is held, as before."><input type="checkbox" id="ssShortPitRelax"> Superspeedways: short-pit plans skip the 15% fuel hold</label>
+          <label class="chk" title="AIMOD 2.2 drops car #0 from the monitor to hide an empty AI slot. On (default) = a car #0 with a driver name stays in (several series have a real #0); only the blank slot is dropped."><input type="checkbox" id="keepCarZero"> Keep a real car #0</label>
+          <label class="chk" title="AIMOD's art folder (car numbers, driver headshots, car colours and the series logo) on the pit board."><input type="checkbox" id="pitBoardArt"> Pit board art</label>
+          <label class="chk" title="In a race, an AI car turns for pit road only when AIMOD called it in, it has a penalty, repair or tow stop to serve, or it is out of fuel. NR2003's own reasons (its caution logic, its stop plan, its 'car condition') no longer take cars in behind AIMOD's back. Memory only; NR2003's stock pit logic comes back within a minute of game time if AIMOD closes. Off in practice and qualifying."><input type="checkbox" id="pitGate"> Pit gate: only AIMOD sends cars to pit road</label>
+          <span class="muted small" id="gate-txt"></span>
+        </div>
+        <div class="row">
+          <label class="chk" title="AIMOD 2.2 beta (beta.txt): a person on a phone can be the crew chief of an AI car - pit / stay out under caution, green-flag plans and adjustments - through a companion app that talks to AIMOD's crew API on this computer (127.0.0.1 only)."><input type="checkbox" id="crewBeta"> Crew chief on phones (beta)</label>
+          <label>port <input type="number" id="crewPort" min="1024" max="65535" step="1" style="width:80px"></label>
+          <span class="muted small">API: http://127.0.0.1:<span id="crewPortTxt">8767</span>/crew.json and /crew/claim, ping, call, plan, adjust, release</span>
+        </div>
+        <div class="row">
+          <label class="chk" title="AIMOD 2.2: in a race, any penalty rule's black flag on an AI car is wiped from the game's memory the moment it shows, so no AI car is called to pit road to serve one (restart passing, double-file lines, speeding on pit road). Your own car is never touched; cars the game limps in for repairs or a tow still come in. Race Control's own minimum speed rule (damaged cars) is not a penalty rule and still calls its cars in. Off by default."><input type="checkbox" id="clearBlack"> Clear AI black flags</label>
+        </div>
+        <div class="row" id="patch-row"><span class="muted small">Game patches:</span></div>
+        <div id="params" class="params"></div>
+      </div>
+      <div class="box" id="teams-box">
+        <h3><span>Manufacturers &amp; teams</span><span class="muted small" id="teams-series"></span></h3>
+        <div class="row">
+          <label class="chk" title="Live team groups from the .car files (team names) at every track. Off (default) = only at Daytona and Talladega with the live team setting on. Teams you set below always win."><input type="checkbox" id="autoTeamsAllTracks"> Live .car teams at every track</label>
+          <span class="muted small">Teammates offset their caution calls (follow at superspeedways) and line up their stops.</span>
+        </div>
+        <div class="muted small">Teams for this series (one per line: <b>Team name: 24, 48, 5</b>). Empty = none (or the live .car teams).</div>
+        <textarea id="teams-text" rows="5" style="width:100%;background:#0b0d12;color:var(--text);border:1px solid var(--border2);border-radius:6px;font:12px Consolas,monospace"></textarea>
+        <div class="row"><button id="teams-save">Save teams</button><span class="muted small" id="teams-auto"></span></div>
+        <div class="row"><label>Name manufacturers (game make 0, 1, 2, 3...) <input type="text" id="make-names" style="width:320px"></label><button id="make-save">Save names</button></div>
+        <div class="params" id="rules"></div>
+      </div>
+      <div class="box" id="behavior-box">
+        <h3><span>Driver behavior (beta)</span><span class="muted small">Saved per preset; off by default.</span></h3>
+        <div class="row">
+          <label class="chk" title="Drivers make a run plan to manage fuel and tires, cool tires in traffic, and push when the race situation calls for it."><input type="checkbox" id="behaviorOn"> Enable driver behavior</label>
+          <label>Strength <input type="range" id="behaviorStrength" min="0" max="100" step="5" value="70" style="width:150px"><span id="behaviorStrengthValue">70</span></label>
+          <label>Late push starts with last <input type="number" id="behaviorLatePct" min="1" max="50" step="1" value="10" style="width:62px">% of the run</label>
+        </div>
+        <div class="row">
+          <label class="chk" title="Allow situational responses to battles, dirty air, tire wear and the closing laps."><input type="checkbox" id="behaviorReactions" checked> Situational reactions</label>
+          <label class="chk" title="Cars in a superspeedway pack save and push together by team and manufacturer."><input type="checkbox" id="behaviorTeams" checked> Coordinate team and manufacturer packs</label>
+          <span class="muted small">Strength 70 is the beta default. Superspeedway pack saving and stage/finish pushes are included.</span>
+        </div>
+      </div>
+      <div class="box" id="agg-box">
+        <h3><span>Racing intensity &amp; rivals (test)</span><span class="muted small">Saved per preset; off by default.</span></h3>
+        <div class="row">
+          <label title="How hard each AI driver races the cars around him (his aggression: how much room he leaves side by side). Patient early in a stage, harder towards the stage end and the finish, harder still when racing a car within half a second (any position, more for the lead); damaged cars protect the car, a car right behind his teammate doesn't attack him, a car about to be lapped gives room. Works on its own (Driver behavior can be off).&#10;off = the game's own values. shadow = decides and logs (AGGRESSION lines in the log), writes nothing - run a race in shadow first. on = written to the game; every driver gets his own value back when AIMOD closes, the mode changes or a new session starts. Your car and the pace car are never touched. Can stack with AI Enhanced's High Intensity.">Mode <select id="aggMode"><option value="off">off</option><option value="shadow">shadow</option><option value="on">on</option></select></label>
+          <label title="How far the race pushes each driver from his own aggression. 0 = his own value always, 70 = default, 100 = the full sizes (late in a stage x1.2, a battle +0.6, for the lead +0.9, rivals up to 3.0), 150 max. More = closer racing, more contact, more cautions.">Racing intensity strength (%) <input type="number" id="aggStrength" min="0" max="150" step="5" value="70" style="width:70px"></label>
+          <label title="AIMOD 2.2: a driver in a battle (racing harder than his own value) keeps only this % of his own room beside other cars, so the AI gets closer side by side. Only the cars being pushed change, each back to his own room when the battle ends. 100 = off, 70 = default, 30 at least. Needs Racing intensity ON.">Side room kept in a battle (%) <input type="number" id="aggSidePad" min="30" max="100" step="5" value="70" style="width:70px"></label>
+        </div>
+        <div class="row">
+          <label class="chk" title="Contact in the race makes rivals. One run-in: the driver who got hit may hold a grudge (his temperament decides; a calm one lets it go). Every separate run-in of the same two cars raises their feud, both ways (up to 3 levels, aggression up to 3.0 when they meet on track). A caution that comes out right after one of their run-ins settles it. Outside the top 10 drivers race a bit calmer, unless the same car keeps getting into them."><input type="checkbox" id="rivalsOn" checked> Rivals: grudges, feuds and retaliation</label>
+          <label class="chk" title="A driver wrecked by another car (damage at the game's must-repair level in one run-in) whose repair stop can't fix it all goes after that car: aggression up to 4.0 when they meet, until their run-in brings out a caution. Untested above 3.0 - watch it."><input type="checkbox" id="rivalsRetaliate" checked> Retaliation: wrecked beyond repair -&gt; he goes through him</label>
+        </div>
+        <div class="row">
+          <label class="chk" title="Run-ins between teammates count like any other. Off = only teammates in the rivals list."><input type="checkbox" id="rivalsTeammates" checked> Teammates can become rivals</label>
+          <label class="chk" title="The rivalries in the list below (saved per NR2003 mod) are rivals from the start of every race; their run-ins raise the feud from there."><input type="checkbox" id="rivalsList" checked> Rivals list</label>
+          <label class="chk" title="Off by default. On: run-ins with your car count, and the AI driver races you harder (only his value changes - your car is never touched)."><input type="checkbox" id="rivalsPlayer"> AI drivers can hold it against your car</label>
+        </div>
+        <div class="muted small">Rivals for <b id="rivals-mod">this mod</b> (one pair a line: <b>24 vs 48</b>). Saved per NR2003 mod, not per preset.</div>
+        <textarea id="rivals-text" rows="3" style="width:100%;background:#0b0d12;color:var(--text);border:1px solid var(--border2);border-radius:6px;font:12px Consolas,monospace"></textarea>
+        <div class="row"><button id="rivals-save">Save rivals</button><span class="muted small" id="rivals-cars"></span></div>
+        <div class="row">
+          <label class="chk" title="While the car on the TV camera is racing his rival close by (or someone is going after him), both number cards show over the game with what it is: GRUDGE, FEUD L2, RIVALS or RETALIATION. On All In One NR2003's graphics window (NR2003 windowed or borderless). Not a preset setting."><input type="checkbox" id="rivalInd" checked> Show rivals on screen</label>
+          <label>at x <input type="number" id="rivalX" step="10" style="width:64px"></label><label>y <input type="number" id="rivalY" step="10" style="width:64px"></label><label>size <input type="number" id="rivalSize" step="0.1" min="0.4" max="3" style="width:58px"></label>
+          <span class="muted small">(1080-high units)</span>
+        </div>
+        <div class="muted small" id="rivals-feuds"></div>
+      </div>
+      <div class="box">
+        <h3><span>Stages</span></h3>
+        <div class="muted small">Stages are set once, in the Stage Racing window (or by picking a real race there). AIMOD plans its stage-break stops to those lap numbers whenever Stage Racing is on; the stage fields in a preset are only used when it is off. Stage Racing's "Stages off" means no stage breaks at all - and for the AIMOD 2.2 crew chief the pre-stage era (stretch runs, no free stage-break tire stop).</div>
+      </div>
+    </section>
+
+    <section id="tab-stops" style="display:none">
+      <div class="box">
+        <h3><span>Pit stops this race</span><button id="clear-session">New session</button></h3>
+        <div class="tablewrap"><table id="stops"><thead><tr><th>Lap</th><th>#</th><th class="l">Driver</th><th class="l" title="Each stop: service and service time (car stationary in its stall, game seconds). D = damage repairs, F = fuel, L = left side, R = right side, L/R = four tires.">Service</th><th class="l">Fuel</th><th class="l">Flag</th><th class="l">Reason</th><th>Pos in</th><th>Pos out</th><th title="Green = gained places, red = lost">+/-</th><th class="l">State</th><th>Time</th><th class="l" title="The crew chief's reasoning (AIMOD 2.2: the brain's score for pit / stay out)">Why</th></tr></thead><tbody></tbody></table></div>
+        <div class="muted small" style="margin-top:6px">Every stop is also written to a CSV in the AIMOD data folder (<span id="datadir">userData/aimod/logs</span>).</div>
+        <div class="row" style="margin-top:6px">
+          <label class="chk" title="AIMOD 2.2: when a race ends, its results are saved to the results folder as an .html page you can open in any browser and a .json file: finishing order with points, every stage's results and points, laps led, lead changes, the fastest lap, average running position, pit stops (and how many under green), places gained, cautions and the biggest mover. Read-only, worked out from the game's lap crossings (right at any time acceleration). A race cut short is saved as 'race not finished'. Points are NASCAR's 2026 scale, unofficial: the season tracker keeps the season's own points."><input type="checkbox" id="saveResults"> Save race results</label>
+          <button id="openResults">Open results folder</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-radio" style="display:none">
+      <div class="box"><h3><span>Scanner radio &amp; crew chief</span></h3>
+        <div class="muted small" style="margin-bottom:8px">AIMOD's radio, built in: your spotter and crew chief on the radio (laps to go, gaps, fuel, tires, pit and stay-out calls, your AI teammates' plans, driver behavior calls), or a scanner that follows the car on TV and your favourites. Spoken with this computer's voices (Windows text-to-speech); the standalone app's Piper voices are not used here.</div>
+        <div class="row"><label><input type="checkbox" id="rd-on"> Radio on</label>
+          <button id="rd-test">Test the voices</button><span class="muted small" id="rd-note"></span></div>
+        <div id="rd-form"></div>
+        <h3 style="margin-top:12px"><span>What it said lately</span></h3>
+        <div class="log" id="rd-lines" style="max-height:220px"></div>
+      </div>
+    </section>
+
+    <section id="tab-log" style="display:none">
+      <div class="box"><h3><span>AIMOD log</span></h3><div class="log" id="logbox"></div></div>
+    </section>
+  </main>
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const A = window.shl.aimod;
+const X = window.shl.extmods;
+function toast(msg, err) { const t = $('toast'); t.textContent = msg; t.className = err ? 'err' : ''; t.style.display = 'block'; clearTimeout(toast._t); toast._t = setTimeout(() => { t.style.display = 'none'; }, 4500); }
+
+$('launch-beta').addEventListener('click', async () => {
+  $('launch-beta').disabled = true;
+  const r = await X.launch('aimod').catch(e => ({ ok: false, error: String(e && e.message || e) }));
+  $('launch-beta').disabled = false;
+  toast(r.ok ? (r.already ? 'AIMOD is already running.' : 'AIMOD 2.2 beta started. All In One NR2003 pauses its built-in AIMOD while the standalone app is open.') : (r.error || 'Could not start AIMOD.'), !r.ok);
+});
+
+// ── parameters (labels and help are AIMOD's own) ─────────────────────────────────────────────────────────
+const NUM = [
+  ['Tires', [
+    ['wear_r', 'Right tire wear limit', 0.001, 'The right-side wear you call "used up". Set it to the wear cars reach at the end of a normal full-tank green run, so tires and fuel run out together (or press Apply learned thresholds).'],
+    ['wear_l', 'Left tire wear limit', 0.001, 'Same, for the left side (usually wears less on ovals).'],
+    ['max_tire_sets', 'Tire sets (0 = no limit)', 1, 'Maximum sets of tires per car for the race, counting the starting set. 4 tires uses one pair from each side, 2 tires uses one pair from that side. When a side runs out, stops become 2 tires or fuel only.'],
+    ['worn_pct', 'Worn tire threshold (% lap-time loss)', 0.1, 'How much slower than its own early-run laps a car must be before its tires count as worn. Typical 1-2%.'],
+    ['urgency_factor', 'Tire urgency factor', 10, 'Caution only. Grip lost since the last green × this = the Urgency column (0-100).'],
+    ['damage_threshold', 'Must-repair damage level', 0.05, 'Damage (since last green) above which a car is forced to pit for repairs.'],
+  ]],
+  ['Fuel', [
+    ['tank_laps', 'Tank size (laps)', 0.5, 'Laps a full tank lasts. Used when the tank source is Manual.'],
+    ['finish_fuel', 'Fuel left at the finish (laps)', 0.5, 'The last stop only takes the fuel needed to finish with this many laps spare. Typical 2-3.'],
+    ['fuel_margin', 'Fuel cushion (laps)', 0.5, 'Spare laps of fuel a crew keeps in hand. With the real fuel read from the game, 1-2 is plenty.'],
+    ['fuel_reach', 'Late caution pit threshold (laps)', 1, 'Caution only. If filling up now would leave the car within this many laps of making the finish, it must pit (one splash later gets it home). Typical: 10-20% of a tank. Higher = more cars pit under late cautions.'],
+    ['ss_topoff_pct', 'Superspeedway top-off threshold (%)', 1, 'Drafting tracks, caution: a car pits for at least fuel unless it has more than this much of a tank.'],
+    ['tank_extend_pct', 'Tank range extension (%)', 1, 'Stretches the tank range used to decide whether a car can still make the finish with one more stop (e.g. 10 = +10%). 0 = off. Does not change real fuel use.'],
+    ['fuel_threshold_default', 'Fuel pit level (fraction of tank)', 0.01, 'A car with fuel at or below this fraction of a tank, that can\'t reach the finish, gets a fuel stop. 0.25 = 25%. Used always, except where aggressive green-flag fuel applies.'],
+    ['green_fuel_threshold_min', 'Aggressive fuel level, fresh tires (%)', 0.5, 'Aggressive green-flag fuel only. Pit level (% of a tank) for a car on fresh tires; it rises to the \'worn tires\' level as tire wear nears 80.'],
+    ['green_fuel_threshold_max', 'Aggressive fuel level, tires wearing (%)', 0.5, 'Aggressive green-flag fuel only. Pit level (% of a tank) for a car whose tire wear is close to 80. At 80 and over the normal fuel pit level applies.'],
+  ]],
+  ['Strategy', [
+    ['dispersion_divisor', 'Crew chief call spread', 0.5, 'How far a crew chief strays from the ideal lap for early stops: up to (100 - rating) / this laps.'],
+    ['min_stop_gap', 'Min laps between stops', 1, 'A green-flag stop requested within this many laps of the last stop is called off. 0 = off.'],
+    ['lead_pack_gap', 'Lead pack gap (seconds)', 0.1, 'Lead-lap cars within this many seconds of the leader are the lead pack.'],
+    ['threat_positions', 'Pit pressure window (positions)', 1, 'Caution: cars this many positions behind are weighed against a car\'s own grip.'],
+    ['track_position_bias', 'Track position vs tires (0-100)', 1, '50 = neutral, higher = more stay-outs and 2-tire stops.'],
+    ['stint_spread', 'Pit window spread (%)', 1, 'How far apart short-pit, split and stretch stops are, as % of the fuel window.'],
+    ['ss_stint_spread', 'Superspeedway pit spread (%)', 1, 'Same, for drafting tracks (teams pit in tight groups).'],
+    ['oem_gap', 'Manufacturer gap (s)', 0.1, 'How close cars of one manufacturer must run to answer each other\'s stops.'],
+    ['stage_early', 'Stage early caution window (laps)', 1, 'A caution this many laps (or fewer) before a stage end is treated as that stage\'s break. 0 = automatic: the window is how long this race\'s cautions have lasted (3 laps until it has seen one), less the crew chief\'s call time below. When Race Control runs the stages it throws its own stage caution on the last lap, so the automatic window is 0 there: only a caution still out at the stage end is the break.'],
+    ['flip_pct', 'Stage flip - cars that jump the break (%)', 1, 'Cars outside the top 8 that can reach far into the next stage on fuel may pit before the stage ends and stay out at the break.'],
+    ['stage_call_lead', 'Stage call lead time (laps)', 0.5, 'Laps the crew chief needs to call the stage-break stop and get the cars onto pit road. Automatic stage window = caution length - this. Raise it if cars miss the break service after a caution just before the stage end.'],
+    ['stage_double_back_pct', 'Break double-back (%)', 1, 'Cars that already took service at the caution just before the break, and don\'t need it, come back at the break anyway to freshen up or top off: this % of them. 0 = nobody. Cars that need fuel or tires always pit.'],
+  ]],
+];
+// AIMOD 2.2's BOOL_FIELDS (the behavior ones are in the Driver behavior box)
+const BOOLS = [
+  ['oem_strategy', 'Manufacturer strategy'], ['stint_strategy', 'Varied team pit strategies'], ['lapped_wave', 'Lapped cars take the wave-around'],
+  ['team_strategy', 'Team strategy'], ['follow_player', 'Teammates follow your stops'],
+  ['green_fuel_aggressive', 'Aggressive green-flag fuel (cars on good tires run the tank lower, between the two aggressive levels)'],
+];
+// AIMOD 2.2 always plans with these on (they left its UI); All In One NR2003 keeps them editable when "Always-on AIMOD 2.2 options" is off
+const FORCED = [
+  ['sets_include_start', 'Starting tires count as a set'], ['plan_multi_stop', 'Plan more than one stop ahead'], ['guard_game_stops', 'Call off stops the game asks for too soon'],
+  ['tire_only_stops', 'Allow tire-only stops'], ['free_fuel', 'Free fuel (take fuel when a stop is made anyway)'], ['position_strategy', 'Track position strategy'],
+  ['pace_strategy', 'Pace-aware tire calls'], ['value_tires', 'Value tires'],
+];
+const LEGACY_NUM = [['plan_margin', 'Plan margin (laps) – v1 only', 0.5, 'Only used when team stint strategies and the no-game-planned-stops patch are both off. AIMOD 2.2 no longer shows it.']];
+const SELECTS = [
+  ['tank_source', 'Fuel source', [['memory', 'Game (real fuel)'], ['manual', 'Manual']]],
+  ['drafting', 'Drafting track', [['auto', 'Auto'], ['yes', 'Yes'], ['no', 'No']]],
+  ['track_type', 'Track type', [['auto', 'Auto'], ['superspeedway', 'Superspeedway'], ['intermediate', 'Intermediate'], ['short', 'Short track'], ['road', 'Road course']]],
+];
+function buildParams() {
+  const host = $('params'); host.textContent = '';
+  const add = (el) => host.appendChild(el);
+  for (const [id, label, opts] of SELECTS) {
+    const l = document.createElement('label'); l.append(label + ' ');
+    const s = document.createElement('select'); s.dataset.p = id;
+    for (const [v, t] of opts) { const o = document.createElement('option'); o.value = v; o.textContent = t; s.appendChild(o); }
+    l.appendChild(s); add(l);
+  }
+  for (const [grp, fields] of NUM) {
+    const h = document.createElement('div'); h.style.cssText = 'grid-column:1/-1;margin-top:8px;color:#e8c84a;font-weight:600'; h.textContent = grp; add(h);
+    for (const [id, label, step, help] of fields) {
+      const l = document.createElement('label'); l.title = help; l.append(label + ' ');
+      const i = document.createElement('input'); i.type = 'number'; i.step = step; i.dataset.p = id; l.appendChild(i); add(l);
+    }
+  }
+  const h = document.createElement('div'); h.style.cssText = 'grid-column:1/-1;margin-top:8px;color:#e8c84a;font-weight:600'; h.textContent = 'Options'; add(h);
+  for (const [id, label] of BOOLS) {
+    const l = document.createElement('label'); l.className = 'chk';
+    const c = document.createElement('input'); c.type = 'checkbox'; c.dataset.p = id; l.appendChild(c); l.append(' ' + label); add(l);
+  }
+  const h2 = document.createElement('div'); h2.style.cssText = 'grid-column:1/-1;margin-top:8px;color:#e8c84a;font-weight:600'; h2.id = 'forced-head'; h2.textContent = 'Always on in AIMOD 2.2'; add(h2);
+  for (const [id, label] of FORCED) {
+    const l = document.createElement('label'); l.className = 'chk forced';
+    const c = document.createElement('input'); c.type = 'checkbox'; c.dataset.p = id; l.appendChild(c); l.append(' ' + label); add(l);
+  }
+  for (const [id, label, step, help] of LEGACY_NUM) {
+    const l = document.createElement('label'); l.title = help; l.className = 'forced'; l.append(label + ' ');
+    const i = document.createElement('input'); i.type = 'number'; i.step = step; i.dataset.p = id; l.appendChild(i); add(l);
+  }
+  host.addEventListener('change', (e) => {
+    const t = e.target; if (!t.dataset.p) return;
+    const v = t.type === 'checkbox' ? t.checked : (t.type === 'number' ? parseFloat(t.value) : t.value);
+    if (typeof v === 'number' && Number.isNaN(v)) return;
+    A.setParams({ [t.dataset.p]: v });
+  });
+}
+function fillParams(p) {
+  for (const el of $('params').querySelectorAll('[data-p]')) {
+    if (document.activeElement === el || p[el.dataset.p] === undefined) continue;
+    if (el.type === 'checkbox') el.checked = !!p[el.dataset.p]; else el.value = p[el.dataset.p];
+  }
+  paintForced();
+}
+// forced on: the 8 boxes show ticked and locked (the preset keeps its own values for when the option is switched off)
+let forcedOn = true;
+function paintForced() {
+  $('forced-head').textContent = forcedOn ? 'Always on in AIMOD 2.2 (switch off "Always-on AIMOD 2.2 strategy options" to edit)' : 'AIMOD 2.1 options (from the preset)';
+  for (const l of $('params').querySelectorAll('.forced')) {
+    const el = l.querySelector('[data-p]');
+    el.disabled = forcedOn;
+    if (el.type === 'checkbox' && forcedOn) el.checked = true;
+    l.style.display = (el.type !== 'checkbox' && forcedOn) ? 'none' : '';
+  }
+}
+
+// ── controls ──────────────────────────────────────────────────────────────────────────────────────────────
+$('enabled').onchange = (e) => A.setConfig({ enabled: e.target.checked }).then(paint);
+$('secondStops').onchange = (e) => A.setConfig({ secondStops: e.target.checked }).then(paint);
+$('restoreOnExit').onchange = (e) => A.setConfig({ restoreOnExit: e.target.checked }).then(paint);
+$('dryRun').onchange = (e) => {
+  if (!e.target.checked && !confirm('Turn read-only test mode OFF?\n\nAIMOD will then really control the AI pit stops in NR2003 (it patches the game\'s pit logic and writes pit requests). Everything is restored when you switch it off or close All In One NR2003.')) { e.target.checked = true; return; }
+  A.setConfig({ dryRun: e.target.checked }).then(paint);
+};
+$('hideOut').onchange = () => paintRows(last);
+$('clear-session').onclick = () => A.clearSession().then(() => toast('AIMOD data cleared for a new session'));
+$('crewModern').onchange = (e) => A.setCrewModern(e.target.checked);
+$('gearOn').onchange = async () => { await A.setGearbox($('gearOn').checked, +$('gearN').value); loadSetup(true); };
+$('gearN').onchange = async () => { if ($('gearOn').checked) { await A.setGearbox(true, +$('gearN').value); loadSetup(true); } };
+$('gearRestore').onclick = async () => { await A.gearboxRestore(); toast('Stock 4-speed restored'); loadSetup(true); };
+$('modernSuperspeedway').onchange = (e) => A.setConfig({ modernSuperspeedway: e.target.checked }).then(paint);
+$('adjustHandling').onchange = (e) => A.setSetting('adjust_handling', e.target.checked);
+for (const id of ['crewBrain', 'forceStrategyOptions', 'ssShortPitRelax', 'keepCarZero', 'pitBoardArt', 'crewBeta', 'autoTeamsAllTracks', 'pitGate']) $(id).onchange = (e) => A.setConfig({ [id]: e.target.checked }).then(() => loadSetup(true));
+$('waveEra').onchange = (e) => A.setConfig({ waveEra: e.target.value }).then(() => loadSetup(true));
+$('crewPort').onchange = (e) => { const v = Math.max(1024, Math.min(65535, Number(e.target.value) || 8767)); A.setConfig({ crewPort: v }).then(() => loadSetup(true)); };
+// teams / strategy rules / manufacturer names (AIMOD's dialogs)
+let teamsBuilt = false;
+function teamsToText(teams) { return (teams || []).map(t => t.name + ': ' + (t.cars || []).join(', ')).join('\n'); }
+function textToTeams(txt) {
+  return String(txt || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean).map((l) => {
+    const i = l.indexOf(':'); const name = (i >= 0 ? l.slice(0, i) : l).trim();
+    return { name, cars: (i >= 0 ? l.slice(i + 1) : '').split(/[\s,;]+/).map(x => x.replace(/^#/, '')).filter(Boolean) };
+  }).filter(t => t.name && t.cars.length);
+}
+async function loadTeams(force) {
+  const t = await A.teamsState();
+  if (!t) { $('teams-series').textContent = 'turn AIMOD on to edit'; return; }
+  $('teams-series').textContent = 'series: ' + t.series;
+  if (force || document.activeElement !== $('teams-text')) $('teams-text').value = teamsToText(t.teams);
+  $('teams-auto').textContent = t.automatic && t.automatic.length ? 'Live .car teams: ' + t.automatic.map(x => x.name + ' (' + x.cars.join(', ') + ')').join(' · ') : '';
+  if (force || document.activeElement !== $('make-names')) $('make-names').value = (t.make_names || []).join(', ');
+  const host = $('rules');
+  if (!teamsBuilt || force) {
+    host.textContent = '';
+    for (const [which, title] of [['draft', 'Strategy rules: drafting tracks'], ['other', 'Strategy rules: other tracks']]) {
+      const h = document.createElement('div'); h.style.cssText = 'grid-column:1/-1;margin-top:8px;color:#e8c84a;font-weight:600'; h.textContent = title; host.appendChild(h);
+      for (const [key, label, help] of t.rule_fields || []) {
+        const l = document.createElement('label'); l.title = help; l.append(label + ' ');
+        let el;
+        const opts = key === 'priority' ? t.priority_labels : key === 'team_pits' ? t.team_pits_labels : null;
+        if (opts) { el = document.createElement('select'); for (const [v, txt] of Object.entries(opts)) { const o = document.createElement('option'); o.value = v; o.textContent = txt; el.appendChild(o); } }
+        else { el = document.createElement('input'); el.type = 'number'; el.step = /gap/.test(key) ? 0.1 : 1; }
+        el.dataset.rule = which; el.dataset.key = key; l.appendChild(el); host.appendChild(l);
+      }
+    }
+    teamsBuilt = true;
+  }
+  for (const el of host.querySelectorAll('[data-rule]')) if (document.activeElement !== el || force) { const v = ((t.rules || {})[el.dataset.rule] || {})[el.dataset.key]; if (v !== undefined) el.value = v; }
+}
+$('rules').addEventListener('change', (e) => {
+  const el = e.target; if (!el.dataset.rule) return;
+  const v = el.tagName === 'SELECT' ? el.value : Number(el.value);
+  if (typeof v === 'number' && Number.isNaN(v)) return;
+  A.setTeamRules(el.dataset.rule, { [el.dataset.key]: v }).then(() => toast('Strategy rules saved for this series'));
+});
+$('teams-save').onclick = async () => { const t = textToTeams($('teams-text').value); await A.setTeams(t); toast(t.length ? `Saved ${t.length} team(s) for this series` : 'Teams cleared for this series'); loadTeams(true); };
+$('make-save').onclick = async () => { await A.setMakeNames($('make-names').value.split(',').map(x => x.trim()).filter(Boolean)); toast('Manufacturer names saved'); loadTeams(true); };
+$('behaviorOn').onchange = (e) => A.setParams({ behavior_on: e.target.checked });
+$('behaviorStrength').oninput = (e) => { $('behaviorStrengthValue').textContent = e.target.value; };
+$('behaviorStrength').onchange = (e) => A.setParams({ behavior_strength: Number(e.target.value) });
+$('behaviorLatePct').onchange = (e) => A.setParams({ behavior_late_pct: Math.max(1, Math.min(50, Number(e.target.value) || 10)) });
+$('behaviorReactions').onchange = (e) => A.setParams({ behavior_reactions: e.target.checked });
+$('behaviorTeams').onchange = (e) => A.setParams({ behavior_teams: e.target.checked });
+// racing intensity & rivals (AIMOD Nov 2026)
+$('aggMode').onchange = (e) => A.setParams({ agg_mode: e.target.value }).then(() => toast(e.target.value === 'on' ? 'Racing intensity ON: written to the game' : e.target.value === 'shadow' ? 'Racing intensity in shadow: decides and logs, writes nothing' : 'Racing intensity off: the game\'s own values'));
+$('aggStrength').onchange = (e) => A.setParams({ agg_strength: Math.max(0, Math.min(150, Number(e.target.value) || 0)) });
+$('aggSidePad').onchange = (e) => A.setParams({ agg_side_pad: Math.max(30, Math.min(100, Math.round(Number(e.target.value) || 70))) });
+$('clearBlack').onchange = (e) => A.setSetting('clear_black_flags', e.target.checked).then(() => toast(e.target.checked ? 'AI black flags are cleared as they show' : 'AI black flags left to the game'));
+$('saveResults').onchange = (e) => A.setSetting('save_results', e.target.checked);
+$('openResults').onclick = async () => { if (!(await A.openResults())) toast('AIMOD is not running yet'); };
+for (const [id, key] of [['rivalsOn', 'rivals_on'], ['rivalsRetaliate', 'rivals_retaliate'], ['rivalsTeammates', 'rivals_teammates'], ['rivalsList', 'rivals_list'], ['rivalsPlayer', 'rivals_player']]) $(id).onchange = (e) => A.setParams({ [key]: e.target.checked });
+function parseRivals(text) {
+  const out = [];
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const m = /^\s*#?(\d{1,3})\s*(?:[,;/\-\s]|vs\.?)\s*#?(\d{1,3})\s*$/i.exec(line.split(/\s+#\s|\s\/\//)[0]);
+    if (m && m[1] !== m[2]) out.push([Number(m[1]), Number(m[2])]);
+  }
+  return out;
+}
+let rivalsShown = '';
+async function loadRivals(force) {
+  const r = await A.rivalsState().catch(() => null);
+  if (!r) return;
+  $('rivals-mod').textContent = r.mod || 'this mod';
+  const txt = (r.pairs || []).map(p => p[0] + ' vs ' + p[1]).join('\n');
+  if (force || (document.activeElement !== $('rivals-text') && txt !== rivalsShown)) { $('rivals-text').value = txt; rivalsShown = txt; }
+  $('rivals-cars').textContent = r.cars && r.cars.length ? 'Cars on track: ' + r.cars.map(n => '#' + n).join(' ') : '';
+  const ind = r.indicator || {};
+  if (document.activeElement !== $('rivalInd')) $('rivalInd').checked = ind.on !== false;
+  for (const [id, k] of [['rivalX', 'x'], ['rivalY', 'y'], ['rivalSize', 'size']]) if (document.activeElement !== $(id) && ind[k] != null) $(id).value = ind[k];
+  const feuds = (r.feuds || []).map(f => '#' + f.a + ' / #' + f.b + (f.level ? ' L' + f.level : '')).join(', ');
+  const last = (r.log || []).slice(-4).map(x => 'lap ' + x.lap + ': ' + x.text + (x.shadow ? ' [shadow]' : '')).join(' · ');
+  $('rivals-feuds').textContent = (feuds ? 'This race: ' + feuds + '. ' : '') + last;
+}
+$('rivals-save').onclick = async () => { const p = parseRivals($('rivals-text').value); await A.setRivals(p); toast(p.length ? `Saved ${p.length} rivalr${p.length === 1 ? 'y' : 'ies'} for this mod` : 'Rivals list cleared for this mod'); loadRivals(true); };
+$('rivalInd').onchange = (e) => A.setRivalIndicator({ on: e.target.checked });
+for (const [id, k] of [['rivalX', 'x'], ['rivalY', 'y'], ['rivalSize', 'size']]) $(id).onchange = (e) => { const v = Number(e.target.value); if (Number.isFinite(v)) A.setRivalIndicator({ [k]: v }); };
+$('preset-load').onclick = async () => { const n = $('preset-list').value; if (!n) return; const ok = await A.loadPreset(n); toast(ok ? `Loaded "${n}"` : 'Could not load that preset', !ok); loadSetup(true); };
+$('preset-save').onclick = async () => { const n = $('preset-list').value; if (!n) return $('preset-saveas').click(); await A.savePreset(n); toast(`Saved "${n}"`); loadSetup(); };
+$('preset-saveas').onclick = async () => { const n = (prompt('Preset name:', $('preset-list').value || '') || '').trim().replace(/[\\/:*?"<>|]/g, ''); if (!n) return; await A.savePreset(n); toast(`Saved "${n}"`); loadSetup(); };
+$('preset-track').onclick = async () => { const n = $('preset-list').value; if (!n) return toast('Pick a preset first', true); await A.assignTrack(n); toast(`"${n}" will load automatically at this track`); };
+$('learned-apply').onclick = async () => { await A.applyLearned(); toast('Learned thresholds applied (Save to keep them)'); loadSetup(true); };
+for (const b of document.querySelectorAll('.tabs button')) b.onclick = () => {
+  for (const x of document.querySelectorAll('.tabs button')) x.classList.toggle('on', x === b);
+  for (const t of ['monitor', 'setup', 'stops', 'radio', 'log']) $('tab-' + t).style.display = t === b.dataset.tab ? '' : 'none';
+  if (b.dataset.tab === 'setup') { loadSetup(true); loadTeams(true); }
+  if (b.dataset.tab === 'radio') loadRadio(true);
+};
+
+// ── scanner radio ─────────────────────────────────────────────────────────────────────────────────────────
+let radioBuilt = false;
+const esc2 = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function sysVoices() { try { return speechSynthesis.getVoices().map(v => v.name); } catch (e) { return []; } }
+async function loadRadio(force) {
+  const st = await A.radioState();
+  if (!st || !st.ready) { $('rd-note').textContent = 'AIMOD is not running yet.'; return; }
+  const cfg = st.config || {}, o = st.options || {};
+  if (document.activeElement && document.activeElement.closest && document.activeElement.closest('#rd-form') && !force) { paintRadioLines(st.lines); return; }
+  $('rd-on').checked = !!cfg.on;
+  const vs = sysVoices();
+  const vsel = (id, cur) => '<select id="' + id + '"><option value="">(default)</option>' + vs.map(v => '<option' + (cur && v.toLowerCase().includes(String(cur).toLowerCase()) ? ' selected' : '') + ' value="' + esc2(v) + '">' + esc2(v) + '</option>').join('') + '</select>';
+  const cats = o.categories || [];
+  $('rd-form').innerHTML =
+    '<div class="row"><label>Radio for</label><select id="rd-mode"><option value="car">one car (spotter + crew chief)</option><option value="scanner">scanner (the TV car and favourites)</option></select>' +
+    ' <label>Car</label><input id="rd-car" style="width:90px" placeholder="player or #24"> <span class="muted small">"player", or a car number like #24</span></div>' +
+    '<div class="row"><label>Scanner covers</label><select id="rd-scan"><option value="all">all cars</option><option value="team">a team</option><option value="numbers">car numbers</option></select>' +
+    ' <label>Team</label><input id="rd-team" style="width:140px"> <label>Numbers</label><input id="rd-nums" style="width:160px" placeholder="e.g. 24, 48, 5"></div>' +
+    '<div class="row"><label>Favourites</label><input id="rd-fav" style="width:220px" placeholder="car numbers to always hear"> <label><input type="checkbox" id="rd-tv"> follow the TV camera</label></div>' +
+    '<div class="row"><label>Volume</label><input type="range" id="rd-vol" min="0" max="100" style="width:140px"> <label>Speed</label><input type="range" id="rd-rate" min="0.6" max="1.6" step="0.05" style="width:140px">' +
+    ' <label>Position report every</label><input type="number" id="rd-laps" min="3" max="60" style="width:60px"> laps</div>' +
+    '<div class="row"><label>Crew chief voice</label>' + vsel('rd-vcrew', cfg.voice_crew) + ' <label>Spotter voice</label>' + vsel('rd-vspot', cfg.voice_spotter) + ' <label>Driver voice</label>' + vsel('rd-vdrv', cfg.voice_driver || 'Zira') + '</div>' +
+    '<div class="row"><label><input type="checkbox" id="rd-alone"> spotter calls for my own car too (NR2003 already has one)</label> <label><input type="checkbox" id="rd-cscan"> crew chief on the scanner</label></div>' +
+    '<div class="muted small" style="margin:8px 0 4px">What it talks about</div>' +
+    '<div id="rd-cats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:4px 16px">' +
+    cats.map(c => '<label title="' + esc2(c[2]) + '"><input type="checkbox" data-cat="' + esc2(c[0]) + '"' + ((cfg.cats || {})[c[0]] !== false ? ' checked' : '') + '> ' + esc2(c[1]) + '</label>').join('') + '</div>' +
+    // AIMOD 2.2: the TV-style subtitle box (drawn by All In One NR2003's graphics window) and the user's own radio conversations
+    '<div class="muted small" style="margin:12px 0 4px">Subtitle box (AIMOD 2.2): a TV-style box over the game with the number card, who is speaking and exactly what is said. Rare on purpose: rivalries, big moments on the TV car and your own conversations.</div>' +
+    '<div class="row"><label><input type="checkbox" id="sb-on"> Show the subtitle box</label> <label title="Grudge, feud, wreck and retaliation calls (the crew chief\'s and the driver\'s lines of one event all show)"><input type="checkbox" id="sb-riv"> rivalries</label>' +
+    ' <label title="Caution, white flag, checkered, stage end, black flag, heavy damage, a win or taking the lead - only for the car on the TV camera"><input type="checkbox" id="sb-mom"> big moments on the TV car</label> <label><input type="checkbox" id="sb-conv"> my conversations</label></div>' +
+    '<div class="row"><label>At most one every</label><input type="number" id="sb-gap" min="0" max="600" style="width:64px"> s <label>Size</label><input type="number" id="sb-size" min="0.5" max="2.5" step="0.05" style="width:64px">' +
+    ' <label>Strength</label><input type="number" id="sb-op" min="0.2" max="1" step="0.05" style="width:64px"> <label title="Where the box sits: left and top on a 1920 x 1080 screen">At</label><input type="number" id="sb-x" style="width:64px"> <input type="number" id="sb-y" style="width:64px"></div>' +
+    '<div class="muted small" style="margin:12px 0 4px">Radio conversations: short back-and-forths for a radio moment, rows of "Driver: ...", "Crew: ..." and "Spotter: ..." ({car} and {pos} are filled in). When that moment comes up the conversation plays in place of its normal line, each row in its own voice. A conversation with a Driver row only plays for AI cars: your own driver never talks.</div>' +
+    '<div id="cv-list"></div><div class="row"><button id="cv-add">Add a conversation</button> <label>plays it</label><input type="number" id="sb-chance" min="0" max="100" style="width:60px"> % of the time</div>';
+  const set = (id, v) => { const el = $(id); if (el) el.value = v == null ? '' : v; };
+  set('rd-mode', cfg.mode); set('rd-car', cfg.car); set('rd-scan', cfg.scan); set('rd-team', cfg.scan_team); set('rd-nums', cfg.scan_numbers); set('rd-fav', cfg.favourites);
+  set('rd-vol', cfg.volume); set('rd-rate', cfg.rate); set('rd-laps', cfg.report_laps);
+  $('rd-tv').checked = cfg.follow_tv !== false; $('rd-alone').checked = !!cfg.alongside_mine; $('rd-cscan').checked = cfg.crew_scan !== false;
+  const push = async (patch) => { await A.setRadio(patch); };
+  $('rd-mode').onchange = () => push({ mode: $('rd-mode').value }); $('rd-car').onchange = () => push({ car: $('rd-car').value.trim() || 'player' });
+  $('rd-scan').onchange = () => push({ scan: $('rd-scan').value }); $('rd-team').onchange = () => push({ scan_team: $('rd-team').value });
+  $('rd-nums').onchange = () => push({ scan_numbers: $('rd-nums').value }); $('rd-fav').onchange = () => push({ favourites: $('rd-fav').value });
+  $('rd-tv').onchange = () => push({ follow_tv: $('rd-tv').checked }); $('rd-alone').onchange = () => push({ alongside_mine: $('rd-alone').checked });
+  $('rd-cscan').onchange = () => push({ crew_scan: $('rd-cscan').checked });
+  $('rd-vol').onchange = () => push({ volume: +$('rd-vol').value }); $('rd-rate').onchange = () => push({ rate: +$('rd-rate').value });
+  $('rd-laps').onchange = () => push({ report_laps: Math.max(3, Math.min(60, +$('rd-laps').value || 15)) });
+  $('rd-vcrew').onchange = () => push({ voice_crew: $('rd-vcrew').value }); $('rd-vspot').onchange = () => push({ voice_spotter: $('rd-vspot').value });
+  $('rd-vdrv').onchange = () => push({ voice_driver: $('rd-vdrv').value });
+  for (const c of document.querySelectorAll('#rd-cats input')) c.onchange = () => push({ cats: { [c.dataset.cat]: c.checked } });
+  const sb = Object.assign({}, o.subtitle_defaults || {}, cfg.subtitles || {});
+  $('sb-on').checked = !!sb.on; $('sb-riv').checked = sb.rivals !== false; $('sb-mom').checked = sb.moments !== false; $('sb-conv').checked = sb.convos !== false;
+  set('sb-gap', sb.min_gap); set('sb-size', sb.size); set('sb-op', sb.opacity); set('sb-x', sb.x == null ? 270 : sb.x); set('sb-y', sb.y == null ? 860 : sb.y); set('sb-chance', sb.convo_chance);
+  const sbPush = (patch) => push({ subtitles: patch });
+  $('sb-on').onchange = () => sbPush({ on: $('sb-on').checked }); $('sb-riv').onchange = () => sbPush({ rivals: $('sb-riv').checked });
+  $('sb-mom').onchange = () => sbPush({ moments: $('sb-mom').checked }); $('sb-conv').onchange = () => sbPush({ convos: $('sb-conv').checked });
+  $('sb-gap').onchange = () => sbPush({ min_gap: Math.max(0, Math.min(600, +$('sb-gap').value || 0)) });
+  $('sb-size').onchange = () => sbPush({ size: Math.max(0.5, Math.min(2.5, +$('sb-size').value || 1)) });
+  $('sb-op').onchange = () => sbPush({ opacity: Math.max(0.2, Math.min(1, +$('sb-op').value || 0.95)) });
+  $('sb-x').onchange = () => sbPush({ x: Math.round(+$('sb-x').value || 0) }); $('sb-y').onchange = () => sbPush({ y: Math.round(+$('sb-y').value || 0) });
+  $('sb-chance').onchange = () => sbPush({ convo_chance: Math.max(0, Math.min(100, +$('sb-chance').value || 0)) });
+  // the conversations: a moment and its rows (role: text)
+  const trig = o.triggers || [];
+  let convs = (cfg.conversations || []).map(c => ({ trigger: c.trigger, lines: (c.lines || []).map(r => [r[0], r[1]]) }));
+  const parseRows = (t) => String(t).split(/\r?\n/).map(l => { const m = /^\s*(driver|crew chief|crew|chief|spotter|d|c|s)\s*:\s*(.+)$/i.exec(l); if (!m) return null; const w = m[1].toLowerCase(); return [w.startsWith('d') ? 'driver' : w.startsWith('s') ? 'spotter' : 'crew', m[2].trim()]; }).filter(Boolean);
+  const rowsText = (lines) => lines.map(r => (r[0] === 'driver' ? 'Driver' : r[0] === 'spotter' ? 'Spotter' : 'Crew') + ': ' + r[1]).join('\n');
+  const saveConvs = () => push({ conversations: convs.filter(c => c.lines.length).map(c => ({ trigger: c.trigger, lines: c.lines })) });
+  const paintConvs = () => {
+    $('cv-list').innerHTML = convs.map((c, i) => '<div class="row" style="align-items:flex-start;gap:8px;margin-bottom:6px"><select data-cv="' + i + '">' +
+      trig.map(t => '<option value="' + esc2(t[0]) + '"' + (t[0] === c.trigger ? ' selected' : '') + '>' + esc2(t[1] + ': ' + t[2]) + '</option>').join('') + '</select>' +
+      '<textarea data-cvt="' + i + '" rows="3" style="flex:1;min-width:280px" placeholder="Driver: I\'m loose off two.&#10;Crew: Copy, we\'ll fix it on the next stop.">' + esc2(rowsText(c.lines)) + '</textarea>' +
+      '<button data-cvh="' + i + '">Hear it</button> <button data-cvd="' + i + '">Delete</button></div>').join('') || '<span class="muted small">No conversations yet.</span>';
+    for (const el of document.querySelectorAll('#cv-list [data-cv]')) el.onchange = () => { convs[+el.dataset.cv].trigger = el.value; saveConvs(); };
+    for (const el of document.querySelectorAll('#cv-list [data-cvt]')) el.onchange = () => { convs[+el.dataset.cvt].lines = parseRows(el.value); saveConvs(); };
+    for (const el of document.querySelectorAll('#cv-list [data-cvh]')) el.onclick = async () => { const ta = document.querySelector('#cv-list [data-cvt="' + el.dataset.cvh + '"]'); const rows = parseRows(ta.value); if (!rows.length) return toast('Write rows like "Crew: ..." first'); if (!(await A.radioHear(rows))) toast('Turn the radio on first'); };
+    for (const el of document.querySelectorAll('#cv-list [data-cvd]')) el.onclick = () => { convs.splice(+el.dataset.cvd, 1); saveConvs(); paintConvs(); };
+  };
+  $('cv-add').onclick = () => { convs.push({ trigger: (trig[0] || ['caution'])[0], lines: [] }); paintConvs(); };
+  paintConvs();
+  radioBuilt = true;
+  paintRadioLines(st.lines);
+}
+function paintRadioLines(lines) { $('rd-lines').innerHTML = (lines || []).slice().reverse().map(l => '<div>' + esc2(l) + '</div>').join('') || '<span class="muted">Nothing yet.</span>'; }
+$('rd-on').onchange = async () => { await A.setRadio({ on: $('rd-on').checked }); toast($('rd-on').checked ? 'Radio on' : 'Radio off'); };
+$('rd-test').onclick = async () => { await A.radioTest(); };
+setInterval(() => { if ($('tab-radio').style.display !== 'none') loadRadio(false); }, 2500);
+try { speechSynthesis.onvoiceschanged = () => { if ($('tab-radio').style.display !== 'none') loadRadio(true); }; } catch (e) { /* no speech here */ }
+
+// ── painting ──────────────────────────────────────────────────────────────────────────────────────────────
+let last = null;
+const f = (v, d) => (v === null || v === undefined ? '' : (typeof v === 'number' ? v.toFixed(d) : v));
+function paintRows(s) {
+  if (!s) return;
+  const hide = $('hideOut').checked;
+  const body = $('mon').querySelector('tbody'); body.textContent = '';
+  const rows = (s.rows || []).slice().sort((a, b) => (a.out - b.out) || (a.pos - b.pos));
+  for (const r of rows) {
+    if (hide && r.out) continue;
+    const tr = document.createElement('tr'); tr.className = r.kind || '';
+    const gap = r.laps_down ? '-' + r.laps_down + 'L' : (r.pos === 1 ? 'LEADER' : (r.gap === null || r.gap === undefined ? '' : f(r.gap, 1)));
+    const pct = (v) => (v === null || v === undefined ? '' : Math.round(v) + '%');
+    const flag = r.black_flag ? 'BLACK' : r.free_pass ? 'FREE PASS' : r.waved ? 'WAVE' : '';
+    const cells = [r.pos || '', r.number, r.name, r.lap || '', gap, r.rating, r.out ? '' : f(r.grip, 3), r.out ? '' : f(r.wear_l, 3), r.out ? '' : f(r.wear_r, 3),
+      r.out ? '' : pct(r.prob_l), r.out ? '' : pct(r.prob_r), r.out || !r.damage ? '' : f(r.damage, 3),
+      r.out ? '' : f(r.urgency, 0), r.out ? '' : (r.green_laps ?? ''), r.fuel_frac === null || r.fuel_frac === undefined ? '' : (r.fuel_real ? '' : '~') + Math.round(r.fuel_frac * 100) + '%', f(r.fuel_laps, 1),
+      r.car_tank ? (r.own_mileage ? '' : '~') + f(r.car_tank, 1) : '', r.fuel_state || '',
+      f(r.pace_delta, 2), r.falloff === null || r.falloff === undefined ? '' : f(r.falloff * 100, 1) + '%', r.tires_left || '', r.stops, r.last_pit || '', r.next_pit || '', flag, r.behavior || '', r.status || ''];
+    cells.forEach((v, i) => { const td = document.createElement('td'); if (i === 2 || i >= 22) td.className = 'l'; td.textContent = v === undefined ? '' : v; tr.appendChild(td); });
+    body.appendChild(tr);
+  }
+}
+function paintStops(s) {
+  const body = $('stops').querySelector('tbody'); body.textContent = '';
+  for (const e of (s.events || []).slice().reverse()) {
+    const tr = document.createElement('tr');
+    const gained = e.pos_out === null || e.pos_out === undefined || !e.pos_in ? null : e.pos_in - e.pos_out;
+    [e.lap, e.number, e.name, e.service, e.fuel ? 'fuel' : '', e.green ? 'GREEN' : 'CAUTION', e.reason, e.pos_in, e.pos_out === null ? '' : e.pos_out, gained === null ? '' : (gained > 0 ? '+' : '') + gained, e.state,
+      e.duration === null || e.duration === undefined ? '' : f(e.duration, 1) + ' s', e.note || ''].forEach((v, i) => {
+      const td = document.createElement('td'); if (i >= 2 && i <= 6 || i === 10 || i === 12) td.className = 'l'; td.textContent = v === undefined ? '' : v;
+      if (i === 9 && gained) td.style.color = gained > 0 ? 'var(--green)' : 'var(--red)';
+      if (i === 12) { td.style.whiteSpace = 'normal'; td.style.minWidth = '260px'; }
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  }
+}
+function paint(s) {
+  if (!s) return;
+  last = s;
+  const on = !!s.enabled, st = s.status || {};
+  $('enabled').checked = on; $('dryRun').checked = s.dryRun; $('secondStops').checked = !!(s.secondStops !== undefined ? s.secondStops : (s.config && s.config.secondStops));
+  $('restoreOnExit').checked = ((s.config && s.config.restoreOnExit !== undefined) ? s.config.restoreOnExit : s.restoreOnExit) !== false;
+  $('modernSuperspeedway').checked = !s.config || s.config.modernSuperspeedway !== false;
+  $('master').classList.toggle('on', on);
+  $('master-title').textContent = !on ? 'AIMOD is OFF' : (s.note ? 'AIMOD is paused' : (st.attached ? (s.dryRun ? 'AIMOD is ON — read-only test (not controlling the AI)' : 'AIMOD is ON — controlling the AI pit stops') : 'AIMOD is ON — waiting for NR2003'));
+  $('dry-title').textContent = s.dryRun ? 'Read-only test mode is ON — NR2003 is not modified' : 'LIVE — AIMOD is changing NR2003';
+  $('dry-sub').textContent = s.dryRun ? 'AIMOD runs on a shadow copy of the game: the monitor shows its decisions, nothing is written. Turn it off to let AIMOD control the AI.' : 'Patches and pit requests are real. Switching AIMOD off (or closing All In One NR2003) restores the game.';
+  const g = $('chip-game'); g.textContent = 'NR2003: ' + (st.attached ? 'attached' : 'not running'); g.className = 'chip ' + (st.attached ? (s.dryRun ? 'warn' : 'live') : '');
+  $('chip-track').textContent = 'Track: ' + (st.track || '—') + (st.mod ? ' [' + st.mod + ']' : '');
+  $('chip-race').textContent = st.lap ? `Lap ${st.lap}${st.laps_total ? '/' + st.laps_total : ''}${st.laps_to_go != null ? ' (' + Math.round(st.laps_to_go) + ' to go)' : ''}` : (st.attached ? 'waiting for the first lap' : '—');
+  $('laptxt').textContent = st.flag === undefined ? '' : (st.flag === 7 ? 'GREEN' : 'CAUTION / other (flag ' + st.flag + ')');
+  $('statline').textContent = [st.patch, st.model, st.tank_laps ? 'game tank ' + f(st.tank_laps, 1) + ' laps' : ''].filter(Boolean).join('  ·  ');
+  const e = $('err'); e.textContent = s.error ? 'Error: ' + s.error : ''; e.style.display = s.error ? '' : 'none';
+  const n = $('note'); n.textContent = s.note || (on && s.dryRun && s.pendingWrites.count ? `Test mode: ${s.pendingWrites.count} write(s) would have been made.` : ''); n.style.display = n.textContent ? '' : 'none';
+  paintRows(s); paintStops(s);
+  const lb = $('logbox'); const atEnd = lb.scrollTop + lb.clientHeight >= lb.scrollHeight - 8; lb.textContent = (s.log || []).join('\n'); if (atEnd) lb.scrollTop = lb.scrollHeight;
+}
+async function loadSetup(force) {
+  const su = await A.getSetup();
+  if (!su || !su.ready) { $('preset-state').textContent = on() ? '' : 'Turn AIMOD on to edit its settings'; return; }
+  const sel = $('preset-list'), cur = sel.value || su.loaded || '';
+  sel.textContent = '';
+  for (const n of su.presets || []) { const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o); }
+  // Keep the user's selection through refreshes. `loaded` is the current strategy,
+  // while the dropdown selection is what they may be choosing to load next.
+  if ([...sel.options].some(o => o.value === (cur || su.loaded))) sel.value = cur || su.loaded;
+  $('preset-state').textContent = su.loaded ? `loaded: ${su.loaded}` : 'no preset loaded (defaults)';
+  if (force || (!$('params').contains(document.activeElement) && !$('behavior-box').contains(document.activeElement))) fillParams(su.params || {});
+  const bp = su.params || {};
+  for (const [id, key] of [['behaviorOn', 'behavior_on'], ['behaviorStrength', 'behavior_strength'], ['behaviorLatePct', 'behavior_late_pct'], ['behaviorReactions', 'behavior_reactions'], ['behaviorTeams', 'behavior_teams']]) {
+    const el = $(id); if (document.activeElement !== el && bp[key] !== undefined) el.type === 'checkbox' ? el.checked = !!bp[key] : el.value = bp[key];
+  }
+  $('behaviorStrengthValue').textContent = $('behaviorStrength').value;
+  for (const [id, key] of [['aggMode', 'agg_mode'], ['aggStrength', 'agg_strength'], ['aggSidePad', 'agg_side_pad'], ['rivalsOn', 'rivals_on'], ['rivalsRetaliate', 'rivals_retaliate'], ['rivalsTeammates', 'rivals_teammates'], ['rivalsList', 'rivals_list'], ['rivalsPlayer', 'rivals_player']]) {
+    const el = $(id); if (document.activeElement !== el && bp[key] !== undefined) el.type === 'checkbox' ? el.checked = !!bp[key] : el.value = bp[key];
+  }
+  loadRivals(force);
+  const s = su.settings || {};
+  $('crewModern').checked = !!s.crew_modern;
+  if (s.gearbox) { $('gearOn').checked = !!s.gearbox.on; $('gearN').value = String(s.gearbox.gears || 5); $('gearStatus').textContent = s.gearbox.status || ''; }
+  $('adjustHandling').checked = s.adjust_handling !== false;
+  if (document.activeElement !== $('clearBlack')) $('clearBlack').checked = !!s.clear_black_flags;
+  if (document.activeElement !== $('saveResults')) $('saveResults').checked = s.save_results !== false;
+  const cf = (last && last.config) || {};
+  for (const id of ['crewBrain', 'forceStrategyOptions', 'keepCarZero', 'pitBoardArt', 'pitGate']) if (document.activeElement !== $(id)) $(id).checked = cf[id] !== false;
+  $('gate-txt').textContent = (last && last.status && last.status.gate) || '';
+  for (const id of ['ssShortPitRelax', 'crewBeta', 'autoTeamsAllTracks']) if (document.activeElement !== $(id)) $(id).checked = !!cf[id];
+  if (document.activeElement !== $('waveEra')) $('waveEra').value = cf.waveEra || 'auto';
+  if (document.activeElement !== $('crewPort')) $('crewPort').value = cf.crewPort || 8767;
+  $('crewPortTxt').textContent = cf.crewPort || 8767;
+  $('era-txt').textContent = s.wave_era === true ? 'now: wave-around' : s.wave_era === false ? 'now: no wave-around' : ('now: from the stages (' + (s.stages_era > 0 ? 'stage era' : 'pre-stage era') + ')');
+  forcedOn = cf.forceStrategyOptions !== false; paintForced();
+  const pr = $('patch-row');
+  if (Array.isArray(s.patch_list) && pr.dataset.n !== String(s.patch_list.length)) {
+    pr.dataset.n = String(s.patch_list.length);
+    pr.querySelectorAll('label').forEach(x => x.remove());
+    for (const [key, label] of s.patch_list) {
+      const l = document.createElement('label'); l.className = 'chk'; l.title = label;
+      const c = document.createElement('input'); c.type = 'checkbox'; c.dataset.patch = key; l.appendChild(c);
+      l.append(' ' + ({ no_game_plan_stops: 'No game-planned stops (0x40B63F)', legacy_pit_takeover: 'AI pit takeover (0x5201CA, AIMOD 2.1 - All In One NR2003 default)',
+        no_game_condition_stops: "No 'car condition' stops (0x40B677)", caution_repairs: 'Repair damage on caution stops (0x404AE5)' }[key] || key));
+      pr.appendChild(l);
+      c.onchange = () => { const want = [...pr.querySelectorAll('[data-patch]')].filter(x => x.checked).map(x => x.dataset.patch); A.setConfig({ patches: want }).then(() => loadSetup(true)); };
+    }
+  }
+  for (const c of pr.querySelectorAll('[data-patch]')) if (document.activeElement !== c) c.checked = (s.patches || []).includes(c.dataset.patch);
+  $('series-txt').textContent = s.mod ? `${s.mod} · track type: ${s.track_type}` : '';
+  const L = su.learned;
+  $('learned-txt').textContent = L ? `Learned at this track: right ${f(L[1], 3)}, left ${f(L[0], 3)} (${L[2]} runs)` : 'Learned thresholds: collecting (needs 5 full green runs)';
+  $('learned-apply').disabled = !L;
+}
+const on = () => last && last.enabled;
+buildParams();
+const poll = () => A.getState().then(paint).catch(() => {});
+poll(); setInterval(poll, 1000);
+setInterval(() => { if ($('tab-setup').style.display !== 'none') { loadSetup(false); loadTeams(false); } }, 3000);
+</script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'">
+<title>Scanner radio voice</title>
+</head>
+<body>
+<script>
+// Speaks AIMOD's radio lines with the system's voices: the radio decides what is said and how urgently, this page plays them one at
+// a time, urgent ones cutting in, stale ones (past their time to live) dropped, a repeated key replacing the one still waiting.
+const URGENT = 0, MAX_WAITING = 5;
+let cfg = {}, q = [], speaking = null, voices = [], seq = 0;
+const loadVoices = () => { voices = speechSynthesis.getVoices(); };
+loadVoices(); speechSynthesis.onvoiceschanged = loadVoices;
+const find = (name) => { const n = String(name || '').toLowerCase(); return n ? voices.find(v => v.name.toLowerCase().includes(n)) : null; };
+
+function pickVoice(m) {
+  if (m.role === 'spotter') return find(cfg.voice_spotter) || find('David');
+  if (m.role === 'driver') return find(cfg.voice_driver) || find('Zira') || find(cfg.voice_crew);
+  return find(cfg.voice_crew) || find('David');
+}
+function next() {
+  if (speaking) return;
+  const now = performance.now() / 1000;
+  q = q.filter(m => now - m.born <= m.ttl);
+  if (!q.length) return;
+  q.sort((a, b) => a.prio - b.prio || a.born - b.born);
+  const m = q.shift();
+  const u = new SpeechSynthesisUtterance(m.text);
+  const v = pickVoice(m); if (v) u.voice = v;
+  const base = Math.max(0.5, Math.min(2, Number(cfg.rate) || 1));
+  const tw = m.tweak || [0, 0];
+  u.rate = Math.max(0.5, Math.min(2.2, base * (m.role === 'driver' ? 1.1 : 1) + tw[1] * 0.04));
+  u.pitch = Math.max(0.2, Math.min(2, 1 + tw[0] * 0.05 + (m.role === 'driver' ? 0.15 : 0)));
+  u.volume = Math.max(0, Math.min(1, (cfg.volume == null ? 80 : cfg.volume) / 100));
+  speaking = { m, u };
+  // AIMOD 2.2's subtitle box: this line got it (the radio's gate decided) - the box shows while it is said, at least long enough to read
+  const subStart = Date.now();
+  if (m.sub) { try { window.shl.radioVoice.subtitle({ number: m.number, title: m.sub.title, text: m.text, start: subStart, end: 0 }); } catch (e) { /* older shell */ } }
+  u.onend = u.onerror = () => {
+    if (m.sub) { try { window.shl.radioVoice.subtitle({ number: m.number, title: m.sub.title, text: m.text, start: subStart, end: Date.now() }); } catch (e) { /* older shell */ } }
+    if (speaking && speaking.u === u) { speaking = null; setTimeout(next, m.chain || (q[0] && q[0].chain) ? 40 : 80); }
+  };
+  speechSynthesis.speak(u);
+}
+window.shl.radioVoice.onSay((payload) => {
+  cfg = payload.cfg || cfg;
+  const now = performance.now() / 1000;
+  for (const m of payload.msgs || []) {
+    if (m.cmd === 'stop') { q = []; speechSynthesis.cancel(); speaking = null; continue; }
+    if (m.cmd !== 'say' || !m.text) continue;
+    m.born = now + (m.chain ? (seq += 1e-4) : 0);      // a conversation's lines keep their order
+    if (m.chain && q.length) { const lead = q[q.length - 1]; m.prio = lead.prio; }
+    if (m.key) q = q.filter(x => x.key !== m.key);
+    q.push(m);
+    while (q.length > MAX_WAITING && q.some(x => !x.chain)) { const cands = q.filter(x => !x.chain).sort((a, b) => b.prio - a.prio || a.born - b.born); q.splice(q.indexOf(cands[0]), 1); }
+    if (m.prio === URGENT && speaking && speaking.m.prio > URGENT) { const s = speaking; speaking = null; speechSynthesis.cancel(); }
+  }
+  next();
+});
+window.shl.radioVoice.ready();
+</script>
+</body>
+</html>

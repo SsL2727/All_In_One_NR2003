@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' file:">
+<title>Qualifying timing box</title>
+<link rel="stylesheet" href="broadcast.css">
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; user-select: none; }
+  /* the box is drawn at 420 x 100 and scaled to the window */
+  #box { width: 420px; height: 100px; transform-origin: 0 0; position: relative; box-sizing: border-box; color: #fff;
+         font-family: var(--psf-tv-font); opacity: .97;
+         background: rgba(var(--psf-tv-bg-rgb), .98); border: 0; border-top: 4px solid var(--psf-tv-accent); }
+  #box.edit { cursor: move; }
+  .hdr { position: absolute; left: 10px; top: 4px; font-size: 14px; font-weight: 800; letter-spacing: .08em; color: var(--psf-tv-accent); text-transform: uppercase; white-space: nowrap; }
+  .row { position: absolute; left: 0; width: 420px; height: 30px; border-top: 1px solid var(--psf-tv-line); }
+  .pos { position: absolute; left: 10px; top: 0; font-size: 21px; font-weight: 700; line-height: 30px; }
+  .num { position: absolute; left: 50px; top: 2px; width: 54px; height: 28px; font-size: 21px; font-weight: 800; color: var(--psf-tv-accent); line-height: 28px; white-space: nowrap; }
+  .name { position: absolute; left: 112px; top: 0; font-size: 21px; line-height: 30px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .right { position: absolute; left: 310px; top: 0; width: 96px; height: 30px; text-align: right; box-sizing: border-box; padding-right: 6px; line-height: 30px; font-weight: 700; }
+  .right.m0 { font-size: 16px; color: var(--psf-tv-muted); }
+  .right.m1 { font-size: 21px; color: #fff; }
+  .right.m2 { font-size: 21px; color: #fff; }
+  .right.green { background: var(--psf-tv-green); color: #111; } .right.red { background: var(--psf-tv-red); color: #fff; }
+  .proj { position: absolute; left: 218px; top: 60px; width: 84px; height: 30px; text-align: right; font-size: 21px; font-weight: 700; line-height: 30px; }
+  .none { position: absolute; left: 10px; top: 26px; font-size: 19px; font-weight: 700; color: var(--psf-tv-muted); line-height: 30px; }
+</style>
+</head>
+<body>
+<div id="box"></div>
+<script>
+const box = document.getElementById('box');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+let editing = new URLSearchParams(location.search).get('edit') === '1';
+if (editing) box.classList.add('edit');
+
+function row(y, pos, num, name, right, mode, faster) {
+  const w = mode === 2 ? 110 : 190;
+  return `<div class="row" style="top:${y}px"><div class="pos">${esc(pos)}</div><div class="num">#${esc(num)}</div>` +
+    `<div class="name" style="width:${w}px">${esc(name)}</div>` +
+    (right ? `<div class="right m${mode}${mode === 2 ? (faster ? ' green' : ' red') : ''}">${esc(right)}</div>` : '') + '</div>';
+}
+function paint(d) {
+  d = d || {};
+  let h = `<div class="hdr">${esc(d.Header)}</div>`;
+  if (d.PoleNum >= 0) h += row(26, '1.', d.PoleNum, d.PoleName, d.PoleTime, 1, false);
+  else h += '<div class="none">NO TIME YET</div>';
+  if (d.CarNum >= 0) {
+    h += row(60, d.CarPos, d.CarNum, d.CarName, d.Right, d.Mode, d.Faster);
+    if (d.Projected) h += `<div class="proj">${esc(d.Projected)}</div>`;
+  }
+  box.innerHTML = h;
+}
+function fit() { box.style.transform = `scale(${window.innerWidth / 420})`; }
+window.addEventListener('resize', fit); fit();
+
+window.shl.qualBox.onData(paint);
+window.shl.qualBox.ready();
+
+if (editing) {
+  let from = null;
+  box.addEventListener('mousedown', e => { if (e.button === 0) from = { x: e.screenX, y: e.screenY }; });
+  window.addEventListener('mouseup', () => { from = null; });
+  window.addEventListener('mousemove', e => { if (from && (e.buttons & 1)) { window.shl.qualBox.move(e.screenX - from.x, e.screenY - from.y); from = { x: e.screenX, y: e.screenY }; } });
+  window.addEventListener('wheel', e => { window.shl.qualBox.wheel(e.deltaY < 0 ? 1 : -1); });
+  box.addEventListener('dblclick', () => window.shl.qualBox.save());
+  window.addEventListener('keydown', e => { if (e.key === 'Enter') window.shl.qualBox.save(); else if (e.key === 'Escape') window.shl.qualBox.cancel(); });
+  window.focus();
+}
+</script>
+</body>
+</html>

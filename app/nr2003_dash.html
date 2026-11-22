@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="perf-shim.js"></script>
+<meta charset="UTF-8">
+<title>NR2003 Dash</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: transparent;
+    width: 572px;
+    height: 231px;
+    overflow: hidden;
+  }
+
+  .dash {
+    visibility: hidden;
+    position: relative;
+    background: rgba(11,11,11,1.0);
+    border: 1px solid #252525;
+    border-radius: 6px;
+    padding: 9px;
+    width: 572px;
+    height: 231px;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: 1fr 1fr 31px 22px;
+    gap: 5px;
+    transform-origin: top left;
+  }
+
+  .dash::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 5px;
+    background-image:
+      repeating-linear-gradient(45deg,  rgba(255,255,255,0.012) 0, rgba(255,255,255,0.012) 1px, transparent 0, transparent 50%),
+      repeating-linear-gradient(-45deg, rgba(255,255,255,0.012) 0, rgba(255,255,255,0.012) 1px, transparent 0, transparent 50%);
+    background-size: 6px 6px;
+    pointer-events: none;
+  }
+
+  .data-row {
+    display: grid;
+    grid-template-columns: repeat(4, 143px);
+    width: 100%;
+  }
+
+  .cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    overflow: hidden;
+  }
+
+  .cell-label {
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #fff;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .cell-value {
+    font-family: 'Orbitron', monospace;
+    font-size: 28px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -1px;
+    white-space: nowrap;
+  }
+
+  #laptime      { color: #ffd000; font-size: 22px; }
+  #laptimeLabel { color: #ffd000; }
+
+  .cell-value.yellow { color: #ffd000; }
+  .cell-value.red    { color: #ff2200; }
+
+  /* Shift lights */
+  .shift-lights {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 0 20%;
+  }
+
+  .light {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: background 0.04s, box-shadow 0.04s;
+  }
+
+  .light.green-off  { background: #051408; border: 1px solid #0a2010; }
+  .light.orange-off { background: #130900; border: 1px solid #1e1000; }
+  .light.red-off    { background: #130000; border: 1px solid #1e0000; }
+
+  .light.green-on  { background: #00ff55; box-shadow: 0 0 7px #00ff55, 0 0 14px rgba(0,255,85,0.4);  border: 1px solid #00ff55; }
+  .light.orange-on { background: #ff8800; box-shadow: 0 0 7px #ff8800, 0 0 14px rgba(255,136,0,0.4); border: 1px solid #ff8800; }
+  .light.red-on    { background: #ff2200; box-shadow: 0 0 7px #ff2200, 0 0 14px rgba(255,34,0,0.4);  border: 1px solid #ff2200; }
+
+  .rpm-bar {
+    display: flex;
+    align-items: flex-end;
+    gap: 1px;
+    overflow: hidden;
+    width: 100%;
+  }
+  .tick {
+    flex: 1;
+    min-width: 0;
+    max-width: calc((100% - 49px) / 50);
+    background: #1a1200;
+    border-radius: 1px;
+    transition: background 0.04s;
+  }
+  .tick.major { height: 18px !important; }
+  .tick.minor { height: 11px; }
+  .tick.active            { background: #ffd000; }
+  .tick.active.warn-orange { background: #ff6600; box-shadow: 0 0 3px rgba(255,102,0,0.6); }
+  .tick.active.warn        { background: #ff2200; box-shadow: 0 0 3px rgba(255,34,0,0.6); }
+</style>
+</head>
+<body>
+<div class="dash">
+
+  <!-- Row 1: OILP | LAPTIME | RPM | OILT -->
+  <div class="data-row">
+    <div class="cell">
+      <div class="cell-label" id="oilpLabel">OILP</div>
+      <div class="cell-value" id="oilp">--.-</div>
+    </div>
+    <div class="cell">
+      <div class="cell-label" id="laptimeLabel">LAPTIME</div>
+      <div class="cell-value" id="laptime">--:--.---</div>
+    </div>
+    <div class="cell">
+      <div class="cell-label" id="rpmLabel">RPM</div>
+      <div class="cell-value" id="rpm">----</div>
+    </div>
+    <div class="cell">
+      <div class="cell-label" id="oiltLabel">OILT</div>
+      <div class="cell-value" id="oilt">--.-</div>
+    </div>
+  </div>
+
+  <!-- Row 2: POS | MPH | FUELP | WATT -->
+  <div class="data-row">
+    <div class="cell">
+      <div class="cell-label" id="posLabel">POS</div>
+      <div class="cell-value" id="pos">--</div>
+    </div>
+    <div class="cell">
+      <div class="cell-label" id="speedLabel">MPH</div>
+      <div class="cell-value" id="speedVal">--</div>
+    </div>
+    <div class="cell">
+      <div class="cell-label" id="fuelpLabel">FUELP</div>
+      <div class="cell-value" id="fuelp">--.--</div>
+    </div>
+    <div class="cell">
+      <div class="cell-label" id="wattLabel">WATT</div>
+      <div class="cell-value" id="watt">--.-</div>
+    </div>
+  </div>
+
+  <!-- Shift lights -->
+  <div class="shift-lights" id="shiftLights"></div>
+
+  <!-- RPM bar -->
+  <div class="rpm-bar" id="rpmBar"></div>
+
+</div>
+<script>
+// ── URL params ────────────────────────────────────────────────────────────
+const params   = new URLSearchParams(location.search);
+const INSTALL_DIR = params.get('installdir') || '';
+function assetPath(rel) {
+  const psf = window.__PSF;
+  if (psf && psf.assetBase) return psf.assetBase + '/' + rel;
+  if (INSTALL_DIR) return 'file:///' + INSTALL_DIR.replace(/\\/g, '/') + '/' + rel;
+  return rel;
+}
+const WS_HOST  = params.get('host')    || location.hostname || 'localhost';
+const WS_PORT  = params.get('port')    || '8765';
+const WS_URL   = window.__PSF?.wsUrl || `ws://${WS_HOST}:${WS_PORT}`;
+const SCALE    = parseFloat(params.get('scale')   || '1');
+const OPACITY  = parseFloat(params.get('opacity') || '1');
+let VISIBILITY_MODE = params.get('visibilitymode') || 'in_car';
+const ALWAYS_VISIBLE = VISIBILITY_MODE === 'always'; // legacy compat
+
+// ── Visibility mode ───────────────────────────────────────────────────────────
+// Modes: 'in_car' | 'at_track' | 'always'
+// Responds to postMessage { _visibilityMode: '...' } from layout editor
+window.addEventListener('message', e => {
+  if (typeof e.data === 'string') {
+    try {
+      const m = JSON.parse(e.data);
+      if (m._visibilityMode !== undefined) {
+        VISIBILITY_MODE = m._visibilityMode;
+      }
+    } catch(ex) {}
+  }
+});
+
+function checkVisibility(d) {
+  if (!d) return false;
+  switch (VISIBILITY_MODE) {
+    case 'always':   return true;
+    case 'at_track': return !!d.atTrack;
+    case 'in_car':
+    default:         return !!(d.atTrack && d.player?.inCar);
+  }
+}
+
+
+const dash = document.querySelector('.dash');
+
+if (SCALE > 0 && SCALE !== 1) {
+  dash.style.transform = `scale(${SCALE})`;
+  document.body.style.width  = Math.round(572 * SCALE) + 'px';
+  document.body.style.height = Math.round(231 * SCALE) + 'px';
+}
+if (OPACITY > 0 && OPACITY <= 1) {
+  dash.style.background = `rgba(11,11,11,${OPACITY})`;
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────
+const RPM_MAX      = 10000;
+const RPM_TICKS    = 50;
+const LIGHT_COLORS = ['green','green','green','green','green','orange','orange','red','red'];
+
+// ── State ─────────────────────────────────────────────────────────────────
+let currentRpm        = 0;
+let currentSpeed      = 0;
+let currentGear       = 0;
+let pitLimit          = 35;
+let onPitRoad         = false;
+let rpmWarnThreshold  = 9000;
+let prevOfficialLap   = null;
+let currentTrack      = null;
+let currentSession    = null;
+let currentCookie     = null;
+let lapPhaseTimer     = null;
+let lapPhase          = 'normal';
+let pendingDelta      = null;
+let cleanLapEarned    = false;  // true once a full clean lap is completed this session
+let lapWaitingForCaution = false; // current lap started under caution, don't count it
+
+// ── Build RPM bar ticks ───────────────────────────────────────────────────
+const barEl = document.getElementById('rpmBar');
+for (let i = 0; i < RPM_TICKS; i++) {
+  const el = document.createElement('div');
+  el.className = `tick ${(i + 1) % 5 === 0 ? 'major' : 'minor'}`;
+  el.id = `T${i}`;
+  barEl.appendChild(el);
+}
+
+// ── Build shift lights ────────────────────────────────────────────────────
+LIGHT_COLORS.forEach((c, i) => {
+  const el = document.createElement('div');
+  el.className = `light ${c}-off`;
+  el.id = `L${i}`;
+  document.getElementById('shiftLights').appendChild(el);
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function formatLapTime(sec) {
+  if (!sec || sec <= 0) return '--:--.---';
+  const m  = Math.floor(sec / 60);
+  const s  = Math.floor(sec % 60);
+  const ms = Math.round((sec % 1) * 1000);
+  if (m === 0) return `${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}`;
+  return `${m}:${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}`;
+}
+
+function formatDelta(sec) {
+  const abs  = Math.abs(sec).toFixed(3);
+  const sign = sec < 0 ? '-' : '+';
+  return `${sign}${abs}`;
+}
+
+function setLapDisplay(text, color) {
+  const el = document.getElementById('laptime');
+  el.textContent = text;
+  el.style.color = color || '';
+}
+
+function triggerLapFlash(newLap, oldLap) {
+  if (lapPhaseTimer) clearTimeout(lapPhaseTimer);
+  const delta    = newLap - oldLap;
+  const lapColor = delta < 0 ? '#00e676' : '#ff2200';
+  pendingDelta   = delta;
+  lapPhase       = 'color';
+  // Phase 1: show lap time in color for 3s
+  setLapDisplay(formatLapTime(newLap), lapColor);
+  lapPhaseTimer = setTimeout(() => {
+    // Phase 2: show delta for 3s
+    lapPhase = 'delta';
+    setLapDisplay(formatDelta(pendingDelta), lapColor);
+    lapPhaseTimer = setTimeout(() => {
+      // Phase 3: back to normal yellow
+      lapPhase = 'normal';
+      setLapDisplay(formatLapTime(newLap), '');
+      lapPhaseTimer = null;
+    }, 3000);
+  }, 3000);
+}
+
+function renderBar() {
+  const litTicks   = Math.round((currentRpm / RPM_MAX) * RPM_TICKS);
+  const warnTick   = Math.round((rpmWarnThreshold / RPM_MAX) * RPM_TICKS);
+  const orangeTick = warnTick - 2;
+  for (let i = 0; i < RPM_TICKS; i++) {
+    const el   = document.getElementById(`T${i}`);
+    const base = (i + 1) % 5 === 0 ? 'major' : 'minor';
+    if (i >= litTicks)        el.className = `tick ${base}`;
+    else if (i >= warnTick)   el.className = `tick ${base} active warn`;
+    else if (i >= orangeTick) el.className = `tick ${base} active warn-orange`;
+    else                      el.className = `tick ${base} active`;
+  }
+}
+
+function renderLights() {
+  // Use onPitRoad from memory reader — authoritative, works offline and online
+  const pitMode = onPitRoad && pitLimit > 0;
+  const limit   = pitMode ? (pitLimit || 35) : rpmWarnThreshold;
+  const minVal  = pitMode ? 0 : Math.max(rpmWarnThreshold - 3000, 0);
+  const val     = pitMode ? currentSpeed : currentRpm;
+  const range   = (limit - (pitMode ? 1 : 100)) - minVal;
+  const prop   = range > 0 ? Math.max(0, Math.min((val - minVal) / range, 1)) : 0;
+  const litProg = Math.floor(prop * 6);
+  const atNear  = val >= limit - (pitMode ? 1 : 100);
+  const atLimit = val >= limit;
+  const over    = val >= limit + (pitMode ? 1 : 100);
+  LIGHT_COLORS.forEach((c, i) => {
+    const on = i < 6 ? i < litProg : i === 6 ? atNear : i === 7 ? atLimit : over;
+    document.getElementById(`L${i}`).className = `light ${c}-${on ? 'on' : 'off'}`;
+  });
+}
+
+function resetDisplay() {
+  dash.style.visibility = 'hidden';
+  currentRpm = 0; currentSpeed = 0;
+  ['oilp','rpm','oilt','fuelp','watt'].forEach(id => {
+    document.getElementById(id).textContent = '--';
+    document.getElementById(id).className   = 'cell-value';
+  });
+  document.getElementById('pos').textContent     = '--';
+  document.getElementById('speedVal').textContent = '--';
+  document.getElementById('laptime').textContent  = '--:--.---';
+  document.getElementById('laptime').style.color  = '';
+  renderLights(); renderBar();
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────
+let ws = null;
+const connEl = document.getElementById('connecting');
+
+function handleMessage(data) {
+  try {
+      const d = JSON.parse(data);
+      if (d.reset === true) {
+        prevOfficialLap  = null;
+        lapPhase         = 'normal';
+        rpmWarnThreshold = 9000;
+        cleanLapEarned   = false;
+        lapWaitingForCaution = false;
+        if (lapPhaseTimer) { clearTimeout(lapPhaseTimer); lapPhaseTimer = null; }
+        resetDisplay();
+        return;
+      }
+
+      const p = d.player || {};
+
+      // Visibility
+      if (!checkVisibility(d)) {
+        resetDisplay();
+        return;
+      }
+      dash.style.visibility = 'visible';
+
+      // Session change detection
+      const track  = d.track         || '';
+      const session= d.session       || '';
+      const cookie = d.sessionCookie || 0;
+      if (!currentCookie) currentCookie = cookie;
+      if (track !== currentTrack || session !== currentSession || cookie !== currentCookie) {
+        currentTrack     = track;
+        currentSession   = session;
+        currentCookie    = cookie;
+        prevOfficialLap  = null;
+        lapPhase         = 'normal';
+        rpmWarnThreshold = 9000;
+        cleanLapEarned   = false;
+        lapWaitingForCaution = false;
+        if (lapPhaseTimer) { clearTimeout(lapPhaseTimer); lapPhaseTimer = null; }
+        document.getElementById('laptime').textContent = '--:--.---';
+        document.getElementById('laptime').style.color = '';
+      }
+
+      // Core telemetry
+      currentRpm   = p.rpm      || 0;
+      currentSpeed = p.speedMph || 0;
+      currentGear  = p.gear !== undefined ? p.gear : currentGear;
+      onPitRoad    = d.onPitRoad || false;
+      pitLimit     = d.pitSpeedLimit || pitLimit;
+
+      // Dynamic RPM warn threshold
+      if (p.rpmWarning && currentRpm > 0 && currentRpm < rpmWarnThreshold) {
+        rpmWarnThreshold = Math.floor(currentRpm / 100) * 100;
+      }
+
+      // Unit conversions
+      const oilPressPSI  = (p.oilPress  || 0) * 14.504;
+      const oilTempF     = ((p.oilTemp  || 0) * 9/5) + 32;
+      const waterTempF   = ((p.waterTemp|| 0) * 9/5) + 32;
+      const fuelPressPSI = (p.fuelPress || 0) * 14.504;
+
+      // Helper to apply warning color to gauge + label
+      function applyWarn(valId, labelId, text, isWarning) {
+        const el = document.getElementById(valId);
+        el.textContent = text;
+        el.className   = isWarning ? 'cell-value red' : 'cell-value';
+        document.getElementById(labelId).style.color = isWarning ? '#ff2200' : '';
+      }
+
+      applyWarn('oilp',  'oilpLabel',  oilPressPSI.toFixed(1),   p.oilPressWarning  || false);
+      applyWarn('oilt',  'oiltLabel',  oilTempF.toFixed(1),       false);  // oil temp: no warning light
+      applyWarn('fuelp', 'fuelpLabel', fuelPressPSI.toFixed(2),   p.fuelPressWarning || false);
+      applyWarn('watt',  'wattLabel',  waterTempF.toFixed(1),     p.waterTempWarning || false);
+
+      const rpmEl = document.getElementById('rpm');
+      rpmEl.textContent = String(Math.round(currentRpm)).padStart(4, '0');
+      rpmEl.className   = p.rpmWarning ? 'cell-value red' : 'cell-value';
+      document.getElementById('rpmLabel').style.color = p.rpmWarning ? '#ff2200' : '';
+
+      // Position from standings
+      const standings   = d.standings || [];
+      const playerIdx   = d.playerCarIdx !== undefined ? d.playerCarIdx : -1;
+      const playerEntry = standings.find(s => s.carIdx === playerIdx);
+      const posNum      = playerEntry ? (standings.indexOf(playerEntry) + 1) : null;
+      document.getElementById('pos').textContent = posNum ? String(posNum) : '--';
+
+      // Speed — pit road coloring (same logic as nr2003_input.html)
+      const speedMph = Math.round(currentSpeed);
+      const underCaution = (d.sessionFlag || '').toLowerCase() === 'yellow';
+
+      // Yellow flag — reset clean lap state so stale lap time doesn't persist
+      if (underCaution && cleanLapEarned) {
+        cleanLapEarned   = false;
+        prevOfficialLap  = null;
+        lapWaitingForCaution = true;
+        if (lapPhaseTimer) { clearTimeout(lapPhaseTimer); lapPhaseTimer = null; }
+        lapPhase = 'normal';
+        document.getElementById('laptime').textContent = '--:--.---';
+        document.getElementById('laptime').style.color = '';
+      }
+      // Clear caution waiting flag when green returns
+      if (!underCaution && lapWaitingForCaution) {
+        lapWaitingForCaution = false;
+      }
+      const effectivelyOnPit = onPitRoad && pitLimit > 0;
+      const overLimit  = effectivelyOnPit && speedMph >= pitLimit + 1;
+      const atLimit    = effectivelyOnPit && !overLimit;
+      const speedEl    = document.getElementById('speedVal');
+      speedEl.textContent = speedMph;
+      speedEl.className   = overLimit ? 'cell-value red' : atLimit ? 'cell-value yellow' : 'cell-value';
+      document.getElementById('speedLabel').style.color = overLimit ? '#ff2200' : atLimit ? '#ffd000' : '';
+
+      // Lap time with flash sequence
+      // Only show after a clean lap is earned (not under caution, not stale from prev session)
+      const lapData = d.lapData || [];
+      const pld     = lapData.find(l => l.carIdx === playerIdx);
+      const curLap  = pld && pld.lastLap > 0 ? pld.lastLap : null;
+
+      if (curLap && !underCaution && !lapWaitingForCaution) {
+        if (prevOfficialLap !== null && curLap !== prevOfficialLap) {
+          // New lap time arrived — mark clean lap earned and flash
+          cleanLapEarned = true;
+          triggerLapFlash(curLap, prevOfficialLap);
+        } else if (lapPhase === 'normal' && cleanLapEarned) {
+          // Show steady lap time only after clean lap earned
+          setLapDisplay(formatLapTime(curLap), '');
+        }
+        if (curLap !== prevOfficialLap) prevOfficialLap = curLap;
+      }
+
+      renderBar();
+      renderLights();
+    } catch(err) {}
+}  // end handleMessage
+
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onmessage = e => handleMessage(e.data);
+  ws.onclose = () => { setTimeout(() => { if (!ws || ws.readyState !== WebSocket.OPEN) connEl?.classList.remove('hidden'); }, 3000); setTimeout(connect, 2000); };
+  ws.onerror = () => ws.close();
+}
+
+// Accept postMessage for layout editor preview — registered once at top level
+window.addEventListener('message', e => {
+  if (typeof e.data === 'string') {
+    if (connEl) { connEl.classList.add('hidden'); connEl.style.display = 'none'; }
+    handleMessage(e.data);
+  }
+});
+
+connect();
+</script>
+</body>
+</html>

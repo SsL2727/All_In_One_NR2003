@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<title>Lap File Editor</title>
+<style>
+/* AI Enhanced v0_2_1b's "Lap File Editor" (LapEditorWndClass, FUN_00452b10): the same layout, colours and controls */
+html,body{margin:0;height:100%;overflow:hidden;background:#505050;font:12px Tahoma,"Segoe UI",sans-serif;user-select:none}
+#plot{position:absolute;left:0;top:0;display:block}
+#panel{position:absolute;left:0;top:0;bottom:0;width:150px;background:#006400;color:#dcdcdc}
+#panel>*{position:absolute;left:5px;box-sizing:border-box}
+.btn{width:140px;background:#00b400;color:#000;border:2px solid;border-color:#7fe07f #004800 #004800 #7fe07f;font:12px Tahoma,sans-serif;padding:0;cursor:default;outline:none}
+.btn:active{background:#008c00;border-color:#004800 #7fe07f #7fe07f #004800}
+.btn.q{width:24px}
+.lab{width:140px;height:18px;line-height:18px}
+#radius{width:60px;height:20px;background:#3a3a3e;color:#dcdcdc;border:1px solid #1a1a1a;font:12px Tahoma,sans-serif;padding:0 3px}
+.cb{height:20px;line-height:20px;display:flex;align-items:center;gap:4px}
+.cb input{margin:0 2px 0 0}
+#scroll{position:absolute;right:0;top:0;bottom:0;width:17px;overflow-y:scroll;overflow-x:hidden}
+#spacer{width:1px}
+#wait{position:absolute;left:150px;right:17px;top:60px;color:#dcdcdc;text-align:center;padding-top:40px;font:14px Tahoma,sans-serif}
+#help{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center}
+#help .win{width:min(560px,90vw);max-height:85vh;display:flex;flex-direction:column;background:#2d2d30;color:#dcdcdc;border:1px solid #111;box-shadow:0 6px 24px #000a}
+#help .ttl{background:#006400;color:#fff;padding:7px 10px;font:bold 13px Tahoma,sans-serif}
+#help .txt{padding:12px 14px;white-space:pre-wrap;overflow:auto;line-height:1.4}
+#help .ok{align-self:flex-end;margin:0 12px 12px;width:90px;height:26px;position:static}
+</style></head><body>
+<canvas id="plot"></canvas>
+<div id="wait">Waiting for NR2003 to load the track's lap lines…</div>
+<div id="scroll"><div id="spacer"></div></div>
+<div id="panel">
+  <button class="btn" id="save" style="top:10px;height:28px">Save &amp; Close</button>
+  <button class="btn" id="close" style="top:45px;height:28px">Close</button>
+  <div class="lab" style="top:85px">Smooth radius:</div>
+  <input id="radius" style="top:108px" value="10">
+  <div class="lab" style="top:138px">Show/Hide:</div>
+  <label class="cb" style="top:158px;width:140px"><input type="checkbox" id="v2" checked>maxrace</label>
+  <label class="cb" style="top:180px;width:140px"><input type="checkbox" id="v1" checked>race</label>
+  <label class="cb" style="top:202px;width:140px"><input type="checkbox" id="v0" checked>minrace</label>
+  <label class="cb" style="top:224px;width:140px"><input type="checkbox" id="vturns" checked>turns</label>
+  <label class="cb" style="top:246px;width:100px"><input type="checkbox" id="vspeed">speed</label>
+  <button class="btn q" id="hspeed" style="top:246px;left:110px;height:20px">?</button>
+  <label class="cb" style="top:268px;width:100px"><input type="checkbox" id="vrubber">rubber</label>
+  <button class="btn q" id="hrubber" style="top:268px;left:110px;height:20px">?</button>
+  <button class="btn" id="help-btn" style="top:296px;height:22px">Editor Help</button>
+</div>
+<div id="help"><div class="win"><div class="ttl" id="help-title"></div><div class="txt" id="help-text"></div><button class="btn ok" id="help-ok">OK</button></div></div>
+<script>
+const $ = (id) => document.getElementById(id), A = window.shl.aie;
+const ROW = 20, TOP = 60, X0 = 170, PANEL = 150, PICK = 8;
+const NAMES = ['minrace', 'race', 'maxrace'], BOX = ['minrace', 'race.lp', 'maxrace'];
+const BOX_FILL = ['#00b400', '#00ff00', '#00b400'], BOX_PEN = ['#d80000', '#000000', '#002458'];
+const TRI_FILL = ['#006400', '#00ff00', '#006400'], TRI_PEN = ['#d80000', '#000000', '#002458'];
+const HEAT = [[0x28, 0x5a, 0xff], [0x00, 0xdc, 0xff], [0xff, 0xe6, 0x00], [0xff, 0x8c, 0x00], [0xff, 0x1e, 0x1e]];
+const HELP = {
+  editor: ['Lap File Editor — Help', 'This editor allows you to modify the minrace/race/maxrace lines point by point.\n\nFor example, if you click and drag the green race.lp box over to the right, that will move the default racing groove on the entire track over to the far right, so the ai drive the outside lane on left-turning ovals.\n\nYou can also click and drag individual points on the lines to modify only select portions of the track.\nScroll up to find the area of the track you want to edit, and try modifying it!\nThe view in the editor displays the track unraveled into a straight line, so follow the arrows to see where the turns are to help you find the section of track you are looking for.\n\nAlso, you can edit the speed by showing the speed data, and holding shift and dragging points!\n\nThe "rubber" checkbox shows the Rubber Buildup grid (Environment tab) as a transparent heat map over the track: blue where no rubber has been laid, through cyan, yellow and orange, to red where it is maxed out. It updates as cars drive.'],
+  speed: ['Speed Labels and Editing Help', 'The "speed" checkbox shows each point\'s maximum speed in MPH that the ai cars can drive.\n\nEditing the speed can often fix weird checkups.\n\nTo edit the speed, hold Shift, and click and drag on a triangle point to the left or right.\nEdit the smooth radius to change how far the smoothing applies.\nThe speeds shown already include your current opponent strength and the ai_line_modifier typed on the INI Files tab. Lap data is stored internally at 100% strength and modifier 1.0, so your edits and saved presets work the same at any setting. Other factors, like grip levels, can affect the speed as well.\n\nTo fix checkups, find the place where ai cars are checking up, and you\'ll probably find a dip in speed.\nTry increasing this speed to a high enough speed to eliminate the checkup!\n\nNote: edits made to speed aren\'t loaded by NR2003, because when it loads lap files, it calculates the speed at load time. However, edits you make to speed will apply to the game during this session, and if you save the lap file data into a preset, when you load that preset in AI Enhanced, your speed data will be preserved and applied to the game!'],
+  rubber: ['Rubber Overlay Help', 'Displays the live rubber buildup on the track. Rubber buildup must be enabled in Environment tab.\n\nBlue: no rubber buildup, Red: max rubber buildup.\n\nDepending on your rubber buildup settings, it might take some time before a noticeable amount of rubber builds up!'],
+};
+
+// ── state: AI Enhanced's base lines (canonical) and the three shown lines; sliders 0 (maxrace) .. 1 (minrace) ──
+let S = null, base = null, D = null, sliders = [1, 0.5, 0], turns = null, grid = null;
+let latMin = 0, latMax = 1, drag = null, sliderDrag = -1, lastX = 0, rubberTimer = null;
+const vis = () => [$('v0').checked, $('v1').checked, $('v2').checked];
+
+function load() {
+  return A.editorState().then((s) => {
+    if (!s || !s.ready) { $('wait').style.display = ''; $('wait').textContent = (s && s.error) || 'Waiting for NR2003 to load the track\'s lap lines…'; setTimeout(load, 1500); return; }
+    $('wait').style.display = 'none';
+    S = s;
+    base = NAMES.map(n => ({ lat: Float32Array.from(s.base[n].lat), f0: Float32Array.from(s.base[n].f0), f2: Float32Array.from(s.base[n].f2) }));
+    sliders = [s.sliders.minrace, s.sliders.race, s.sliders.maxrace];
+    D = NAMES.map((n, k) => ({ lat: Float32Array.from(s.lat[n]), f0: new Float32Array(s.n) }));
+    for (let k = 0; k < 3; k++) for (let p = 0; p < s.n; p++) D[k].f0[p] = blendAt(k, p, 0);
+    turns = findTurns();
+    latRange(); layout(true); paint();
+  }).catch((e) => { $('wait').style.display = ''; $('wait').textContent = 'Editor error: ' + (e.message || e); });
+}
+
+// FUN_00451e50: line k = a straight blend of two base lines by its slider (0 = maxrace, 0.5 = race, 1 = minrace). field 3 = lateral, 0 = speed
+function blendAt(k, p, field) {
+  const v = sliders[k] * 100, get = (L) => (field === 3 ? base[L].lat[p] : base[L].f0[p]);
+  if (v >= 50) { const t = ((v - 50) * 2) / 100; return (get(0) - get(1)) * t + get(1); }       // race .. minrace
+  const t = (v * 2) / 100; return (get(1) - get(2)) * t + get(2);                                // maxrace .. race
+}
+function blendLine(k) { for (let p = 0; p < S.n; p++) { D[k].lat[p] = blendAt(k, p, 3); D[k].f0[p] = blendAt(k, p, 0); } }
+
+// FUN_00455900: the lateral range shown, over the three shown lines
+function latRange() {
+  let lo = Infinity, hi = -Infinity;
+  for (const L of D) for (const v of L.lat) { if (v > hi) hi = v; if (v < lo) lo = v; }
+  if (hi < lo) { lo = 0; hi = 1; }
+  if (Math.abs(hi - lo) < 1e-6) hi = lo + 1;
+  latMin = lo; latMax = hi;
+}
+
+// FUN_004520a0: turn direction per point from the race line's curvature (field 2): above mean + 0.001 x deviation of |curvature|
+function findTurns() {
+  const c = base[1].f2, n = c.length, out = new Int8Array(n);
+  if (!n) return out;
+  let mean = 0; for (let p = 0; p < n; p++) mean += Math.abs(c[p]); mean /= n;
+  let v = 0; for (let p = 0; p < n; p++) { const d = Math.abs(c[p]) - mean; v += d * d; }
+  const thr = Math.sqrt(v / n) * 0.001 + mean;
+  for (let p = 0; p < n; p++) if (thr < Math.abs(c[p])) out[p] = c[p] <= 0 ? 1 : -1;
+  return out;
+}
+
+// ── geometry (window client coordinates, as AI Enhanced's GDI) ──
+const cw = () => Math.max(0, window.innerWidth - 17), ch = () => window.innerHeight;
+const width = () => Math.max(0, cw() - 190);
+const scroll = () => $('scroll').scrollTop;
+const total = () => ROW * (S ? S.n : 0);
+const rowY = (p) => total() + TOP - p * ROW - ((ROW / 2) | 0) - scroll();
+const fx = (lat) => (latMax - latMin > 0 ? (1 - (lat - latMin) / (latMax - latMin)) * width() : width() * 0.5);
+const X = (lat) => (fx(lat) | 0) + X0;
+
+function layout(toBottom) {
+  const c = $('plot'), d = window.devicePixelRatio || 1;
+  c.width = Math.round(cw() * d); c.height = Math.round(ch() * d); c.style.width = cw() + 'px'; c.style.height = ch() + 'px';
+  $('spacer').style.height = (total() + TOP) + 'px';
+  if (toBottom) $('scroll').scrollTop = $('scroll').scrollHeight;          // AI Enhanced opens at the lap start (the bottom)
+}
+
+function heat(level) {
+  const v = Math.max(0, Math.min(1, level)), i = Math.min(4, Math.floor(v * 4)), j = Math.min(4, i + 1), f = v * 4 - i;
+  return HEAT[i].map((a, k) => Math.round((HEAT[j][k] - a) * f + a));
+}
+
+function paint() {
+  const c = $('plot'), g = c.getContext('2d'), d = window.devicePixelRatio || 1, W = width(), R = cw(), H = ch();
+  g.setTransform(d, 0, 0, d, 0, 0);
+  g.fillStyle = '#505050'; g.fillRect(0, 0, R, H);
+  g.fillStyle = '#006400'; g.fillRect(0, 0, PANEL, H);
+  line(g, PANEL + 0.5, 0, PANEL + 0.5, H, '#000');
+  g.fillStyle = '#414146'; g.fillRect(PANEL, 0, R - PANEL, TOP);
+  line(g, PANEL, TOP - 0.5, R, TOP - 0.5, '#000');
+  for (const t of [0, 0.5, 1]) { const x = ((W * t) | 0) + X0 + 0.5; line(g, x, 50, x, TOP - 1, '#000'); }
+  const show = vis();
+  for (let k = 0; k < 3; k++) {                     // the three line boxes: drag them to move a whole line
+    if (!show[k]) continue;
+    const l = ((W * sliders[k]) | 0) + 140, r = ((W * sliders[k]) | 0) + 200;
+    g.fillStyle = BOX_FILL[k]; g.fillRect(l, 20, r - l, 20);
+    g.lineWidth = 2; g.strokeStyle = BOX_PEN[k]; g.strokeRect(l + 1, 21, r - l - 2, 18); g.lineWidth = 1;
+    g.fillStyle = '#fff'; g.font = 'bold 12px Tahoma,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(BOX[k], (l + r) / 2, 30);
+  }
+  if (!S) return;
+  g.save(); g.beginPath(); g.rect(PANEL, TOP, R - PANEL, H - TOP); g.clip();
+  const n = S.n, lo = Math.max(0, Math.floor((total() - (H - TOP) - scroll()) / ROW) - 1), hi = Math.min(n - 1, Math.floor((total() - scroll()) / ROW) + 1);
+  // the track surface between minrace and maxrace
+  g.fillStyle = '#787878';
+  for (let p = lo; p <= hi; p++) { const a = X(base[0].lat[p]), b = X(base[2].lat[p]), y = rowY(p); g.fillRect(Math.min(a, b), y - ROW / 2, Math.abs(b - a), ROW); }
+  // rubber heat map (Environment tab's Rubber Buildup grid), 150/255 over the track
+  if ($('vrubber').checked && grid) {
+    g.globalAlpha = 150 / 255;
+    for (let p = lo; p <= hi && p < grid.w; p++) {
+      const y = rowY(p);
+      for (let yy = 0; yy < grid.h; yy++) {
+        const l0 = grid.off + yy, l1 = l0 + 1;
+        if (l1 < latMin || l0 > latMax) continue;
+        const c3 = heat(grid.data[p * grid.h + yy]), xa = X(l0), xb = X(l1);
+        g.fillStyle = `rgb(${c3[0]},${c3[1]},${c3[2]})`; g.fillRect(Math.min(xa, xb), y - ROW / 2, Math.max(1, Math.abs(xb - xa)), ROW);
+      }
+    }
+    g.globalAlpha = 1;
+  }
+  // turn arrows: the first point of a turn and every 5th after, red one way, blue the other
+  if ($('vturns').checked) {
+    let count = 0, cur = 0;
+    for (let p = lo; p <= hi; p++) {
+      const t = turns[p];
+      if (t === 0) { count = 0; cur = 0; continue; }
+      let drawIt = false;
+      if (t === cur) drawIt = count % 5 === 0; else { count = 0; cur = t; drawIt = true; }
+      if (drawIt) turnArrow(g, ((X(base[0].lat[p]) + X(base[2].lat[p])) / 2) | 0, rowY(p) + 22, t, t < 0 ? '#1e64ff' : '#c83c3c');
+      count++;
+    }
+  }
+  // lap start (bottom) and lap finish (top)
+  const xc = ((R + PANEL) / 2) | 0, y0 = rowY(0), y1 = rowY(n - 1);
+  if (y0 > -440 && y0 < H + 500) { checker(g, y0, R); bigArrow(g, xc, y0 - 148, '#50ff50'); label(g, 'Lap Start', xc, y0 - 34, '#50ff50'); }
+  if (y1 > -440 && y1 < H + 500) { checker(g, y1, R); label(g, 'Lap Finish', xc, y1 + 34, '#ffffff'); bigArrow(g, xc, y1 + 60, '#ffffff'); }
+  // speed labels: MPH at today's opponent strength / ai_line_modifier, coloured from slowest (blue) to fastest (red)
+  const speed = $('vspeed').checked;
+  let sMin = Infinity, sMax = -Infinity;
+  if (speed) for (const L of D) for (const v of L.f0) { if (v < sMin) sMin = v; if (v > sMax) sMax = v; }
+  g.font = 'bold 12px Tahoma,sans-serif'; g.textAlign = 'left'; g.textBaseline = 'top';
+  for (let k = 0; k < 3; k++) {
+    if (!show[k]) continue;
+    for (let p = lo; p <= hi; p++) {
+      const x = X(D[k].lat[p]), y = rowY(p);
+      g.beginPath(); g.moveTo(x, y - 5); g.lineTo(x - 5, y + 5); g.lineTo(x + 5, y + 5); g.closePath();
+      g.fillStyle = TRI_FILL[k]; g.fill(); g.strokeStyle = TRI_PEN[k]; g.stroke();
+      if (speed) {
+        const v = D[k].f0[p], txt = (v * S.mph).toFixed(0);
+        let col = TRI_FILL[k];
+        if (sMin < sMax) { const h = heat((v - sMin) / (sMax - sMin)); col = `rgb(${h[0]},${h[1]},${h[2]})`; }
+        g.fillStyle = '#000'; g.fillText(txt, x + 10, y - 7);
+        g.fillStyle = col; g.fillText(txt, x + 10, y - 8);
+      }
+    }
+  }
+  g.restore();
+}
+function line(g, x1, y1, x2, y2, c) { g.strokeStyle = c; g.lineWidth = 1; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); }
+// FUN_00451ad0: a checkered band of 8 px squares, two rows, across the track view
+function checker(g, y, R) {
+  const top = y - 8;
+  for (let row = 0; row < 2; row++) for (let x = PANEL; x < R; x += 8) { g.fillStyle = ((row + Math.floor(x / 8)) & 1) ? '#ffffff' : '#000000'; g.fillRect(x, top + row * 8, Math.min(8, R - x), 8); }
+}
+// FUN_00451bb0: a big arrow pointing up the track (the direction of travel)
+function bigArrow(g, x, y, c) {
+  g.fillStyle = c; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 36, y + 44); g.lineTo(x + 36, y + 44); g.closePath(); g.fill();
+  g.fillRect(x - 12, y + 44, 24, 44);
+}
+// FUN_004519e0: 36 px bold Arial, centred
+function label(g, s, x, y, c) { g.font = 'bold 36px Arial'; g.fillStyle = c; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(s, x, y); }
+// FUN_00451ca0: an L-shaped turn arrow, shaft 10 x 44 up from (x, y), bar 40 to the side, head 22 long and 36 high
+function turnArrow(g, x, y, dir, c) {
+  g.fillStyle = c;
+  g.fillRect(x - 5, y - 44, 10, 44);
+  const a = x + 5 * dir, b = x + 45 * dir; g.fillRect(Math.min(a, b), y - 44 - 5, Math.abs(b - a), 10);
+  g.beginPath(); g.moveTo(x + 67 * dir, y - 44); g.lineTo(x + 45 * dir, y - 44 - 18); g.lineTo(x + 45 * dir, y - 44 + 18); g.closePath(); g.fill();
+}
+
+// ── mouse: drag a line box (whole line), drag a point (lateral, smoothed over the radius), Shift-drag a point (speed) ──
+const radius = () => { const r = parseInt($('radius').value, 10); return Number.isFinite(r) && r > 0 ? r : 0; };
+$('plot').addEventListener('mousedown', (e) => {
+  if (!S || e.button !== 0) return;
+  const x = e.offsetX, y = e.offsetY;
+  if (y > TOP - 1 || x < PANEL) {
+    const row = Math.trunc((total() - y - scroll() + TOP) / ROW);
+    if (row < 0 || row >= S.n) return;
+    for (let k = 0; k < 3; k++) {
+      if (row >= D[k].lat.length) continue;
+      if (Math.abs(x - (X0 + fx(D[k].lat[row]))) < PICK) { drag = { k, p: row }; lastX = x; e.preventDefault(); return; }
+    }
+    return;
+  }
+  const W = width();
+  for (let k = 0; k < 3; k++) if (x >= ((W * sliders[k]) | 0) + 140 && x <= ((W * sliders[k]) | 0) + 200 && y >= 20 && y <= 40) { sliderDrag = k; e.preventDefault(); return; }
+});
+window.addEventListener('mousemove', (e) => {
+  if (!S || !(e.buttons & 1)) return;
+  const r = $('plot').getBoundingClientRect(), x = e.clientX - r.left;
+  if (sliderDrag >= 0) {
+    const W = width(); if (W < 1) return;
+    sliders[sliderDrag] = Math.max(0, Math.min(1, (x - X0) / W));
+    blendLine(sliderDrag); paint(); return;
+  }
+  if (!drag) return;
+  const dx = x - lastX; lastX = x;
+  if (e.shiftKey) speedDrag(dx); else latDrag(x);
+  paint();
+});
+window.addEventListener('mouseup', () => { sliderDrag = -1; drag = null; });
+
+// Shift-drag: 0.25 MPH a pixel, spread over the radius (1 at the point, falling off), onto the base lines that bracket the line's lateral;
+// every shown line's speed is then its slider blend of the base lines again
+function speedDrag(dx) {
+  const { k, p: sel } = drag, r = radius(), n = Math.min(base[0].lat.length, base[1].lat.length, base[2].lat.length);
+  const delta = (0.25 / S.mph) * dx;
+  for (let d = -r; d <= r; d++) {
+    const p = sel + d;
+    if (p < 0 || p >= D[k].lat.length || p >= n) continue;
+    const w = ((r - Math.abs(d) + 1) / (r + 1)) * delta, b = bracket(D[k].lat[p], [base[0].lat[p], base[1].lat[p], base[2].lat[p]]);
+    base[b.a].f0[p] += b.wa * w; base[b.b].f0[p] += b.wb * w;
+    for (let j = 0; j < 3; j++) if (p < D[j].f0.length) D[j].f0[p] = blendAt(j, p, 0);
+  }
+}
+// FUN_004452b0: the two base lines (sorted by lateral) that bracket t, with t's weights
+function bracket(t, L) {
+  const s = [0, 1, 2];
+  for (let i = 1; i < 3; i++) { const v = s[i]; let j = i - 1; while (j >= 0 && L[s[j]] > L[v]) { s[j + 1] = s[j]; j--; } s[j + 1] = v; }
+  let lo = s[1], hi = s[2];
+  if (L[s[1]] >= t) { lo = s[0]; hi = s[1]; }
+  const w = L[hi] - L[lo];
+  if (!(w > 1e-5)) return { a: s[1], b: s[1], wa: 1, wb: 0 };
+  const wb = (t - L[lo]) / w;
+  return { a: lo, b: hi, wa: 1 - wb, wb };
+}
+// a lateral drag: the point goes under the mouse, the points around it follow (falling off over the radius), then a 3-point smoothing over
+// the radius (the dragged point kept), and the two ends and the dragged point's neighbours are each averaged with the next point
+function latDrag(x) {
+  const { k, p: sel } = drag, L = D[k].lat, m = L.length, r = radius(), W = width();
+  const want = latMax - latMin > 0 ? latMax - ((x - X0) / W) * (latMax - latMin) : latMin;
+  const delta = want - L[sel];
+  for (let d = -r; d <= r; d++) { const p = sel + d; if (p >= 0 && p < m) L[p] += ((r - Math.abs(d) + 1) / (r + 1)) * delta; }
+  if (r >= 1) {
+    const lo = Math.max(0, sel - r), hi = Math.min(m - 1, sel + r), tmp = new Float32Array(hi - lo + 1);
+    for (let p = lo; p <= hi; p++) {
+      if (p === sel) { tmp[p - lo] = L[p]; continue; }
+      let c = 0, s = 0;
+      for (let j = p - 1; j <= p + 1; j++) if (j >= lo && j <= hi && j !== sel) { c++; s += L[j]; }
+      tmp[p - lo] = c >= 1 ? s / c : L[p];
+    }
+    for (let p = lo; p <= hi; p++) if (p !== sel) L[p] = tmp[p - lo];
+    if (sel + r < m - 1) L[sel + r] = (L[sel + r + 1] + L[sel + r]) * 0.5;
+    if (sel !== r && sel - r >= 0) L[sel - r] = (L[sel - r - 1] + L[sel - r]) * 0.5;
+    if (sel - 1 >= lo && sel - 1 >= 0) L[sel - 1] = (L[sel] + L[sel - 1]) * 0.5;
+    if (sel + 1 <= hi && sel + 1 < m) L[sel + 1] = (L[sel] + L[sel + 1]) * 0.5;
+  }
+  latRange();
+}
+
+// ── buttons and boxes ──
+$('save').onclick = async () => {
+  if (!S) { window.close(); return; }
+  const edit = { base: {}, lat: {}, sliders: { minrace: sliders[0], race: sliders[1], maxrace: sliders[2] } };
+  NAMES.forEach((n, k) => { edit.base[n] = { f0: Array.from(base[k].f0) }; edit.lat[n] = Array.from(D[k].lat); });
+  try { await A.editorApply(edit); window.close(); } catch (e) { help('Lap File Editor', 'The edits could not be applied: ' + (e.message || e)); }
+};
+$('close').onclick = () => window.close();
+for (const id of ['v0', 'v1', 'v2', 'vturns', 'vspeed']) $(id).onchange = paint;
+$('vrubber').onchange = () => {
+  clearInterval(rubberTimer); rubberTimer = null;
+  if ($('vrubber').checked) { const pull = () => A.editorRubber().then((r) => { grid = r; paint(); }).catch(() => {}); pull(); rubberTimer = setInterval(pull, 1000); }
+  paint();
+};
+function help(title, text) { $('help-title').textContent = title; $('help-text').textContent = text; $('help').style.display = 'flex'; }
+$('help-ok').onclick = () => { $('help').style.display = 'none'; };
+$('help-btn').onclick = () => help(...HELP.editor);
+$('hspeed').onclick = () => help(...HELP.speed);
+$('hrubber').onclick = () => help(...HELP.rubber);
+$('scroll').addEventListener('scroll', () => paint());
+$('plot').addEventListener('wheel', (e) => { $('scroll').scrollTop += e.deltaY; }, { passive: true });
+window.addEventListener('resize', () => { layout(false); paint(); });
+layout(false); paint(); load();
+</script></body></html>

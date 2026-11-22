@@ -1,0 +1,22 @@
+/* Shared palette and type for All In One NR2003's live race graphics, drawn from the original ticker and standings overlays. */
+@font-face {
+  font-family: 'D-DIN Condensed Bold';
+  src: url('../../images/ticker/DIN%20Condensed%20Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+:root {
+  --psf-tv-bg-rgb: 18, 18, 20;
+  --psf-tv-header-rgb: 12, 12, 14;
+  --psf-tv-row-odd-rgb: 22, 22, 26;
+  --psf-tv-row-even-rgb: 28, 28, 34;
+  --psf-tv-accent: #e8c84a;
+  --psf-tv-green: #2ecc40;
+  --psf-tv-yellow: #ffdc00;
+  --psf-tv-red: #ff4136;
+  --psf-tv-white: #ffffff;
+  --psf-tv-muted: #a0a0a8;
+  --psf-tv-line: rgba(255, 255, 255, .12);
+  --psf-tv-font: 'D-DIN Condensed Bold', 'Bahnschrift SemiCondensed', 'Arial Narrow', Bahnschrift, sans-serif;
+}

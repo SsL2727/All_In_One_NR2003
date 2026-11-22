@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="perf-shim.js"></script>
+<meta charset="UTF-8">
+<title>NR2003 FloRacing Ticker</title>
+<style>
+/* Chase highlight — drivers in the chase get a yellow name background */
+.chase { background: #f5d100 !important; color: #111 !important; text-shadow: none !important;
+         box-shadow: -3px 0 0 #f5d100, 3px 0 0 #f5d100; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: transparent;
+  width: 1842px;
+  height: 129px;
+  overflow: hidden;
+}
+
+#scale-root {
+  position: relative;
+  width: 1842px;
+  height: 129px;
+  transform-origin: top left;
+  visibility: hidden;
+}
+
+#overlay-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+#overlay-img { width: 100%; height: 100%; }
+
+#data-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  visibility: hidden;
+}
+
+/* Series logo */
+#series-logo-zone {
+  position: absolute;
+  left: 1px; top: 0;
+  width: 209px; height: 84px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+#series-logo {
+  max-width: 195px;
+  max-height: 76px;
+  object-fit: contain;
+}
+
+/* Lap info */
+#lap-zone {
+  position: absolute;
+  left: 5px; top: 86px;
+  width: 128px; height: 43px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding-right: 4px;
+}
+#lap-text {
+  font-family: 'AgencyFB', 'Agency FB', Impact, sans-serif;
+  font-weight: bold;
+  font-size: 25px;
+  color: #ffffff;
+  white-space: nowrap;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+/* Flag */
+#flag-zone {
+  position: absolute;
+  left: 141px; top: 84px;
+  width: 68px; height: 43px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#flag-img {
+  width: 68px; height: 43px;
+  object-fit: fill;
+}
+
+/* Sponsor */
+#sponsor-zone {
+  position: absolute;
+  left: 1631px; top: 0;
+  width: 211px; height: 84px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+#sponsor-img-a {
+  position: absolute;
+  max-width: 195px; max-height: 76px;
+  object-fit: contain;
+  transition: opacity 0.8s ease-in-out;
+}
+#sponsor-img-b {
+  position: absolute;
+  max-width: 195px; max-height: 76px;
+  object-fit: contain;
+  opacity: 0;
+  transition: opacity 0.8s ease-in-out;
+}
+
+/* Race name */
+#race-name-zone {
+  position: absolute;
+  left: 1631px; top: 86px;
+  width: 211px; height: 43px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0 8px;
+}
+#race-name-text {
+  font-family: 'BebasNeue', Impact, sans-serif;
+  font-size: 24px;
+  color: #ffffff;
+  white-space: nowrap;
+  text-align: center;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  max-width: 195px;
+}
+
+/* Standings cells */
+.cell {
+  position: absolute;
+  height: 39px;
+  display: flex;
+  align-items: center;
+}
+/* ── Row 3 slide container ─────────────────────────────────────────────── */
+#row3-wrap {
+  position: absolute;
+  left: 221px;
+  top: 86px;
+  width: 1412px; /* 5 × 272px + 4 × 13px gap */
+  height: 42px;
+  overflow: hidden;
+}
+.row3-page {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 42px;
+  display: flex;
+  align-items: stretch;
+  gap: 13px; /* matches cell spacing */
+}
+.row3-page .cell {
+  position: relative;
+  left: auto; top: auto;
+  flex: 0 0 272px;
+  height: 42px;
+}
+.row3-page.page-current {
+  top: 0;
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.6, 1);
+}
+.row3-page.page-next {
+  top: -42px;
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+.cell-pos {
+  font-family: 'AgencyFB', 'Agency FB', Impact, sans-serif;
+  font-weight: bold;
+  font-size: 22px;
+  color: #ffffff;
+  width: 37px;
+  text-align: center;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.cell-num {
+  font-family: 'Orbitron', Impact, sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  color: #ffffff;
+  width: 55px;
+  flex-shrink: 0;
+  text-align: center;
+  line-height: 1;
+  white-space: nowrap;
+}
+.row3 .cell-num { color: #232324; }
+
+.cell-name {
+  font-family: 'AgencyFB', 'Agency FB', Impact, sans-serif;
+  font-weight: bold;
+  font-size: 26px;
+  color: #ffffff;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1;
+  text-align: left;
+}
+.row3 .cell-name { color: #232324; }
+
+.is-player .cell-pos,
+.is-player .cell-name { color: #f5d100; }
+.row3.is-player .cell-pos,
+.row3.is-player .cell-name { color: #c8a800; }
+</style>
+</head>
+<body>
+<div id="scale-root">
+
+  <div id="overlay-layer">
+    <img id="overlay-img" src="" alt="">
+  </div>
+
+  <div id="data-layer">
+
+    <div id="series-logo-zone">
+      <img id="series-logo" src="" alt="" onerror="this.style.display='none'">
+    </div>
+
+    <div id="lap-zone">
+      <span id="lap-text">LAP -- OF --</span>
+    </div>
+
+    <div id="flag-zone">
+      <img id="flag-img" src="" alt="">
+    </div>
+
+    <div id="sponsor-zone">
+      <img id="sponsor-img-a" src="" alt="">
+      <img id="sponsor-img-b" src="" alt="">
+    </div>
+
+    <div id="race-name-zone">
+      <span id="race-name-text"></span>
+    </div>
+
+    <!-- Row 1: positions 1-5 -->
+    <div class="cell" id="cell-r1c1" style="left:221px;top:3px;width:272px;"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+    <div class="cell" id="cell-r1c2" style="left:506px;top:3px;width:272px;"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+    <div class="cell" id="cell-r1c3" style="left:789px;top:3px;width:272px;"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+    <div class="cell" id="cell-r1c4" style="left:1074px;top:3px;width:272px;"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+    <div class="cell" id="cell-r1c5" style="left:1358px;top:3px;width:272px;"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+
+    <!-- Row 2: positions 6-10 -->
+    <div class="cell" id="cell-r2c1" style="left:221px;top:44px;width:272px;"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+    <div class="cell" id="cell-r2c2" style="left:506px;top:44px;width:272px;"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+    <div class="cell" id="cell-r2c3" style="left:789px;top:44px;width:272px;"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+    <div class="cell" id="cell-r2c4" style="left:1074px;top:44px;width:272px;"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+    <div class="cell" id="cell-r2c5" style="left:1358px;top:44px;width:272px;"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+
+    <!-- Row 3: rotating positions 11+ (light bg, dark text) -->
+    <div id="row3-wrap">
+      <div class="row3-page page-current" id="row3-current">
+        <div class="cell row3" id="cell-r3c1"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+        <div class="cell row3" id="cell-r3c2"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+        <div class="cell row3" id="cell-r3c3"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+        <div class="cell row3" id="cell-r3c4"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+        <div class="cell row3" id="cell-r3c5"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+      </div>
+      <div class="row3-page page-next" id="row3-next">
+        <div class="cell row3" id="cell-r3n1"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+        <div class="cell row3" id="cell-r3n2"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+        <div class="cell row3" id="cell-r3n3"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+        <div class="cell row3" id="cell-r3n4"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+        <div class="cell row3" id="cell-r3n5"><span class="cell-pos"></span><span class="cell-num"></span><span class="cell-name"></span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── Chase highlight ─────────────────────────────────────────────────────────
+// The main process tells every overlay which car numbers are in the chase
+// (empty list = feature off). Name elements carry data-chase-num; the class
+// is toggled here so it updates instantly, without waiting for a re-render.
+let _CHASE = new Set();
+const chaseKey = n => String(n == null ? '' : n).trim().replace(/"/g, '');
+const chaseCls = n => (_CHASE.size && _CHASE.has(chaseKey(n))) ? ' chase' : '';
+function chaseMark(el, n) {
+  if (!el) return;
+  const k = chaseKey(n);
+  el.dataset.chaseNum = k;
+  el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(k));
+}
+function _chasePass() {
+  document.querySelectorAll('[data-chase-num]').forEach(el =>
+    el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(el.dataset.chaseNum)));
+}
+function _setChase(list) {
+  _CHASE = new Set((Array.isArray(list) ? list : []).map(chaseKey));
+  _chasePass();
+}
+if (window.shl && window.shl.onChaseSet) {
+  window.shl.onChaseSet(_setChase);
+  if (window.shl.getChaseSet) window.shl.getChaseSet().then(_setChase).catch(() => {});
+}
+window.addEventListener('message', e => {      // layout-editor preview
+  if (typeof e.data !== 'string' || e.data.indexOf('"_chase"') < 0) return;
+  try { const m = JSON.parse(e.data); if (Array.isArray(m._chase)) _setChase(m._chase); } catch (x) {}
+});
+// ── PSF bootstrap ─────────────────────────────────────────────────────────
+const psf           = window.__PSF || {};
+const params        = new URLSearchParams(location.search);
+const INSTALL_DIR   = psf.installDir || params.get('installdir') || '';
+const SERIES_ID     = psf.series     || params.get('series')     || '';
+const SCALE         = parseFloat(psf.scale   || params.get('scale')   || '1');
+const OPACITY       = parseFloat(psf.opacity || params.get('opacity') || '1');
+const WS_URL        = psf.wsUrl || `ws://${location.hostname || 'localhost'}:8765`;
+
+function displayName(entry) {
+  return (entry.name || '?').toUpperCase();
+}
+let VISIBILITY_MODE = psf.visibilitymode || params.get('visibilitymode') || 'at_track';
+let CUSTOM_NAME     = psf.customname ? decodeURIComponent(psf.customname) : (params.get('customname') ? decodeURIComponent(params.get('customname')) : '');
+const ROTATION_MS   = (parseInt(psf.sponsorrotationtime || params.get('sponsorrotationtime') || '10')) * 1000;
+
+const STRIP_ZEROS = psf.stripzeros === 'true' || params.get('stripzeros') === 'true';
+let _stripZeros   = STRIP_ZEROS;
+
+function stripNum(num) {
+  if (!_stripZeros || !num) return num;
+  const s = String(num).trim();
+  // Two leading zeros — strip both
+  if (/^00/.test(s)) return s.replace(/^00/, '');
+  // One leading zero — strip only if remaining is >= 10
+  if (/^0/.test(s)) {
+    const rest = s.replace(/^0/, '');
+    if (parseInt(rest) >= 10) return rest;
+  }
+  return s;
+}
+
+function assetPath(rel) {
+  if (psf.assetBase) return psf.assetBase + '/' + rel;
+  if (INSTALL_DIR) {
+    const enc = INSTALL_DIR.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+    return 'file:///' + enc + '/' + rel;
+  }
+  return rel;
+}
+
+const FLO_BASE = assetPath('images/flo');
+
+// ── Font injection ────────────────────────────────────────────────────────
+(function injectFonts() {
+  const fonts = [
+    { family: 'AgencyFB',  file: 'AgencyFB-Bold.ttf',   fmt: 'truetype' },
+    { family: 'BebasNeue', file: 'BebasNeue-Regular.ttf', fmt: 'truetype' },
+    { family: 'Orbitron',  file: 'Orbitron-Bold.ttf',    fmt: 'truetype' },
+  ];
+  const css = fonts.map(f =>
+    `@font-face { font-family: '${f.family}'; src: url('${assetPath('fonts/' + f.file)}') format('${f.fmt}'); font-weight: bold; font-style: normal; font-display: swap; }`
+  ).join('\n');
+  const el = document.createElement('style');
+  el.textContent = css;
+  document.head.appendChild(el);
+})();
+
+// ── Scale ─────────────────────────────────────────────────────────────────
+const root = document.getElementById('scale-root');
+root.style.transform = `scale(${SCALE})`;
+document.body.style.width  = Math.round(1842 * SCALE) + 'px';
+document.body.style.height = Math.round(129  * SCALE) + 'px';
+
+// ── Assets ────────────────────────────────────────────────────────────────
+document.getElementById('overlay-img').src = FLO_BASE + '/overlay.png';
+
+// ── Visibility ────────────────────────────────────────────────────────────
+let _preview = false;
+
+function checkVisibility(d) {
+  if (_preview) return true;
+  switch (VISIBILITY_MODE) {
+    case 'always':   return true;
+    case 'in_car':   return !!(d.atTrack && d.player?.inCar);
+    case 'at_track':
+    default:         return !!d.atTrack;
+  }
+}
+
+function setVisible(v) {
+  root.style.visibility = v ? 'visible' : 'hidden';
+  document.getElementById('overlay-layer').style.opacity = v ? OPACITY : '0';
+  document.getElementById('data-layer').style.visibility = v ? 'visible' : 'hidden';
+}
+
+// ── Series logo ───────────────────────────────────────────────────────────
+(function() {
+  const img = document.getElementById('series-logo');
+  img.onerror = () => { img.style.display = 'none'; };
+  img.onload  = () => { img.style.display = ''; };
+  img.src = SERIES_ID
+    ? assetPath(`series/${SERIES_ID}/serieslogo.png`)
+    : assetPath('images/nr2003_logo.svg');
+})();
+
+// ── Flag ──────────────────────────────────────────────────────────────────
+let _lastFlag = '';
+function updateFlag(d) {
+  const flag    = (d.sessionFlag  || '').toLowerCase();
+  const state   = (d.sessionState || '').toLowerCase();
+  const laps    = d.lapsComplete  || 0;
+  const lt      = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  const togo    = lt > 0 ? lt - laps : 1;
+
+  let name;
+  if (state === 'checkered' || state === 'cool down') name = 'checkered';
+  else if (togo <= 1 && laps > 0) name = 'white';
+  else if (flag === 'yellow') name = 'yellow';
+  else name = 'green';
+
+  if (name === _lastFlag) return;
+  _lastFlag = name;
+  document.getElementById('flag-img').src = `${FLO_BASE}/flags/${name}.png`;
+}
+
+// ── Lap display ───────────────────────────────────────────────────────────
+let _lastLapText = '';
+function updateLap(d) {
+  const session = (d.session || '').toLowerCase();
+  const lc      = d.lapsComplete || 0;
+  const lt      = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  const state   = (d.sessionState || '').toLowerCase();
+
+  let text = '';
+  if (session === 'race') {
+    if (state === 'checkered' || state === 'cool down') text = 'RESULTS';
+    else if (lt > 0) text = `LAP ${lc + 1} OF ${lt}`;
+    else text = `LAP ${lc + 1}`;
+  } else if (session === 'qualifying') {
+    text = 'QUALIFYING';
+  } else if (session === 'practice' || session === 'testing') {
+    const t = d.timeRemaining || 0;
+    if (t > 0) {
+      const m = Math.floor(t / 60);
+      const s = Math.floor(t % 60).toString().padStart(2, '0');
+      text = `${m}:${s}`;
+    } else {
+      text = 'PRACTICE';
+    }
+  }
+
+  if (text === _lastLapText) return;
+  _lastLapText = text;
+
+  const el        = document.getElementById('lap-text');
+  const container = document.getElementById('lap-zone');
+  el.textContent  = text;
+  let size = 25;
+  el.style.fontSize = size + 'px';
+  while (el.scrollWidth > container.offsetWidth && size > 12) {
+    size -= 0.5;
+    el.style.fontSize = size + 'px';
+  }
+}
+
+// ── Race name ─────────────────────────────────────────────────────────────
+let _lastRaceName = '';
+function updateRaceName(d) {
+  const name = CUSTOM_NAME || d.trackNameShort || d.track || '';
+  if (name === _lastRaceName) return;
+  _lastRaceName = name;
+  const el        = document.getElementById('race-name-text');
+  const container = document.getElementById('race-name-zone');
+  el.textContent  = name.toUpperCase();
+  let size = 24;
+  el.style.fontSize = size + 'px';
+  while (el.scrollWidth > container.clientWidth - 16 && size > 9) {
+    size -= 0.5;
+    el.style.fontSize = size + 'px';
+  }
+}
+
+// ── Cell rendering ────────────────────────────────────────────────────────
+const ROW1_IDS = ['cell-r1c1','cell-r1c2','cell-r1c3','cell-r1c4','cell-r1c5'];
+const ROW2_IDS = ['cell-r2c1','cell-r2c2','cell-r2c3','cell-r2c4','cell-r2c5'];
+const ROW3_CURRENT_IDS = ['cell-r3c1','cell-r3c2','cell-r3c3','cell-r3c4','cell-r3c5'];
+const ROW3_NEXT_IDS    = ['cell-r3n1','cell-r3n2','cell-r3n3','cell-r3n4','cell-r3n5'];
+
+function fillCell(cellId, entry, pos, playerCarIdx) {
+  const el = document.getElementById(cellId);
+  if (!el) return;
+  const isPlayer = entry && entry.carIdx === playerCarIdx;
+  el.className = el.className.replace(' is-player', '') + (isPlayer ? ' is-player' : '');
+  el.querySelector('.cell-pos').textContent = entry ? pos : '';
+  el.querySelector('.cell-num').textContent = entry ? stripNum(entry.number || '') : '';
+  const nameEl = el.querySelector('.cell-name');
+  const name   = entry ? displayName(entry) : '';
+  nameEl.textContent = name;
+  chaseMark(nameEl, entry ? entry.number : '');
+  nameEl.style.fontSize = '';
+  if (name) {
+    const maxW = 180;
+    let size = 26;
+    nameEl.style.fontSize = size + 'px';
+    while (nameEl.scrollWidth > maxW && size > 13) {
+      size -= 0.5;
+      nameEl.style.fontSize = size + 'px';
+    }
+  }
+}
+
+function fillRow3Page(ids, groupStart, rest) {
+  ids.forEach((id, i) => {
+    const entry = rest[groupStart + i] || null;
+    fillCell(id, entry, entry ? (11 + groupStart + i) : '', _playerCarIdx);
+  });
+}
+
+// ── Standings ─────────────────────────────────────────────────────────────
+let _standings     = [];
+let _bottomOffset  = 0;
+let _playerCarIdx  = -1;
+let _lastOrder     = '';
+let _row3Animating = false;
+
+function renderRow3(animate) {
+  const rest = _standings.slice(10);
+  if (!rest.length) {
+    ROW3_CURRENT_IDS.forEach(id => fillCell(id, null, '', _playerCarIdx));
+    return;
+  }
+  const maxGroup   = Math.max(1, Math.ceil(rest.length / 5));
+  const groupStart = (_bottomOffset % maxGroup) * 5;
+
+  if (!animate) {
+    // Just update data in current page without any animation or position reset
+    fillRow3Page(ROW3_CURRENT_IDS, groupStart, rest);
+    return;
+  }
+
+  if (_row3Animating) return;
+  _row3Animating = true;
+
+  const curr = document.getElementById('row3-current');
+  const next = document.getElementById('row3-next');
+
+  // Fill next page with incoming group (starts above, out of view)
+  fillRow3Page(ROW3_NEXT_IDS, groupStart, rest);
+
+  // Frame 1: snap to start positions without transition
+  curr.style.transition = 'none';
+  next.style.transition = 'none';
+  curr.style.transform  = 'translateY(0)';
+  next.style.transform  = 'translateY(-42px)';
+
+  // Frame 2: force reflow, then frame 3: apply transitions
+  requestAnimationFrame(() => {
+    void curr.offsetHeight; // force reflow
+    requestAnimationFrame(() => {
+      curr.style.transition = 'transform 0.4s cubic-bezier(0.4, 0, 0.6, 1)';
+      next.style.transition = 'transform 0.4s cubic-bezier(0.4, 0, 0.6, 1)';
+      curr.style.transform  = 'translateY(42px)';   // slide current down off screen
+      next.style.transform  = 'translateY(0)';      // slide next down into view
+
+      setTimeout(() => {
+        // Promote next content into current, reset both to start positions
+        ROW3_CURRENT_IDS.forEach((id, i) => {
+          const src = document.getElementById(ROW3_NEXT_IDS[i]);
+          const dst = document.getElementById(id);
+          dst.innerHTML = src.innerHTML;
+          dst.className = src.className;
+        });
+        curr.style.transition = 'none';
+        next.style.transition = 'none';
+        curr.style.transform  = 'translateY(0)';
+        next.style.transform  = 'translateY(-42px)';
+        _row3Animating = false;
+      }, 440);
+    });
+  });
+}
+
+function renderStandings() {
+  ROW1_IDS.forEach((id, i) => fillCell(id, _standings[i]     || null, i + 1, _playerCarIdx));
+  ROW2_IDS.forEach((id, i) => fillCell(id, _standings[i + 5] || null, i + 6, _playerCarIdx));
+  // Update row3 data in-place on current page — never reset rotation on position change
+  renderRow3(false);
+}
+
+setInterval(() => {
+  const rest = _standings.slice(10);
+  if (rest.length <= 5) return;
+  _bottomOffset = (_bottomOffset + 1) % Math.ceil(rest.length / 5);
+  renderRow3(true); // animate on timed rotation
+}, ROTATION_MS);
+
+// ── Sponsor rotation ──────────────────────────────────────────────────────
+let _sponsorFiles = [];
+let _sponsorIndex = 0;
+let _activeImg    = 'a';
+
+async function loadSponsors() {
+  const probes = [];
+  for (let i = 1; i <= 20; i++) {
+    probes.push(new Promise(res => {
+      const img = new Image();
+      const src = `${FLO_BASE}/sponsors/sponsor${String(i).padStart(2,'0')}.png`;
+      img.onload  = () => res(src);
+      img.onerror = () => res(null);
+      img.src = src;
+    }));
+  }
+  _sponsorFiles = (await Promise.all(probes)).filter(Boolean);
+  if (_sponsorFiles.length > 0) {
+    document.getElementById('sponsor-img-a').src = _sponsorFiles[0];
+    if (_sponsorFiles.length > 1) startSponsorRotation();
+  }
+}
+
+function startSponsorRotation() {
+  let curr = document.getElementById('sponsor-img-a');
+  let next = document.getElementById('sponsor-img-b');
+  setInterval(() => {
+    if (_sponsorFiles.length < 2) return;
+    _sponsorIndex = (_sponsorIndex + 1) % _sponsorFiles.length;
+    next.src = _sponsorFiles[_sponsorIndex];
+    next.onload = () => {
+      next.style.opacity  = '1';
+      curr.style.opacity  = '0';
+      setTimeout(() => { [curr, next] = [next, curr]; next.style.transition = 'none'; }, 900);
+    };
+  }, ROTATION_MS);
+}
+
+// ── Main render ───────────────────────────────────────────────────────────
+function render(d) {
+  if (!checkVisibility(d)) { setVisible(false); return; }
+
+  _playerCarIdx = d.playerCarIdx ?? -1;
+
+  // Always use official standings
+  const standings = d.standings || [];
+
+  // Hide until we have data
+  if (!standings.length) { setVisible(false); return; }
+  setVisible(true);
+
+  const order = standings.map(s => s.carIdx).join(',');
+  if (order !== _lastOrder) {
+    _lastOrder  = order;
+    _standings  = standings;
+    renderStandings();
+  }
+
+  updateFlag(d);
+  updateLap(d);
+  updateRaceName(d);
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────
+let _ws = null;
+function connect() {
+  _ws = new WebSocket(WS_URL);
+  _ws.onmessage = e => {
+    if (_preview) return;
+    try {
+      const d = JSON.parse(e.data);
+      if (d.reset) { setVisible(false); _lastOrder = ''; _standings = []; return; }
+      render(d);
+    } catch(_) {}
+  };
+  _ws.onclose = () => { if (!_preview) setTimeout(connect, 2000); };
+  _ws.onerror = () => _ws.close();
+}
+
+// ── Layout editor preview ─────────────────────────────────────────────────
+window.addEventListener('message', e => {
+  if (typeof e.data !== 'string') return;
+  try {
+    const m = JSON.parse(e.data);
+    if (m.reset) return;
+    if (!_preview) { _preview = true; if (_ws) { _ws.onclose = null; _ws.close(); } }
+    if (m._visibilityMode !== undefined) VISIBILITY_MODE = m._visibilityMode;
+    if (m._customName     !== undefined) {
+      CUSTOM_NAME = m._customName;
+      _lastRaceName = '';
+      updateRaceName({ trackNameShort: '', track: '' });
+    }
+    if (m._stripZeros !== undefined) {
+      _stripZeros = m._stripZeros;
+      if (_standings.length) renderStandings();
+    }
+    if (m.atTrack !== undefined || m.standings !== undefined) render(m);
+    else setVisible(true);
+  } catch(_) {}
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+loadSponsors();
+connect();
+</script>
+</body>
+</html>

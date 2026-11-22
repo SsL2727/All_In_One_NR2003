@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="perf-shim.js"></script>
+<meta charset="UTF-8">
+<title>NR2003 Track Map</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-a: 0.0;
+  --bg:   rgba(18, 20, 24, var(--bg-a));
+}
+
+html, body {
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+}
+
+#scale-root {
+  transform-origin: top left;
+  display: inline-block;
+  position: relative;
+}
+
+#widget {
+  background: transparent;
+  border: none;
+  overflow: hidden;
+  position: relative;
+}
+
+#track-name-label {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.55);
+  color: #ffffff;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: 3px;
+  white-space: nowrap;
+  max-width: 90%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  transition: top 0.3s ease;
+}
+
+#mapsvg {
+  display: block;
+}
+
+/* Reset banner */
+#reset-banner {
+  position: absolute;
+  top: 8px;
+  left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: none;
+}
+#reset-banner.hidden { display: none; }
+.reset-label {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #f0c040;
+  text-transform: uppercase;
+}
+
+/* Recording indicator */
+#rec-overlay {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+  background: rgba(0,0,0,0.6);
+  border-radius: 8px;
+  padding: 14px 20px;
+}
+
+#rec-overlay.hidden { display: none; }
+
+.rec-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: #e84444;
+  animation: blink 1.2s ease-in-out infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+
+.rec-label {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #ffffff;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+/* Connecting overlay */
+#connecting {
+  position: absolute;
+  inset: 0;
+  background: rgba(13,15,18,0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 6px;
+  z-index: 20;
+}
+#connecting.hidden { display: none; }
+
+.conn-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #e84444;
+  box-shadow: 0 0 6px #e84444;
+  animation: blink 1.2s ease-in-out infinite;
+}
+.conn-label {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #5a6070;
+}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div id="scale-root">
+<div id="widget">
+
+  <div id="connecting">
+    <div class="conn-dot"></div>
+    <div class="conn-label">Waiting for bridge</div>
+  </div>
+
+  <div id="track-name-label"></div>
+  <svg id="mapsvg" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
+    <!-- Track outline (border + surface) -->
+    <polyline id="track-border"  points="" fill="none" stroke="#000000" stroke-width="20" stroke-linejoin="round" stroke-linecap="round"/>
+    <polyline id="track-surface" points="" fill="none" stroke="#e0e4ec" stroke-width="12" stroke-linejoin="round" stroke-linecap="round"/>
+    <!-- S/F line — checkered -->
+    <g id="sf-line"></g>
+    <!-- Car dots (field) -->
+    <g id="field-dots"></g>
+    <!-- Player dot (drawn last = always on top) -->
+    <g id="player-dot"></g>
+  </svg>
+
+  <div id="reset-banner" class="hidden">
+    <span class="reset-label" id="reset-label">Resetting track map...</span>
+  </div>
+
+  <div id="rec-overlay" class="hidden">
+    <div class="rec-dot"></div>
+    <span class="rec-label" id="rec-label">Recording track...</span>
+  </div>
+
+</div><!-- /widget -->
+</div><!-- /scale-root -->
+
+<script>
+// ── URL params ────────────────────────────────────────────────────────────
+const params  = new URLSearchParams(location.search);
+const INSTALL_DIR = params.get('installdir') || '';
+function assetPath(rel) {
+  const psf = window.__PSF;
+  if (psf && psf.assetBase) return psf.assetBase + '/' + rel;
+  if (INSTALL_DIR) return 'file:///' + INSTALL_DIR.replace(/\\/g, '/') + '/' + rel;
+  return rel;
+}
+const WS_HOST = params.get('host')    || 'localhost';
+const WS_PORT = params.get('port')    || '8765';
+const WS_URL  = window.__PSF?.wsUrl || `ws://${WS_HOST}:${WS_PORT}`;
+
+// ── In-car visibility ─────────────────────────────────────────────────────
+let VISIBILITY_MODE = params.get('visibilitymode') || 'in_car';
+const SHOW_TRACK_NAME = params.get('showtrackname') !== '0';
+let _showTrackNameLive = SHOW_TRACK_NAME;
+const ALWAYS_VISIBLE = VISIBILITY_MODE === 'always'; // legacy compat
+
+// ── Visibility mode ───────────────────────────────────────────────────────────
+// Modes: 'in_car' | 'at_track' | 'always'
+// Responds to postMessage { _visibilityMode: '...' } or { _showTrackName: bool } from layout editor
+window.addEventListener('message', e => {
+  if (typeof e.data === 'string') {
+    try {
+      const m = JSON.parse(e.data);
+      if (m._visibilityMode !== undefined) {
+        VISIBILITY_MODE = m._visibilityMode;
+      }
+      if (m._showTrackName !== undefined) {
+        _showTrackNameLive = m._showTrackName;
+        const labelEl = document.getElementById('track-name-label');
+        if (labelEl) labelEl.style.display = _showTrackNameLive ? '' : 'none';
+      }
+    } catch(ex) {}
+  }
+});
+
+function checkVisibility(d) {
+  if (!d) return false;
+  switch (VISIBILITY_MODE) {
+    case 'always':   return true;
+    case 'at_track': return !!d.atTrack;
+    case 'in_car':
+    default:         return !!(d.atTrack && d.player?.inCar);
+  }
+}
+
+
+let _visHideTimer = null;
+function updateVisibility(d) {
+  const inCar = checkVisibility(d);
+  if (inCar) {
+    if (_visHideTimer) { clearTimeout(_visHideTimer); _visHideTimer = null; }
+    document.getElementById('scale-root').style.opacity = '1';
+  } else {
+    if (!_visHideTimer) {
+      _visHideTimer = setTimeout(() => {
+        document.getElementById('scale-root').style.opacity = '0';
+        _visHideTimer = null;
+      }, 1000);
+    }
+  }
+}
+
+// ── Session reset handler ─────────────────────────────────────────────────
+function handleReset() {
+  // Clear all cached data so stale state doesn't persist
+  latestData = null;
+  if (typeof _rowCache !== 'undefined') _rowCache.clear();
+  if (typeof dotCache  !== 'undefined') Object.keys(dotCache).forEach(k => delete dotCache[k]);
+  if (typeof smoothPos !== 'undefined') Object.keys(smoothPos).forEach(k => delete smoothPos[k]);
+  if (typeof _sortedIdx !== 'undefined') { _sortedIdx = null; normalized = null; normBounds = null; }
+  if (typeof playerTrkPctSmooth !== 'undefined') playerTrkPctSmooth = -1;
+  // Clear SVG dots
+  ['field-dots','player-dot','leader-dot'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '';
+  });
+  // Clear track lines
+  ['track-border','track-surface'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.setAttribute('points',''); el.setAttribute('d',''); }
+  });
+}
+
+const SCALE      = Math.max(0.1, Math.min(4.0, parseFloat(params.get('scale')   || '1.0')));
+const OPACITY    = Math.max(0.0, Math.min(1.0, parseFloat(params.get('opacity') || '1.0')));
+const SERIES     = params.get('series') || 'default';
+const IS_DEFAULT = !SERIES || SERIES === 'default';
+
+function numImgSrc(numStr) {
+  const n = (numStr || '').trim();
+  if (!n || n === '??' || IS_DEFAULT) return '';
+  return assetPath(`series/${SERIES}/numbers/${n}.png`);
+}
+const SIZE       = Math.max(200, Math.min(1200, parseInt(params.get('size') || '500')));
+const RESET_MAP  = params.has('reset_map');
+
+// Size the widget
+const widget = document.getElementById('widget');
+const mapsvg = document.getElementById('mapsvg');
+widget.style.width  = SIZE + 'px';
+widget.style.height = SIZE + 'px';
+mapsvg.setAttribute('width',   SIZE);
+mapsvg.setAttribute('height',  SIZE);
+mapsvg.setAttribute('viewBox', `0 0 ${SIZE} ${SIZE}`);
+
+// Scale root
+const root = document.getElementById('scale-root');
+root.style.transform = `scale(${SCALE})`;
+root.style.width  = SIZE + 'px';
+root.style.height = SIZE + 'px';
+document.body.style.width  = Math.round(SIZE * SCALE) + 'px';
+document.body.style.height = Math.round(SIZE * SCALE) + 'px';
+
+// Opacity on background only
+document.documentElement.style.setProperty('--bg-a', OPACITY);
+
+// ── Constants ─────────────────────────────────────────────────────────────
+const W   = SIZE;
+const H   = SIZE;
+const PAD = Math.round(SIZE * 0.08);
+
+// Dot sizes — scale with widget size
+const DOT_R_FIELD  = Math.max(8,  Math.round(SIZE * 0.022));  // other cars
+const DOT_R_PLAYER = Math.max(11, Math.round(SIZE * 0.030));  // player
+const FONT_FIELD   = Math.max(7,  Math.round(DOT_R_FIELD  * 0.85));
+const FONT_PLAYER  = Math.max(8,  Math.round(DOT_R_PLAYER * 0.80));
+
+// ── State ─────────────────────────────────────────────────────────────────
+let normalized   = null;   // [[svgX, svgY, trkPct], ...]
+let normBounds   = null;   // { minX, maxY, scale, offX, offY }
+let lastTrack    = '';
+let latestData   = null;
+
+// One-way ratchet for player trkPct — prevents tiny backwards flicker
+// from quantization noise in NR2003's trkPct value
+let playerTrkPctSmooth = -1;
+const RATCHET_THRESHOLD = 0.002;  // ignore backwards moves smaller than this
+
+// Smooth positions per dot id
+const smoothPos  = {};
+const dotCache   = {};     // id -> SVG <g> element
+
+// ── Track source loader ───────────────────────────────────────────────────
+function _loadTrackSource(track, jsonPoints) {
+  buildNormalized(jsonPoints);
+}
+
+
+
+function _log(msg) {
+  // Silent in production — uncomment for debugging
+  // console.log('[trackmap]', msg);
+}
+
+// ── Normalization ─────────────────────────────────────────────────────────
+function buildNormalized(points) {
+  if (!points || !points.length) return;
+
+  let minX = points[0][0], maxX = points[0][0];
+  let minZ = points[0][1], maxZ = points[0][1];
+
+  for (let i = 1; i < points.length; i++) {
+    if (points[i][0] < minX) minX = points[i][0];
+    if (points[i][0] > maxX) maxX = points[i][0];
+    if (points[i][1] < minZ) minZ = points[i][1];
+    if (points[i][1] > maxZ) maxZ = points[i][1];
+  }
+
+  const rangeX = maxX - minX || 1;
+  const rangeZ = maxZ - minZ || 1;
+  // Preserve aspect ratio — use same scale for both axes, center on canvas
+  const scale  = Math.min((W - PAD*2) / rangeX, (H - PAD*2) / rangeZ);
+  const offX   = PAD + ((W - PAD*2) - rangeX * scale) / 2;
+  const offY   = PAD + ((H - PAD*2) - rangeZ * scale) / 2;
+
+  normBounds = { minX, maxZ, scale, offX, offY };
+
+  // Map [worldX, worldY, trkPct] → [svgX, svgY, trkPct]
+  // SVG Y increases downward so we flip Y
+  normalized = points.map(p => [
+    offX + (p[0] - minX) * scale,
+    offY + (maxZ - p[1]) * scale,
+    p[2]
+  ]);
+
+  // Draw track polyline
+  const closedPts = [...normalized, normalized[0]];
+  const ptStr = closedPts.map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+  document.getElementById('track-border').setAttribute('points',  ptStr);
+  document.getElementById('track-surface').setAttribute('points', ptStr);
+
+  // Build sorted lookup for fast interpolation
+  _buildLookup();
+
+  // Draw S/F line — black/white checkered perpendicular to track at trkPct ≈ 0
+  // True center is midpoint between last recorded point (pre-wrap) and first (post-wrap)
+  const sfFirst  = normalized.length ? normalized[0]                      : null;
+  const sfLast   = normalized.length ? normalized[normalized.length - 1]  : null;
+  const sfCenter = sfFirst && sfLast
+    ? [(sfFirst[0] + sfLast[0]) / 2, (sfFirst[1] + sfLast[1]) / 2]
+    : posAtTrkPct(0.0);
+  const near = posAtTrkPct(0.01);
+  if (sfCenter && near) {
+    const dx  = near[0] - sfCenter[0];
+    const dy  = near[1] - sfCenter[1];
+    const len = Math.sqrt(dx*dx + dy*dy) || 1;
+    const px  = -dy / len;
+    const py  =  dx / len;
+    const tx  =  dx / len;
+    const ty  =  dy / len;
+
+    const COLS = 7;
+    const ROWS = 4;
+    const SQ   = 4;
+
+    const totalLen = COLS * SQ;
+    const totalHgt = ROWS * SQ;
+
+    // Centered on the true S/F midpoint
+    const startX = sfCenter[0] + px * (totalLen / 2) + tx * (totalHgt / 2);
+    const startY = sfCenter[1] + py * (totalLen / 2) + ty * (totalHgt / 2);
+
+    const sfEl = document.getElementById('sf-line');
+    sfEl.innerHTML = '';
+    const angle = Math.atan2(py, px) * (180 / Math.PI);
+
+    for (let col = 0; col < COLS; col++) {
+      for (let row = 0; row < ROWS; row++) {
+        const isBlack = (col + row) % 2 === 0;
+        const cx2 = startX - col * px * SQ + row * tx * SQ;
+        const cy2 = startY - col * py * SQ + row * ty * SQ;
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x',         cx2.toFixed(2));
+        rect.setAttribute('y',         cy2.toFixed(2));
+        rect.setAttribute('width',     SQ);
+        rect.setAttribute('height',    SQ);
+        rect.setAttribute('fill',      isBlack ? '#111' : '#f0f0f0');
+        rect.setAttribute('transform', `rotate(${angle.toFixed(2)},${cx2.toFixed(2)},${cy2.toFixed(2)})`);
+        sfEl.appendChild(rect);
+      }
+    }
+  }
+}
+
+function worldToSVG(wx, wy) {
+  if (!normBounds) return null;
+  const { minX, maxZ, scale, offX, offY } = normBounds;
+  return [
+    offX + (wx - minX) * scale,
+    offY + (maxZ - wy)  * scale
+  ];
+}
+
+// Precomputed sorted index for fast binary search in posAtTrkPct
+// Built once after buildNormalized() and reused every frame
+let _sortedIdx = null;
+
+function _buildLookup() {
+  if (!normalized) return;
+  // Create index sorted by trkPct for binary search
+  _sortedIdx = normalized.map((p, i) => i).sort((a, b) => normalized[a][2] - normalized[b][2]);
+}
+
+function posAtTrkPct(trkPct) {
+  if (!normalized || !normalized.length) return null;
+
+  // Binary search for the largest trkPct <= our target
+  // This always picks the same lower-bound point for a given trkPct,
+  // eliminating the oscillation from equidistant point selection
+  const n = normalized.length;
+
+  // Handle wrap: if trkPct < first point's trkPct, use last segment
+  let lo, hi;
+  if (_sortedIdx) {
+    let left = 0, right = _sortedIdx.length - 1;
+    while (left < right) {
+      const mid = (left + right + 1) >> 1;
+      if (normalized[_sortedIdx[mid]][2] <= trkPct) left = mid;
+      else right = mid - 1;
+    }
+    const loIdx = _sortedIdx[left];
+    const hiIdx = _sortedIdx[(left + 1) % _sortedIdx.length];
+    lo = normalized[loIdx];
+    hi = normalized[hiIdx];
+  } else {
+    // Fallback linear search
+    let bestDist = Infinity, bestIdx = 0;
+    for (let i = 0; i < n; i++) {
+      let d = normalized[i][2] - trkPct;
+      if (d > 0.5) d -= 1;
+      if (d < -0.5) d += 1;
+      const ad = Math.abs(d);
+      if (ad < bestDist && d <= 0) { bestDist = ad; bestIdx = i; }
+    }
+    lo = normalized[bestIdx];
+    hi = normalized[(bestIdx + 1) % n];
+  }
+
+  let span = hi[2] - lo[2];
+  if (span < 0) span += 1;
+  if (span < 0.0001) return [lo[0], lo[1]];
+  let t = trkPct - lo[2];
+  if (t < 0) t += 1;
+  t = Math.min(t / span, 1);
+  return [lo[0] + (hi[0] - lo[0]) * t, lo[1] + (hi[1] - lo[1]) * t];
+}
+
+// ── Dot management ────────────────────────────────────────────────────────
+// type: 'field' | 'player' | 'leader'
+// ── Dot color from number image brightness ─────────────────────────────────
+// Samples the dominant color of a number PNG, gets its HSB brightness,
+// and returns the inverse as a grayscale for the dot background.
+const _dotColorCache = {};  // numStr -> hex color string
+
+// ── Corner color sampling ─────────────────────────────────────────────────
+// Samples 4 corners of number PNG.
+// Hierarchy (for future): driver colors JSON -> corner sample -> neutral gray
+function sampleCornerColor(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const w = c.width, h = c.height, i = 3;
+        const px = [
+          ctx.getImageData(i,     i,     1, 1).data,
+          ctx.getImageData(w-i-1, i,     1, 1).data,
+          ctx.getImageData(i,     h-i-1, 1, 1).data,
+          ctx.getImageData(w-i-1, h-i-1, 1, 1).data,
+        ];
+        // If majority transparent — no background color
+        const transparentCount = px.filter(p => p[3] < 32).length;
+        if (transparentCount >= 2) { resolve(null); return; }
+        const opaque = px.filter(p => p[3] >= 32);
+        if (!opaque.length) { resolve(null); return; }
+        const avg = opaque.reduce((a, p) => [a[0]+p[0], a[1]+p[1], a[2]+p[2]], [0,0,0])
+                          .map(v => Math.round(v / opaque.length));
+        resolve(`rgb(${avg[0]},${avg[1]},${avg[2]})`);
+      } catch(e) { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+const NEUTRAL_DOT_COLOR = '#888888';
+let _driverColors = {}; // populated from d.driverColors in payload
+
+async function getDotColor(numStr) {
+  if (!numStr) return NEUTRAL_DOT_COLOR;
+  if (_dotColorCache[numStr] !== undefined) return _dotColorCache[numStr];
+  _dotColorCache[numStr] = NEUTRAL_DOT_COLOR; // default while loading
+
+  // 1. Driver colors JSON (from bridge payload)
+  if (_driverColors[numStr]) {
+    _dotColorCache[numStr] = _driverColors[numStr];
+    return _driverColors[numStr];
+  }
+
+  // 2. Corner-sample number PNG (trackmap-specific fallback)
+  const src = numImgSrc(numStr);
+  if (src) {
+    const color = await sampleCornerColor(src);
+    _dotColorCache[numStr] = color || NEUTRAL_DOT_COLOR;
+  }
+  return _dotColorCache[numStr];
+}
+
+function dotFillColor(type) {
+  return NEUTRAL_DOT_COLOR;
+}
+
+// Preloaded image cache to avoid flickering
+const _imgCache = {};
+function _getImg(src) {
+  if (_imgCache[src]) return _imgCache[src];
+  const img = new Image();
+  img.src = src;
+  _imgCache[src] = img;
+  return img;
+}
+
+// Unique clip path counter
+let _clipIdx = 0;
+
+function getOrCreateDot(id, parent, r, type, numStr) {
+  if (dotCache[id]) {
+    const cached = dotCache[id];
+    const prevNum = cached.dataset.numStr || '';
+
+    // Apply color immediately if cached, else async
+    const fillEl = cached.querySelector('circle:nth-child(2)') || cached.querySelectorAll('circle')[1];
+    if (fillEl && numStr) {
+      if (_dotColorCache[numStr] !== undefined) {
+        fillEl.setAttribute('fill', _dotColorCache[numStr]);
+      } else {
+        getDotColor(numStr).then(color => fillEl.setAttribute('fill', color));
+      }
+    }
+
+    if (prevNum !== (numStr || '')) {
+      const imgEl = cached.querySelector('image');
+      const newSrc = numImgSrc(numStr);
+      if (imgEl) {
+        if (newSrc) { imgEl.setAttribute('href', newSrc); imgEl.style.display = ''; }
+        else imgEl.style.display = 'none';
+      }
+      cached.dataset.numStr = numStr || '';
+    }
+
+    // Ensure floating label exists and matches current type
+    const expectedLabel = type === 'leader' ? 'L' : type === 'player' ? 'P' : null;
+    let floatLbl = cached.querySelector('.float-lbl');
+    if (expectedLabel) {
+      if (!floatLbl) {
+        // Add missing label
+        floatLbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        floatLbl.setAttribute('class', 'float-lbl');
+        floatLbl.setAttribute('text-anchor', 'middle');
+        floatLbl.setAttribute('dominant-baseline', 'auto');
+        floatLbl.setAttribute('font-family', 'Barlow Condensed, sans-serif');
+        floatLbl.setAttribute('font-weight', '800');
+        floatLbl.setAttribute('font-size', Math.max(8, Math.round(r * 0.8)));
+        floatLbl.setAttribute('stroke', '#000');
+        floatLbl.setAttribute('stroke-width', '2');
+        floatLbl.setAttribute('paint-order', 'stroke');
+        floatLbl.setAttribute('y', -(r + 4));
+        cached.appendChild(floatLbl);
+      }
+      floatLbl.textContent = expectedLabel;
+      floatLbl.setAttribute('fill', type === 'leader' ? '#e8c84a' : '#4a9ee8');
+      floatLbl.style.display = '';
+    } else if (floatLbl) {
+      floatLbl.style.display = 'none';
+    }
+
+    return cached;
+  }
+
+  const svgNS  = 'http://www.w3.org/2000/svg';
+  const g      = document.createElementNS(svgNS, 'g');
+  const border = document.createElementNS(svgNS, 'circle');
+  const fill   = document.createElementNS(svgNS, 'circle');
+
+  border.setAttribute('r',    r + 2);
+  border.setAttribute('fill', '#000000');
+  fill.setAttribute('r',    r);
+  fill.setAttribute('fill', dotFillColor(type));
+
+  // Color fill — async-updated from number PNG corner sample
+  if (numStr) {
+    // If already cached, apply immediately
+    if (_dotColorCache[numStr] !== undefined) {
+      fill.setAttribute('fill', _dotColorCache[numStr]);
+    } else {
+      getDotColor(numStr).then(color => {
+        fill.setAttribute('fill', color);
+      });
+    }
+  }
+
+  g.appendChild(border);
+  g.appendChild(fill);
+
+  // Add floating label above leader and player dots
+  if (type === 'leader' || type === 'player') {
+    const svgNS2 = 'http://www.w3.org/2000/svg';
+    const lbl = document.createElementNS(svgNS2, 'text');
+    lbl.setAttribute('class', 'float-lbl');
+    lbl.setAttribute('text-anchor', 'middle');
+    lbl.setAttribute('dominant-baseline', 'auto');
+    lbl.setAttribute('font-family', 'Barlow Condensed, sans-serif');
+    lbl.setAttribute('font-weight', '800');
+    lbl.setAttribute('font-size', Math.max(8, Math.round(r * 0.8)));
+    lbl.setAttribute('fill', type === 'leader' ? '#e8c84a' : '#4a9ee8');
+    lbl.setAttribute('stroke', '#000');
+    lbl.setAttribute('stroke-width', '2');
+    lbl.setAttribute('paint-order', 'stroke');
+    lbl.setAttribute('y', -(r + 4));
+    lbl.textContent = type === 'leader' ? 'L' : 'P';
+    g.appendChild(lbl);
+  }
+
+  // PNG centered in dot at 80% size — color fill visible around edges
+  const src = numImgSrc(numStr);
+  const num = (numStr || '').trim();
+  const fs  = num.length >= 3 ? Math.max(6, Math.round(r * 0.70)) : Math.round(r * 0.85);
+
+  // Text fallback — shown when PNG missing or fails
+  const txt = document.createElementNS(svgNS, 'text');
+  txt.setAttribute('text-anchor',       'middle');
+  txt.setAttribute('dominant-baseline', 'central');
+  txt.setAttribute('font-family',       'Barlow Condensed, sans-serif');
+  txt.setAttribute('font-weight',       '700');
+  txt.setAttribute('fill',              '#111111');
+  txt.setAttribute('font-size',         fs);
+  txt.textContent = num;
+  txt.style.display = 'none'; // hidden until we know PNG failed
+  g.appendChild(txt);
+
+  if (src) {
+    const pngSize = Math.round((r - 1) * 1.6);
+    const imgEl = document.createElementNS(svgNS, 'image');
+    imgEl.setAttribute('href',        src);
+    imgEl.setAttribute('x',           -pngSize / 2);
+    imgEl.setAttribute('y',           -pngSize / 2);
+    imgEl.setAttribute('width',       pngSize);
+    imgEl.setAttribute('height',      pngSize);
+    imgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    imgEl.addEventListener('error', () => {
+      imgEl.style.display = 'none';
+      txt.style.display = '';
+    });
+    g.appendChild(imgEl);
+    g.dataset.hasImg = '1';
+  } else {
+    txt.style.display = '';
+  }
+
+  g.dataset.numStr = numStr || '';
+  parent.appendChild(g);
+  dotCache[id] = g;
+  return g;
+}
+
+let _smoothMoving = false, _lastRenderedData = null;
+function placeDot(id, parent, target, r, type, numStr) {
+  if (!target) { hideDot(id); return; }
+
+  const isPlayer = type === 'player';
+
+  if (!smoothPos[id]) {
+    smoothPos[id] = { x: target[0], y: target[1] };
+  } else {
+    const dx   = target[0] - smoothPos[id].x;
+    const dy   = target[1] - smoothPos[id].y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < 0.5) {
+      smoothPos[id].x = target[0];
+      smoothPos[id].y = target[1];
+    } else {
+      _smoothMoving = true;
+      const step = Math.min(dist, Math.max(2, dist * 0.25));
+      smoothPos[id].x += (dx / dist) * step;
+      smoothPos[id].y += (dy / dist) * step;
+    }
+  }
+
+  const g = getOrCreateDot(id, parent, r, type, numStr);
+  g.setAttribute('transform',
+    `translate(${smoothPos[id].x.toFixed(1)},${smoothPos[id].y.toFixed(1)})`);
+  g.style.display = '';
+}
+
+function hideDot(id) {
+  if (dotCache[id]) dotCache[id].style.display = 'none';
+}
+
+// ── Main render loop ──────────────────────────────────────────────────────
+function render() {
+  const d = latestData;
+  if (!d || !d.atTrack || !normalized) {
+    requestAnimationFrame(render);
+    return;
+  }
+
+  // Perf: rebuilding every dot (lookups, Sets, DOM writes) 60x/s is wasted work
+  // when telemetry arrives at ~20 Hz. Only re-run when a new frame landed or a
+  // dot is still gliding to its target.
+  if (d === _lastRenderedData && !_smoothMoving) {
+    requestAnimationFrame(render);
+    return;
+  }
+  _lastRenderedData = d;
+  _smoothMoving = false;
+
+  const fieldG  = document.getElementById('field-dots');
+  const playerG = document.getElementById('player-dot');
+
+  const playerIdx = d.playerCarIdx;
+  const relative  = d.relative  || [];
+  const standings = d.standings || [];
+
+  // Update driver colors from payload — clear dot cache if colors changed
+  if (d.driverColors && d.driverColors !== _driverColors) {
+    _driverColors = d.driverColors;
+    // Clear color cache so dots re-sample with new colors
+    Object.keys(_dotColorCache).forEach(k => delete _dotColorCache[k]);
+  }
+
+  // Build car number lookup — priority order:
+  // 1. relative array (always has cached names/numbers from driver cache)
+  // 2. drivers array (populated on session load)
+  // 3. standings (populated after first lap crossing)
+  const numMap = {};
+  const drivers  = d.drivers  || [];
+
+  // Start with lowest priority and let higher priority overwrite
+  standings.forEach(s => { numMap[s.carIdx] = (s.number || '').trim(); });
+  drivers.forEach(drv => {
+    const n = (drv.number || '').trim();
+    if (n && n !== '??') numMap[drv.carIdx] = n;
+  });
+  relative.forEach(r => {
+    const n = (r.number || '').trim();
+    if (n && n !== '??') numMap[r.carIdx] = n;
+  });
+
+  // Player number
+  const playerNum = (numMap[playerIdx] || '').trim();
+
+  // Pre-sample dot colors for all known cars (async, results cached)
+  Object.values(numMap).forEach(num => { if (num) getDotColor(num); });
+
+  // Track which car ids are active this frame
+  const activeIds = new Set();
+
+  // Build set of known car indices (excludes pace car which has no driver entry)
+  // Use relative array as primary source since it's always populated from driver cache
+  const knownCars = new Set([
+    ...relative.map(r => r.carIdx),
+    ...drivers.map(drv => drv.carIdx),
+    ...standings.map(s => s.carIdx),
+    playerIdx
+  ]);
+
+  const session = (d.session || '').toLowerCase();
+  const carLaps = d.carLaps || {};
+  // Always use official standings[0] as leader — live calculated is disabled
+  let leaderCarIdx = standings.length > 0 ? standings[0].carIdx : -1;
+  // Leader dot layer — separate SVG group so it renders above field
+  let leaderG = document.getElementById('leader-dot');
+  if (!leaderG) {
+    leaderG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    leaderG.setAttribute('id', 'leader-dot');
+    document.getElementById('mapsvg').appendChild(leaderG);
+  }
+
+  // Build stale car set — hide stopped/retired/pit cars
+  const staleCars = new Set(d.staleCars || []);
+  const isQual    = (d.session || '').toLowerCase() === 'qualifying';
+
+  // Draw all cars from opponents array (has trkPct for everyone)
+  // During qualifying only show player dot
+  const opponents = d.opponents || [];
+  if (!isQual) {
+    opponents.forEach(opp => {
+      const ci = opp.carIdx;
+      if (ci === playerIdx) return;        // player drawn separately
+      if (!knownCars.has(ci)) return;      // skip pace car and ghost entries
+      if (ci === leaderCarIdx) return;     // leader drawn separately on top
+      if (staleCars.has(ci)) { hideDot(`car_${ci}`); return; }  // stopped/retired
+
+      const id     = `car_${ci}`;
+      activeIds.add(id);
+      const target = posAtTrkPct(opp.trkPct);
+      const num    = numMap[ci] || '';
+      placeDot(id, fieldG, target, DOT_R_FIELD, 'field', num);
+    });
+
+    // Draw leader dot (gold, above field, below player)
+    if (leaderCarIdx >= 0 && leaderCarIdx !== playerIdx && !staleCars.has(leaderCarIdx)) {
+      const leaderOpp = opponents.find(o => o.carIdx === leaderCarIdx);
+      if (leaderOpp) {
+        const leaderTarget = posAtTrkPct(leaderOpp.trkPct);
+        const leaderNum    = numMap[leaderCarIdx] || '';
+        activeIds.add('leader');
+        placeDot('leader', leaderG, leaderTarget, DOT_R_PLAYER, 'leader', leaderNum);
+        leaderG.appendChild(dotCache['leader']);
+      }
+    } else if (staleCars.has(leaderCarIdx)) {
+      hideDot('leader');
+    }
+  } else {
+    // Qualifying — hide all other dots
+    Object.keys(dotCache).forEach(id => {
+      if (id !== 'player') hideDot(id);
+    });
+  }
+
+  // Hide dots for cars no longer present
+  Object.keys(dotCache).forEach(id => {
+    if (id !== 'player' && !activeIds.has(id)) hideDot(id);
+  });
+
+  // Draw player — only when actually in the car
+  const player    = d.player || {};
+  const playerInCar = player.inCar ?? false;
+
+  if (!playerInCar) {
+    // Not in car (retired, spectating, pits) — hide player dot
+    playerG.innerHTML = '';
+    if (dotCache['player']) { delete dotCache['player']; }
+    playerTrkPctSmooth = -1;  // reset so re-entry doesn't jump
+  } else {
+    let rawTrkPct = player.trkPct || 0;
+
+    if (playerTrkPctSmooth < 0) {
+      playerTrkPctSmooth = rawTrkPct;
+    } else {
+      let delta = rawTrkPct - playerTrkPctSmooth;
+      if (delta < -0.5) delta += 1.0;
+      if (delta >= 0 || delta < -RATCHET_THRESHOLD) {
+        playerTrkPctSmooth = rawTrkPct;
+      }
+    }
+
+    const playerPt = posAtTrkPct(playerTrkPctSmooth);
+    placeDot('player', playerG, playerPt, DOT_R_PLAYER, 'player', playerNum);
+    if (dotCache['player']) playerG.appendChild(dotCache['player']);
+  }
+
+  requestAnimationFrame(render);
+}
+
+// ── Recording indicator ───────────────────────────────────────────────────
+function updateRecordingUI(d) {
+  const recOverlay = document.getElementById('rec-overlay');
+  const recLabel   = document.getElementById('rec-label');
+
+  if (!d || !d.atTrack) {
+    recOverlay.classList.add('hidden');
+    return;
+  }
+
+  if (!d.trackMapReady) {
+    recOverlay.classList.remove('hidden');
+    const laps = d.trackMapLaps || 0;
+    recLabel.textContent = laps > 0
+      ? `Recording... ${laps} lap${laps > 1 ? 's' : ''} captured`
+      : 'Recording track...';
+  } else {
+    recOverlay.classList.add('hidden');
+  }
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────
+let ws = null;
+const connEl    = document.getElementById('connecting');
+let   resetSent = false;
+let _reconnectCount = 0;
+
+function _sendReset(track) {
+  if (resetSent) return;
+  resetSent = true;
+  const banner = document.getElementById('reset-banner');
+  const label  = document.getElementById('reset-label');
+  label.textContent = `Resetting map for ${track}...`;
+  banner.classList.remove('hidden');
+  ws.send(JSON.stringify({ cmd: 'reset_map', track }));
+  setTimeout(() => {
+    banner.classList.add('hidden');
+    // Reload without the reset_map param so we don't reset again on reconnect
+    const url = new URL(location.href);
+    url.searchParams.delete('reset_map');
+    location.replace(url.toString());
+  }, 2000);
+}
+
+function handleMessage(data) {
+  try {
+    const d = JSON.parse(data);
+    updateVisibility(d);
+    // Handle reset signal from bridge
+    if (d.reset === true) { handleReset(); return; }
+
+    latestData = d;
+    updateVisibility(d);
+
+    // Rebuild normalized map when track changes or map becomes available
+    const track = d.track || '';
+
+    // Update track name label — only show when track is recorded and param enabled
+    const labelEl = document.getElementById('track-name-label');
+    if (labelEl) {
+      if (d.trackMapReady && _showTrackNameLive) {
+        labelEl.textContent = d.trackNameShort || track || '';
+        labelEl.style.display = '';
+      } else {
+        labelEl.textContent = '';
+        labelEl.style.display = 'none';
+      }
+    }
+
+    if (track !== lastTrack || (d.trackMapReady && !normalized)) {
+      lastTrack = track;
+      // Send reset command if ?reset_map param is present and we just learned the track
+      if (RESET_MAP && track && ws.readyState === WebSocket.OPEN) {
+        _sendReset(track);
+      }
+      normalized = null;
+      normBounds = null;
+      // Clear dots and track lines
+      document.getElementById('track-border').setAttribute('points',  '');
+      document.getElementById('track-surface').setAttribute('points', '');
+      document.getElementById('sf-line').setAttribute('x1','0');
+      document.getElementById('sf-line').setAttribute('y1','0');
+      document.getElementById('sf-line').setAttribute('x2','0');
+      document.getElementById('sf-line').setAttribute('y2','0');
+      document.getElementById('field-dots').innerHTML  = '';
+      document.getElementById('player-dot').innerHTML  = '';
+      Object.keys(dotCache).forEach(k => delete dotCache[k]);
+      Object.keys(smoothPos).forEach(k => delete smoothPos[k]);
+      playerTrkPctSmooth = -1;
+      _sortedIdx = null;
+      // Clear image cache on track change so new series numbers load fresh
+      Object.keys(_imgCache).forEach(k => delete _imgCache[k]);
+      svgLoaded  = false;
+
+      if (d.trackMapReady && d.trackMap && d.trackMap.length) {
+        // Try SVG first, fall back to JSON
+        _loadTrackSource(track, d.trackMap);
+      }
+    } else if (d.trackMapReady && d.trackMap && d.trackMap.length && !normalized) {
+      _loadTrackSource(track, d.trackMap);
+    }
+
+    updateRecordingUI(d);
+  } catch(e) {}
+}
+
+function connect() {
+  // Only show 'waiting' overlay after multiple failed reconnects
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    connEl.classList.add('hidden');
+    // If ?reset_map param present, send reset command once connected
+    if (RESET_MAP && lastTrack) {
+      _sendReset(lastTrack);
+    }
+  };
+
+  ws.onmessage = (evt) => handleMessage(evt.data);
+  ws.onclose = () => {
+    _reconnectCount++; if (_reconnectCount >= 3) connEl?.classList.remove('hidden');
+    setTimeout(connect, 2000);
+  };
+  ws.onerror = () => ws.close();
+}
+
+// Accept postMessage for layout editor preview — registered once at top level
+window.addEventListener('message', e => {
+  if (typeof e.data === 'string') {
+    if (connEl) { connEl.classList.add('hidden'); connEl.style.display = 'none'; }
+    handleMessage(e.data);
+  }
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────
+connect();
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src http://127.0.0.1:* http://localhost:*">
+<title>Season Manager</title>
+<style>
+:root { --bg:#0c0e12; --card:#141821; --card2:#181d28; --border:#222834; --border2:#2c3443; --text:#e8ebf2; --dim:#8b94a7; --accent:#e8c84a; --green:#2ecc71; --red:#e74c3c; --blue:#5dade2; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 'Segoe UI', Arial, sans-serif; }
+button, select, input, textarea { font: inherit; color: var(--text); }
+button { background: #1b212d; border: 1px solid var(--border2); border-radius: 6px; font-weight: 600; padding: 6px 12px; cursor: pointer; }
+button:hover:not(:disabled) { border-color: #3a4457; background: #232b3a; }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: #1d3a2a; border-color: #2c6b46; } button.danger { color: #ff8479; }
+input, select, textarea { background: #0b0d11; border: 1px solid var(--border2); border-radius: 4px; padding: 6px 8px; }
+#app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+header { display: flex; align-items: center; gap: 14px; padding: 10px 16px; background: var(--card); border-bottom: 1px solid var(--border); }
+header h1 { margin: 0; font-size: 16px; letter-spacing: .08em; text-transform: uppercase; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 12px; background: #1a1e26; border: 1px solid var(--border2); font-size: 12px; color: var(--dim); }
+.chip.ok { color: var(--green); border-color: #1e4630; } .chip.live { color: #ff6b61; border-color: #5a2320; } .chip.warn { color: var(--accent); border-color: #4d4220; }
+.spacer { flex: 1; }
+#main { display: grid; grid-template-columns: 290px 1fr; min-height: 0; }
+aside { border-right: 1px solid var(--border); padding: 12px; overflow: auto; background: #0c0e12; }
+section { padding: 14px 18px; overflow: auto; min-width: 0; }
+.s-item { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 9px 11px; margin-bottom: 8px; cursor: pointer; }
+.s-item.sel { border-color: #3a4150; background: var(--card2); }
+.s-item .n { font-weight: 700; display: flex; justify-content: space-between; gap: 6px; }
+.s-item .m { color: var(--dim); font-size: 12px; margin-top: 2px; }
+.tag { font-size: 10px; font-weight: 700; letter-spacing: .06em; padding: 1px 6px; border-radius: 3px; background: #2a2d35; color: var(--dim); }
+.tag.active { background: #1d3a2a; color: var(--green); } .tag.chase { background: var(--accent); color: #111; }
+.box { background: var(--card); border: 1px solid var(--border); border-radius: 9px; padding: 12px 14px; margin-bottom: 12px; }
+.box h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+.tab { padding: 8px 14px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--dim); }
+.tab.sel { color: var(--text); border-color: var(--accent); }
+table { border-collapse: collapse; width: 100%; }
+th { text-align: left; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); padding: 6px 8px; border-bottom: 1px solid var(--border2); white-space: nowrap; position: sticky; top: 0; background: var(--bg); }
+td { padding: 5px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+tr.chase td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+tr.out td { opacity: .6; }
+tr.cut td { padding: 2px 8px; background: rgba(232,200,74,.08); color: var(--accent); font-size: 11px; letter-spacing: .12em; text-align: center; border-top: 1px dashed var(--accent); border-bottom: 1px dashed var(--accent); }
+td.r, th.r { text-align: right; } td.b { font-weight: 700; }
+.up { color: var(--green); } .down { color: var(--red); }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.row label { color: var(--dim); min-width: 130px; }
+.muted { color: var(--dim); } .empty { padding: 30px; text-align: center; color: var(--dim); }
+textarea.json { width: 100%; height: 420px; font: 12px/1.45 Consolas, monospace; white-space: pre; }
+.banner { background: #2a2410; border: 1px solid #5a4a18; color: var(--accent); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; }
+#toast { position: fixed; right: 16px; bottom: 16px; background: #1d3a2a; border: 1px solid #2c6b46; padding: 10px 14px; border-radius: 6px; max-width: 420px; display: none; z-index: 5; }
+#toast.err { background: #3a1d1d; border-color: #6b2c2c; }
+.kv { display: grid; grid-template-columns: 150px 1fr; gap: 4px 12px; }
+code { background: #0b0d11; border: 1px solid var(--border2); padding: 1px 6px; border-radius: 3px; user-select: all; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>🏆 Season Manager</h1>
+    <button id="btn-season-generator" style="display:none" title="Open the NR Season Generator companion">Schedule Generator</button>
+    <span class="chip" id="chip-bridge">● Bridge</span>
+    <span class="chip" id="chip-tracker">Tracker idle</span>
+    <span class="spacer"></span>
+    <button id="btn-arm" title="A race counts for the active season only when you activate it, before or during the race. One race per activation.">Count this race</button>
+    <label class="chip" style="cursor:pointer"><input type="checkbox" id="chk-enabled" checked> Track races automatically</label>
+  </header>
+  <div id="main">
+    <aside>
+      <div class="box">
+        <h3>New season</h3>
+        <div class="row"><input id="new-name" placeholder="Season name" style="flex:1"></div>
+        <div class="row"><select id="new-series" style="flex:1"></select></div>
+        <div class="row"><select id="new-system" style="flex:1" title="The official points system the season is scored with (it can be changed later in Points rules)"></select></div>
+        <div class="row"><select id="new-link" style="flex:1" title="When you switch to this overlay series in All In One NR2003, this season becomes the active one"></select><button class="primary" id="btn-create">Create</button></div>
+        <div class="muted" id="new-hint" style="font-size:12px"></div>
+      </div>
+      <div id="season-list"></div>
+    </aside>
+    <section id="content"><div class="empty">Create a season on the left to begin.</div></section>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const api = window.shl.season;
+const extmods = window.shl.extmods;
+const qs = new URLSearchParams(location.search);
+const PORT = qs.get('port') || 8769;
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+let seasons = [], activeId = null, viewId = null, state = null, tab = 'standings', presets = [], showLive = true, systems = [], lastStatus = null;
+let openRace = null, raceCache = {}, rulesDraft = null, overlaySeries = [];
+
+$('btn-season-generator').addEventListener('click', async () => {
+  const r = await extmods.launch('seasonGenerator');
+  if (!r || !r.ok) toast((r && r.error) || 'Could not open the schedule generator.', true);
+  else toast('NR Season Generator opened. Its season.ini output is used by NR2003.');
+});
+
+function toast(msg, err) {
+  const t = $('toast'); t.textContent = msg; t.className = err ? 'err' : ''; t.style.display = 'block';
+  clearTimeout(toast._t); toast._t = setTimeout(() => { t.style.display = 'none'; }, err ? 7000 : 4500);
+}
+async function call(p, okMsg) {
+  const r = await p;
+  if (r && r.ok === false && !r.canceled) { toast(r.error || 'Failed', true); return r; }
+  if (okMsg && r && r.ok !== false) toast(okMsg);
+  return r;
+}
+
+// ── data ─────────────────────────────────────────────────────────────────────
+async function loadSeasons() {
+  const r = await api.list();
+  seasons = r.seasons; activeId = r.activeId;
+  if (!viewId || !seasons.find(s => s.id === viewId)) viewId = activeId || (seasons[0] && seasons[0].id) || null;
+  renderSeasonList();
+}
+async function loadState() {
+  if (!viewId) { state = null; render(); return; }
+  state = await api.getState(viewId);
+  render();
+}
+async function refresh() { await loadSeasons(); await loadState(); }
+
+function connectEvents() {
+  try {
+    const es = new EventSource(`http://127.0.0.1:${PORT}/season/events`);
+    es.addEventListener('state', e => {
+      let s; try { s = JSON.parse(e.data); } catch (_) { return; }
+      paintStatus(s);
+      if (viewId && s.season && s.season.id === viewId) {
+        const raceCountChanged = !state || state.races.length !== s.races.length;
+        state = s;
+        // Live frames arrive several times a second: only the standings view is
+        // redrawn for them. Other tabs hold forms (rules JSON, race editor) that a
+        // redraw would wipe, so they refresh only when the race list changes.
+        if (tab === 'standings' || raceCountChanged) render(true);
+      }
+      if (s.season && s.season.id !== (activeId || null)) loadSeasons();
+    });
+    es.addEventListener('toast', e => { try { const t = JSON.parse(e.data); toast(t.text || t.type, t.type === 'race-pending'); loadSeasons(); } catch (_) {} });
+  } catch (_) {}
+}
+
+function paintStatus(s) {
+  const b = $('chip-bridge'); b.textContent = s.bridge ? '● Bridge connected' : '● Bridge not connected'; b.className = 'chip ' + (s.bridge ? 'ok' : '');
+  const t = $('chip-tracker'); const tr = s.tracker || {};
+  if (tr.phase === 'racing') { t.textContent = `RACING — lap ${tr.lap}/${tr.lapsTotal || '?'} — ${tr.track}`; t.className = 'chip live'; }
+  else if (tr.phase === 'finished') { t.textContent = 'Race finished — waiting for official results'; t.className = 'chip warn'; }
+  else if (tr.phase === 'committed') { t.textContent = 'Race scored'; t.className = 'chip ok'; }
+  else if (tr.phase === 'waiting') { t.textContent = 'In race session — waiting for green'; t.className = 'chip warn'; }
+  else { t.textContent = s.enabled ? 'Waiting for a race' : 'Tracking paused'; t.className = 'chip'; }
+  $('chk-enabled').checked = s.enabled;
+  lastStatus = s;
+  const arm = $('btn-arm');
+  arm.style.display = s.requireArm ? '' : 'none';
+  arm.textContent = s.armed ? '✔ This race counts — cancel' : (tr.phase === 'racing' ? 'Count this race' : 'Count the next race');
+  arm.className = s.armed ? 'primary' : '';
+}
+
+// ── rendering ────────────────────────────────────────────────────────────────
+function renderSeasonList() {
+  $('season-list').innerHTML = seasons.map(s => `
+    <div class="s-item ${s.id === viewId ? 'sel' : ''}" data-id="${esc(s.id)}">
+      <div class="n"><span>${esc(s.name)}</span>${s.id === activeId ? '<span class="tag active">ACTIVE</span>' : ''}</div>
+      <div class="m">${esc((presets.find(p => p.id === s.series) || {}).name || s.series)}</div>
+      <div class="m">Race ${s.racesRun} of ${s.totalRaces} · ${esc(s.phase)}${s.leader ? ' · ' + esc(s.leader) : ''}</div>
+    </div>`).join('') || '<div class="muted">No seasons yet.</div>';
+  document.querySelectorAll('.s-item').forEach(el => el.onclick = async () => { viewId = el.dataset.id; openRace = null; rulesDraft = null; renderSeasonList(); await loadState(); });
+}
+
+function render(keepScroll) {
+  const c = $('content');
+  const scrollTop = keepScroll ? c.scrollTop : 0;
+  if (!state || !state.season) { c.innerHTML = '<div class="empty">Create a season on the left to begin.</div>'; return; }
+  const isActive = state.season.id === activeId;
+  const tabs = [['standings', 'Standings'], ['stats', 'Stats'], ['champs', 'Championships'], ['races', 'Races'], ['schedule', 'Schedule'], ['rivals', 'Rivals'], ['career', 'Career'], ['rules', 'Points rules'], ['setup', 'Setup & import']];
+  let h = '';
+  if (state.pending) h += `<div class="banner">⚠ ${state.pending} finished race(s) couldn't be scored automatically. Open <b>Setup &amp; import</b> to assign them to a season.</div>`;
+  h += `<div class="row" style="margin-top:0"><h2 style="margin:0;font-size:20px">${esc(state.season.name)}</h2>` +
+    (isActive ? '<span class="tag active">ACTIVE — races are scored into this season</span>' : '<button class="primary" id="btn-activate">Make active</button>') +
+    `<span class="spacer"></span><button id="btn-rename">Rename</button><button class="danger" id="btn-delete">Delete…</button></div>`;
+  h += '<div class="tabs">' + tabs.map(([k, l]) => `<div class="tab ${tab === k ? 'sel' : ''}" data-tab="${k}">${l}</div>`).join('') + '</div>';
+  if (isActive && state.requireArm && !state.armed) h += `<div class="banner">Races count for this season only when you activate them: press <b>Count this race</b> (top right, or on the main window's Season card) before or during a race. A race that wasn't activated is kept under Setup &amp; import → Unassigned races.</div>`;
+  h += tab === 'standings' ? tabStandings() : tab === 'stats' ? tabStats() : tab === 'champs' ? tabChamps() : tab === 'races' ? tabRaces() : tab === 'schedule' ? tabSchedule() : tab === 'rivals' ? tabRivals() : tab === 'career' ? tabCareer() : tab === 'rules' ? tabRules() : tabSetup();
+  c.innerHTML = h;
+  document.querySelectorAll('.tab').forEach(el => el.onclick = () => { tab = el.dataset.tab; render(); if (tab === 'rules') loadRules(); if (tab === 'setup') loadPending(); if (tab === 'schedule') loadSchedule(); if (tab === 'career') loadCareer(); });
+  $('btn-activate') && ($('btn-activate').onclick = async () => { await api.setActive(state.season.id); await refresh(); });
+  $('btn-rename').onclick = async () => { const n = prompt('Season name', state.season.name); if (n && n.trim()) { await call(api.rename({ id: state.season.id, name: n.trim() })); await refresh(); } };
+  $('btn-delete').onclick = async () => { if (confirm(`Delete "${state.season.name}" and all its races?\n(A backup copy is kept in the season data folder.)`)) { await api.delete(state.season.id); viewId = null; await refresh(); } };
+  bindTab();
+  if (keepScroll) c.scrollTop = scrollTop;
+}
+
+function tabStandings() {
+  const st = state.standings;
+  if (!st) return '<div class="empty">No data.</div>';
+  const live = state.live && state.live.rows && state.live.rows.length && state.season.id === activeId;
+  const useLive = live && showLive;
+  const rows = useLive ? state.live.rows : st.rows;
+  const phaseTxt = st.phase === 'complete' ? 'Season complete' : st.phase === 'chase' && st.chase ? `The Chase — ${st.racesRun - st.regularRaces} of ${st.chaseRaces} Chase races run` : st.phase === 'chase' ? 'Regular season complete — Chase seeds on next race' : `Regular season — ${st.racesRun} of ${st.regularRaces} races run`;
+  let h = `<div class="row"><b>${esc(phaseTxt)}</b>` +
+    (st.cutPoints != null ? `<span class="muted">· Chase cut line (P${st.chaseField}): ${st.cutPoints} pts</span>` : '') +
+    (st.champion ? `<span class="tag chase">CHAMPION: ${esc(st.champion.name)}</span>` : '') +
+    '<span class="spacer"></span>' +
+    (live ? `<label class="chip live" style="cursor:pointer"><input type="checkbox" id="chk-live" ${showLive ? 'checked' : ''}> Live projection — ${esc(state.live.track)} lap ${state.live.lap}/${state.live.lapsTotal || '?'}</label>` : '') +
+    '<button id="btn-export">Export HTML…</button></div>';
+  if (!rows.length) return h + '<div class="empty">No races scored yet. Finish a race in NR2003 (or import AutoStages results under Setup &amp; import).</div>';
+  const cutAfter = (!st.chase && st.phase === 'regular' && st.chaseRaces) ? st.chaseField : 0;
+  h += '<table><thead><tr><th>Pos</th><th></th><th>#</th><th>Driver</th><th class="r">Points</th><th class="r">' + (useLive ? 'This race' : 'Behind') + '</th><th class="r">Wins</th><th class="r">Stage W</th><th class="r">Top 5</th><th class="r">Top 10</th><th class="r">Laps led</th><th class="r">Fast laps</th><th class="r">AFP</th><th class="r">GFP</th><th class="r">QP</th></tr></thead><tbody>';
+  rows.forEach(r => {
+    const d = useLive ? (r.liveDelta || 0) : (r.delta || 0);
+    const cls = (st.chase || st.phase === 'complete') ? (r.inChase ? (r.alive === false ? 'out' : 'chase') : (r.inChase === false ? 'out' : '')) : '';
+    h += `<tr class="${cls}"><td class="b">${r.rank}</td><td class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d > 0 ? '▲' + d : d < 0 ? '▼' + (-d) : ''}</td><td>${esc(r.number)}</td><td class="b">${esc(r.name)}</td>` +
+      `<td class="r b">${r.points}</td><td class="r muted">${useLive ? (r.racePts ? '+' + r.racePts : '') : (r.rank === 1 ? '—' : r.behind)}</td>` +
+      `<td class="r">${r.wins}</td><td class="r">${r.stageWins}</td><td class="r">${r.top5s}</td><td class="r">${r.top10s}</td><td class="r">${r.lapsLed}</td><td class="r">${r.fastestLaps}</td><td class="r">${r.afp || ''}</td><td class="r">${r.gfp}</td><td class="r">${r.qp}</td></tr>`;
+    if (cutAfter && r.rank === cutAfter) h += '<tr class="cut"><td colspan="15">▼ CHASE CUT LINE ▼</td></tr>';
+  });
+  h += '</tbody></table><p class="muted" style="font-size:12px">AFP = average finishing position. GFP/QP (green-flag / quality passes) are estimated from live telemetry and can differ slightly from the sim\'s own view.</p>';
+  return h;
+}
+
+// every driver's season statistics (the standings order)
+function tabStats() {
+  const st = state.standings;
+  if (!st || !st.rows.length) return '<div class="empty">No races scored yet.</div>';
+  const v = (x) => (x == null || x === '' ? '<span class="muted">–</span>' : x);
+  const cols = [['Races', r => r.races], ['Wins', r => r.wins], ['Win %', r => r.winPct + '%'], ['Poles', r => r.poles], ['Top 5', r => r.top5s], ['Top 10', r => r.top10s], ['Top 15', r => r.top15s], ['Top 20', r => r.top20s],
+    ['Avg start', r => r.avgStart], ['Avg run', r => r.avgRun], ['Avg finish', r => r.afp || null], ['Best', r => r.bestFinish || null], ['Worst', r => r.worstFinish || null], ['Pos +/-', r => r.gained == null ? null : (r.gained > 0 ? '+' + r.gained : r.gained)],
+    ['Laps', r => r.lapsCompleted || null], ['Led', r => r.lapsLed], ['Races led', r => r.racesLed], ['Most led', r => r.mostLed], ['Lead-lap', r => r.leadLap], ['DNF', r => r.dnfs],
+    ['Stage W', r => r.stageWins], ['Stage top 10', r => r.stageTop10s], ['Fast laps', r => r.fastestLaps], ['Bonus pts', r => r.bonusPts], ['Pts / race', r => r.ptsPerRace], ['GFP', r => r.gfp], ['QP', r => r.qp],
+    ['Incidents', r => (r.damage == null ? null : r.incidents)], ['Contacts', r => r.contacts], ['Damage', r => (r.damage == null ? null : r.damage.toFixed(2))], ['Cautions caused', r => r.cautionsCaused]];
+  if (st.rows.some(r => r.playoffPoints != null)) cols.unshift(['Playoff pts', r => r.playoffPoints]);
+  if (st.rows.some(r => r.dropped)) cols.push(['Dropped', r => r.dropped || null]);
+  let h = '<div class="tablewrap" style="overflow-x:auto"><table><thead><tr><th>Pos</th><th>#</th><th>Driver</th><th class="r">Points</th>' + cols.map(c => `<th class="r">${c[0]}</th>`).join('') + '</tr></thead><tbody>';
+  for (const r of st.rows) h += `<tr><td class="b">${r.rank}</td><td>${esc(r.number)}</td><td class="b">${esc(r.name)}</td><td class="r b">${r.points}</td>` + cols.map(c => `<td class="r">${v(c[1](r))}</td>`).join('') + '</tr>';
+  h += '</tbody></table></div><p class="muted" style="font-size:12px">Avg start / avg run (average running position, every lap) / laps / lead-lap / DNF come from races All In One NR2003 tracked: imported AutoStages races have no such data. Pos +/- = starting position minus finishing position, summed. Lead-lap = finishes on the lead lap.</p>';
+  return h;
+}
+
+// the other championships: owners, manufacturers, teams (constructors), rookies
+function tabChamps() {
+  const st = state.standings;
+  if (!st || !st.racesRun) return '<div class="empty">No races scored yet.</div>';
+  const tbl = (title, list, note, cols) => {
+    if (!list || !list.length) return `<div class="box"><h3>${title}</h3><div class="muted">${note}</div></div>`;
+    return `<div class="box"><h3>${title}</h3><table><thead><tr><th>Pos</th><th>${cols[0]}</th><th class="r">Points</th><th class="r">Behind</th><th class="r">Wins</th><th class="r">Top 5</th><th class="r">Top 10</th><th>${cols[1]}</th></tr></thead><tbody>` +
+      list.slice(0, 20).map(x => `<tr><td class="b">${x.rank}</td><td class="b">${esc(x.name)}</td><td class="r b">${x.points}</td><td class="r muted">${x.rank === 1 ? '—' : x.behind}</td><td class="r">${x.wins}</td><td class="r">${x.top5s}</td><td class="r">${x.top10s}</td><td class="muted">${esc((x.drivers || []).slice(0, 4).join(', '))}${x.number ? '#' + esc(x.number) : ''}</td></tr>`).join('') + '</tbody></table></div>';
+  };
+  const rook = (st.rookies || []).map(r => Object.assign({}, r, { drivers: ['#' + r.number] }));
+  return tbl('Owners (by car number)', st.owners, 'No car numbers in the results.', ['Car', 'Drivers']) +
+    tbl('Manufacturers', st.makes, 'No manufacturer known for these races: All In One NR2003 reads each car\'s make from its .car file during a counted race.', ['Make', 'Drivers']) +
+    tbl('Teams / constructors', st.teams, 'No team known for these races: All In One NR2003 reads each car\'s team from its .car file during a counted race.', ['Team', 'Drivers']) +
+    tbl('Rookie of the year', rook, 'No rookies: mark them in the series art folder\'s rookies.json (car number: true).', ['Driver', 'Car']) +
+    '<p class="muted" style="font-size:12px">Manufacturers: each make\'s best-finishing car scores its finish points. Teams: the points of the team\'s cars added up (F1 constructors). Owners: every point the car scored, whoever drove it.</p>';
+}
+
+// ── the schedule ──────────────────────────────────────────────────────────────
+let schedTracks = [], schedRefs = [], schedNrSeries = [], schedDraft = null, schedBuild = { style: 'reference', ref: '', count: 36, types: ['short', 'intermediate', 'superspeedway', 'road'], repeat: false };
+async function loadSchedule() {
+  try { [schedTracks, schedRefs, schedNrSeries] = await Promise.all([api.calTracks(), api.calReferences(), api.calNrSeries()]); } catch (_) { /* no NR2003 folder */ }
+  if (!schedBuild.ref && schedRefs[0]) schedBuild.ref = schedRefs[0].id;
+  if (tab === 'schedule') render();
+}
+function tabSchedule() {
+  const sc = state.schedule, ev = schedDraft || (sc ? sc.events : null);
+  const done = state.standings ? state.standings.racesRun : 0;
+  const trackOpts = (sel) => '<option value="">— pick a track —</option>' + schedTracks.map(t => `<option value="${esc(t.dir)}" ${t.dir === sel ? 'selected' : ''}>${esc(t.name)} (${t.type}, ${t.miles} mi)</option>`).join('');
+  // guaranteed starters: the top N in owner points (the old NASCAR top-35 rule) and chartered cars (season/entry.js)
+  const en = state.entry || { lockTop: false, topN: 35, charters: [] }, gn = state.guaranteed;
+  let h = `<div class="box"><h3>Guaranteed starters</h3>
+    <div class="row"><label><input type="checkbox" id="en-top" ${en.lockTop ? 'checked' : ''}> The top</label><input type="number" id="en-topn" min="1" max="200" value="${en.topN}" style="width:56px"><label for="en-top">in owner points are locked into every race (from the second race on)</label></div>
+    <div class="row"><label>Chartered cars (whole season)</label><input id="en-charters" value="${esc((en.charters || []).join(', '))}" placeholder="car numbers, e.g. 3, 24, 48" style="width:300px"><button class="primary" id="en-save">Save</button></div>
+    <div class="muted" style="font-size:12px">A chartered or locked-in car starts every race: it stays in the roster NR2003 picks the field from, and RaceControl's qualifying never cuts it (with a qualifying field size set, the other places go to the fastest of the rest). A race's own Charters list in the schedule below is used instead of the season's for that race. When a track takes fewer cars than there are chartered cars, the game picks the field from the chartered cars only. Works for the active season.</div>
+    ${gn ? `<div class="row"><b>Next race${gn.event ? ' (' + esc(gn.event.name) + ')' : ''}:</b><span>${gn.nums.length} guaranteed${gn.charters.length ? ' · charters #' + gn.charters.map(esc).join(', #') + (gn.raceCharters ? ' (this race\'s list)' : '') : ''}${gn.top.length ? ' · top ' + gn.topN + ' owners' : ''}</span></div>` : ''}
+  </div>`;
+  h += `<div class="box"><h3>Build a schedule</h3>
+    <div class="row"><label>Start from</label><select id="sc-style"><option value="reference" ${schedBuild.style === 'reference' ? 'selected' : ''}>a real season, matched to your tracks</option><option value="balanced" ${schedBuild.style === 'balanced' ? 'selected' : ''}>a balanced rotation of track types</option><option value="random" ${schedBuild.style === 'random' ? 'selected' : ''}>random</option></select>
+    ${schedBuild.style === 'reference' ? `<select id="sc-ref">${schedRefs.map(r => `<option value="${esc(r.id)}" ${r.id === schedBuild.ref ? 'selected' : ''}>${esc(r.name)} (${r.races} races)</option>`).join('')}</select>` :
+      `<label>Races <input type="number" id="sc-count" min="1" max="60" value="${schedBuild.count}" style="width:60px"></label>` + ['short', 'intermediate', 'superspeedway', 'road'].map(t => `<label><input type="checkbox" class="sc-type" value="${t}" ${schedBuild.types.includes(t) ? 'checked' : ''}> ${t}</label>`).join('') +
+      `<label><input type="checkbox" id="sc-repeat" ${schedBuild.repeat ? 'checked' : ''}> repeat tracks</label>`}
+    <button class="primary" id="sc-build">Build</button><span class="muted">${schedTracks.length} tracks installed</span></div>
+    <div class="muted" style="font-size:12px">Your own NR2003 season files can be read in below. (The separate NR Season Generator, with its historical database, still opens from the top bar.)</div></div>`;
+  if (!ev || !ev.length) return h + '<div class="empty">No schedule for this season yet.</div>';
+  const next = state.next;
+  h += `<div class="box"><h3>${esc((sc && sc.name) || 'Schedule')}${schedDraft ? ' <span class="tag">not saved</span>' : ''}</h3>
+    <div class="row">${schedDraft ? '<button class="primary" id="sc-save">Save schedule</button><button id="sc-discard">Discard</button>' : ''}
+    <label><input type="checkbox" id="sc-autoarm" ${!sc || sc.autoArm !== false ? 'checked' : ''}> activate the next race automatically when I'm at its track</label></div>
+    ${next ? `<div class="row"><b>Next: race ${next.index + 1}, ${esc(next.name)}</b><span class="muted">${esc(next.trackName || next.track)} · ${next.laps} laps${next.stages && next.stages.length ? ' · stages end ' + next.stages.join(' / ') : ''}</span>
+      <button class="primary" id="sc-setup">Set up this race</button><label><input type="checkbox" id="sc-dist" checked> and NR2003's race length</label></div>` : (sc ? '<div class="row muted">Every scheduled race has been run.</div>' : '')}
+    <table><thead><tr><th>#</th><th>Date</th><th>Name</th><th>Track</th><th class="r">Laps</th><th>Stage ends</th><th>Charters</th></tr></thead><tbody>` +
+    ev.map((e, i) => `<tr class="${i < done ? 'out' : (next && next.index === i ? 'chase' : '')}"><td class="b">${i + 1}${i < done ? ' ✓' : ''}</td>
+      <td><input class="sc-f" data-i="${i}" data-k="month" type="number" min="1" max="12" value="${e.month}" style="width:44px">/<input class="sc-f" data-i="${i}" data-k="day" type="number" min="1" max="31" value="${e.day}" style="width:44px"></td>
+      <td><input class="sc-f" data-i="${i}" data-k="name" value="${esc(e.name)}" style="width:170px"></td>
+      <td><select class="sc-f" data-i="${i}" data-k="track" style="max-width:260px;${e.track ? '' : 'border-color:#d33'}">${trackOpts(e.track)}</select>${e.real ? ' <span class="muted">' + esc(e.real) + '</span>' : ''}</td>
+      <td class="r"><input class="sc-f" data-i="${i}" data-k="laps" type="number" min="1" value="${e.laps}" style="width:60px"></td>
+      <td><input class="sc-f" data-i="${i}" data-k="stages" value="${esc((e.stages || []).join(', '))}" style="width:90px"></td>
+      <td><input class="sc-f" data-i="${i}" data-k="charters" value="${esc((e.charters || []).join(', '))}" placeholder="season's" title="This race's chartered cars (blank: the season's list)" style="width:110px"></td></tr>`).join('') +
+    `</tbody></table>
+    <div class="row"><label>NR2003 series</label><select id="sc-series">${schedNrSeries.map(s => `<option value="${esc(s)}" ${sc && sc.series === s ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>
+    <button id="sc-export">Write to its season file</button><button id="sc-import">Read its season file</button><button class="danger" id="sc-clear">Remove the schedule</button>
+    <span class="muted">Writes series\\&lt;series&gt;\\2003season.ini (the game's own is kept as 2003season.ini.steelfire-backup).</span></div></div>`;
+  return h;
+}
+
+// ── careers across every season ──────────────────────────────────────────────
+let careerData = null, aliasData = {}, h2hData = null;
+async function loadCareer() {
+  try { [careerData, aliasData] = await Promise.all([api.career(), api.aliases()]); } catch (_) { careerData = null; }
+  if (tab === 'career') render();
+}
+function tabCareer() {
+  if (!careerData) return '<div class="empty">Loading…</div>';
+  const d = careerData.drivers, opts = (sel) => d.map(x => `<option value="${esc(x.name)}" ${x.name === sel ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+  let h = `<div class="box"><h3>Career — ${careerData.seasons} season${careerData.seasons === 1 ? '' : 's'}</h3><div class="tablewrap" style="overflow-x:auto;max-height:420px"><table><thead><tr><th>Driver</th><th class="r">Titles</th><th class="r">Seasons</th><th class="r">Races</th><th class="r">Wins</th><th class="r">Win %</th><th class="r">Top 5</th><th class="r">Top 10</th><th class="r">Poles</th><th class="r">Laps led</th><th class="r">Avg finish</th><th class="r">Best rank</th></tr></thead><tbody>` +
+    d.map(x => `<tr><td class="b">${esc(x.name)}${x.numbers.length ? ' <span class="muted">#' + esc(x.numbers.join(' #')) + '</span>' : ''}</td><td class="r">${x.titles || ''}</td><td class="r">${x.seasons}</td><td class="r">${x.races}</td><td class="r">${x.wins}</td><td class="r">${x.winPct}%</td><td class="r">${x.top5s}</td><td class="r">${x.top10s}</td><td class="r">${x.poles}</td><td class="r">${x.lapsLed}</td><td class="r">${x.afp || ''}</td><td class="r">${x.bestRank || ''}</td></tr>`).join('') + '</tbody></table></div></div>';
+  h += '<div class="box"><h3>Records</h3><div class="kv">' + careerData.records.map(r => `<b>${esc(r.what)}</b><span>${esc(r.name)} — ${r.value}${r.season ? ' (' + esc(r.season) + ')' : ''}</span>`).join('') + '</div></div>';
+  h += `<div class="box"><h3>Head to head</h3><div class="row"><select id="h2h-a">${opts(h2hData && h2hData.a.name)}</select><span>vs</span><select id="h2h-b">${opts(h2hData ? h2hData.b.name : (d[1] && d[1].name))}</select><button class="primary" id="h2h-go">Compare</button></div>`;
+  if (h2hData) {
+    const A = h2hData.a, B = h2hData.b;
+    h += h2hData.races ? `<div class="kv"><b>Races together</b><span>${h2hData.races}</span><b>Finished ahead</b><span>${esc(A.name)} ${A.ahead} — ${B.ahead} ${esc(B.name)}</span><b>Wins</b><span>${A.wins} — ${B.wins}</span><b>Average finish</b><span>${A.afp} — ${B.afp}</span><b>Laps led</b><span>${A.lapsLed} — ${B.lapsLed}</span></div>` : '<div class="muted">They have never raced each other.</div>';
+  }
+  h += '</div>';
+  const al = Object.entries(aliasData || {});
+  h += `<div class="box"><h3>Merge a renamed driver</h3><div class="muted">The old name counts as the new one in every season (the saved races are not changed; removing the merge undoes it).</div>
+    <div class="row"><select id="al-from">${opts()}</select><span>is the same driver as</span><select id="al-to">${opts(d[1] && d[1].name)}</select><button class="primary" id="al-go">Merge</button></div>` +
+    (al.length ? al.map(([from, x]) => `<div class="row"><span>${esc(from)} → <b>${esc(x.name)}</b></span><button class="danger al-rm" data-f="${esc(from)}">Undo</button></div>`).join('') : '') + '</div>';
+  return h;
+}
+
+// rivalries that carry on from race to race (AIMOD's racing intensity & rivals)
+function tabRivals() {
+  const list = state.rivals || [];
+  const lvl = (r) => r.level >= 3 ? 'FEUD L3' : r.level === 2 ? 'FEUD L2' : r.level === 1 ? (r.holder ? 'GRUDGE (#' + esc(r.holder) + ')' : 'RIVALS') : 'settled';
+  let h = '<div class="box"><div class="muted">AIMOD\'s racing intensity &amp; rivals (AIMOD window → Racing intensity &amp; rivals, mode shadow or on): the feuds and grudges of every race that counts are saved here and carried into the next counted race at the level they ended at. A caution that a pair\'s run-in brings out settles it, as in AIMOD.</div></div>';
+  if (!list.length) return h + '<div class="empty">No rivalries yet.</div>';
+  h += '<table><thead><tr><th>Cars</th><th>Drivers</th><th>Now</th><th class="r">Run-ins</th><th class="r">Races</th><th class="r">Settled</th><th class="r">Retaliations</th><th>Last</th><th></th></tr></thead><tbody>';
+  for (const r of list) h += `<tr><td class="b">#${esc(r.a)} vs #${esc(r.b)}</td><td>${esc((r.names || []).filter(Boolean).join(' / '))}</td><td>${lvl(r)}</td><td class="r">${r.runins}</td><td class="r">${r.races}</td><td class="r">${r.settled || ''}</td><td class="r">${r.retaliations || ''}</td><td class="muted">${esc(r.last || '')}${r.lastRace ? ' (race ' + r.lastRace + ')' : ''}</td><td><button class="danger btn-rival-rm" data-k="${esc(r.key)}">Remove</button></td></tr>`;
+  return h + '</tbody></table><div class="row"><button class="danger" id="btn-rivals-clear">Clear all rivalries</button></div>';
+}
+
+function tabRaces() {
+  if (!state.races.length) return '<div class="empty">No races yet.</div>';
+  let h = '<table><thead><tr><th>#</th><th>Track</th><th>Date</th><th>Winner</th><th class="r">Cars</th><th class="r">Stages</th><th class="r">Lead ch.</th><th class="r">Cautions</th><th class="r">Points</th><th>Source</th><th></th></tr></thead><tbody>';
+  state.races.forEach(r => {
+    const s = r.stats || {};
+    h += `<tr class="race-row" data-id="${esc(r.id)}" style="cursor:pointer"><td class="b">${r.n}</td><td>${esc(r.track)}</td><td class="muted">${esc(String(r.date || '').slice(0, 10))}</td><td>${esc(r.winner)}</td><td class="r">${r.cars}</td><td class="r">${r.stages}</td>` +
+      `<td class="r">${s.leadChanges != null ? s.leadChanges : ''}</td><td class="r">${s.cautions != null ? s.cautions + (s.cautionLaps ? ' (' + s.cautionLaps + ' laps)' : '') : ''}</td><td class="r">${r.multiplier !== 1 ? '×' + r.multiplier : ''}</td>` +
+      `<td class="muted">${esc(r.source || 'telemetry')}${r.provisional ? ' (left after flag)' : ''}</td><td><button class="danger btn-rm" data-id="${esc(r.id)}">Remove</button></td></tr>`;
+    if (openRace === r.id && raceCache[r.id]) h += `<tr><td colspan="11">${raceDetail(raceCache[r.id], r)}</td></tr>`;
+  });
+  return h + '</tbody></table>';
+}
+function raceDetail(d, meta) {
+  const e = d.scored.entries;
+  const s = d.race.stats || {};
+  let h = '<div class="box" style="margin:6px 0">';
+  if (d.race.stats) h += `<div class="row muted">${s.leadChanges} lead change${s.leadChanges === 1 ? '' : 's'} among ${s.leaders} leader${s.leaders === 1 ? '' : 's'} · ${s.cautions} caution${s.cautions === 1 ? '' : 's'} for ${s.cautionLaps} lap${s.cautionLaps === 1 ? '' : 's'}${d.race.laps ? ' · ' + d.race.laps + ' laps' : ''}${d.race.fastestLap ? ' · fastest lap ' + Number(d.race.fastestLap).toFixed(3) + ' s' : ''}</div>`;
+  const bonus = (x) => [x.fastestPts ? '+' + x.fastestPts + ' FL' : '', x.ledPts ? '+' + x.ledPts + ' led' : '', x.mostLedPts ? '+' + x.mostLedPts + ' most led' : '', x.polePts ? '+' + x.polePts + ' pole' : '', x.qualPts ? '+' + x.qualPts + ' qual' : ''].filter(Boolean).join(' ');
+  h += '<table><thead><tr><th>Fin</th><th class="r">Start</th><th class="r">+/-</th><th>#</th><th>Driver</th><th class="r">Laps</th><th class="r">Led</th><th class="r">Avg run</th><th class="r">Best lap</th><th class="r">Finish pts</th><th class="r">Stage pts</th><th class="r">Bonus</th><th class="r">Total</th><th>Status</th></tr></thead><tbody>';
+  e.forEach(x => {
+    const g = x.startPos >= 1 ? x.startPos - x.finish : null;
+    h += `<tr><td>${x.finish}</td><td class="r">${x.startPos || ''}</td><td class="r ${g > 0 ? 'up' : g < 0 ? 'down' : ''}">${g == null ? '' : g > 0 ? '+' + g : g}</td><td>${esc(x.number)}</td><td>${esc(x.name)}</td>` +
+      `<td class="r">${x.lapsCompleted != null ? x.lapsCompleted : ''}</td><td class="r">${x.ledLaps || ''}</td><td class="r">${x.avgRun || ''}</td><td class="r">${x.bestLap ? Number(x.bestLap).toFixed(3) : ''}</td>` +
+      `<td class="r">${x.finishPts}</td><td class="r">${x.stagePts || ''}</td><td class="r muted">${bonus(x)}</td><td class="r b">${x.total}</td><td class="muted">${esc(x.status || '')}</td></tr>`;
+  });
+  h += '</tbody></table>';
+  h += `<div class="row"><label>Points for this race</label><select id="sel-mult"><option value="" ${meta.pointsMultiplier == null ? 'selected' : ''}>as the rules say${meta.pointsMultiplier == null && meta.multiplier !== 1 ? ' (×' + meta.multiplier + ')' : ''}</option>` +
+    [0, 0.5, 1, 2, 3].map(m => `<option value="${m}" ${meta.pointsMultiplier === m ? 'selected' : ''}>×${m}${m === 0 ? ' (no points)' : m === 2 ? ' (double points)' : ''}</option>`).join('') + '</select><button id="btn-save-mult">Save</button><span class="muted">Finish points only; bonuses and stage points stay as they are.</span></div>';
+  h += '<div class="row"><label>Fastest-lap bonus to</label><select id="sel-fl"><option value="">(nobody)</option>' + e.map(x => `<option value="${esc(x.key)}" ${d.race.fastestKey === x.key ? 'selected' : ''}>${esc(x.name)}</option>`).join('') + '</select><button id="btn-save-fl">Save</button>' +
+    '<span class="muted">Fix it here if the sim reported a bad fastest lap.</span></div></div>';
+  return h;
+}
+
+function finishPtsOf(r, p) {
+  if (Array.isArray(r.finish.table)) return p <= r.finish.table.length ? r.finish.table[p - 1] : (r.finish.beyond || 0);
+  return p === 1 ? r.finish.win : Math.max(r.finish.floor, r.finish.second - (p - 2) * r.finish.step);
+}
+function tabRules() {
+  const r = state.rules;
+  if (!r) return '';
+  const fp = [1, 2, 3, 4, 5, 6, 8, 10, 20, 30, 36, 43].map(p => `P${p}: ${finishPtsOf(r, p)}`).join(' · ');
+  const fam = (systems.find(s => s.id === r.system) || {}).family || '';
+  const sel = '<select id="sel-system">' + ['nascar', 'indycar', 'f1'].map(f => `<optgroup label="${f === 'nascar' ? 'NASCAR' : f === 'indycar' ? 'IndyCar' : 'Formula One'}">` + systems.filter(s => s.family === f).map(s => `<option value="${esc(s.id)}" ${s.id === r.system ? 'selected' : ''}>${esc(s.name)}</option>`).join('') + '</optgroup>').join('') + '</select>';
+  const note = (systems.find(s => s.id === r.system) || {}).note || '';
+  const extras = [r.lapLedBonus ? `+${r.lapLedBonus} for leading a lap` : '', r.mostLapsLedBonus ? `+${r.mostLapsLedBonus} for leading the most laps` : '', r.poleBonus ? `+${r.poleBonus} for the pole` : '',
+    r.qualPoints ? 'qualifying points by starting position at ' + (/indianap/i.test(r.qualPoints.tracks || '') ? 'the Indy 500' : 'matching tracks') : '',
+    r.doublePoints ? `×${r.doublePoints.multiplier || 2} finish points${r.doublePoints.tracks ? ' at matching tracks' : ''}${r.doublePoints.finale ? ' and the season finale' : ''}` : '',
+    r.dropScores ? (r.dropScores.best ? `only the best ${r.dropScores.best} results count` : 'best ' + r.dropScores.split.map(s => s[1] + ' of ' + s[0]).join(', then ') + ' races count') : ''].filter(Boolean).join(' · ');
+  return `<div class="box"><h3>Points system</h3><div class="row">${sel}<button class="primary" id="btn-system">Use this system</button><span class="muted">Re-scores every race of the season (a backup is kept).</span></div><div class="muted">${esc(note)}</div></div>
+    <div class="box"><h3>Summary</h3><div class="kv">
+    <b>Finish points</b><span>${esc(fp)}</span>
+    <b>Stage points</b><span>${r.stage.length ? esc(r.stage.join(', ')) + ' (top ' + r.stage.length + ', every stage except the last)' : 'none'}</span>
+    <b>Fastest lap</b><span>${r.fastestLapBonus ? '+' + r.fastestLapBonus + ' point' + (r.fastestLapTopN ? ' (top-' + r.fastestLapTopN + ' finishers only)' : '') : 'no bonus'}</span>
+    <b>Other</b><span>${extras || 'none'}</span>
+    <b>Season</b><span>${r.regularSeasonRaces} regular-season races + ${r.chaseRaces} Chase races</span>
+    <b>The Chase</b><span>${r.chase.enabled ? `Top ${r.chase.field} in points; reset to ${r.chase.resetSeeds.join(' / ')} then −${r.chase.resetStep} per seed; no eliminations` : 'disabled'}</span></div></div>
+    <div class="box"><h3>Edit ruleset (JSON)</h3>
+    <textarea class="json" id="rules-json" spellcheck="false"></textarea>
+    <div class="row"><button class="primary" id="btn-rules-save">Save &amp; recompute season</button><button id="btn-rules-reset">Reset to the series' current system</button>
+    <span class="muted">Points are always recomputed from the stored race data, so changing rules re-scores the whole season.</span></div></div>`;
+}
+async function loadRules() {
+  const r = await api.getRuleset(state.season.id);
+  if (r.ok) { rulesDraft = r.ruleset; const ta = $('rules-json'); if (ta) ta.value = JSON.stringify(rulesDraft, null, 2); }
+}
+
+function tabSetup() {
+  const o = state.options;
+  const obs = `http://localhost:${o.port}/widget/season?seasonmode=auto&seasonrows=14&visibilitymode=at_track`;
+  const isActive = state.season.id === activeId;
+  return `<div class="box"><h3>Automatic tracking</h3>
+    <div class="row"><label>Counting races</label><label><input type="checkbox" id="opt-requirearm" ${o.requireArm ? 'checked' : ''}> a race counts only when activated ("Count this race")</label></div>
+    <div class="row"><label>Export race HTML</label><label><input type="checkbox" id="opt-autoexport" ${o.autoExport ? 'checked' : ''}> after every race</label></div>
+    <div class="row"><label>Export folder</label><code>${esc(o.exportDir || '(default: All In One NR2003 data folder → season-exports)')}</code><button id="btn-exportdir">Change…</button></div>
+    <div class="row"><label>Pass statistics</label><label><input type="checkbox" id="opt-passes" ${o.trackPasses ? 'checked' : ''}> estimate green-flag passes (GFP/QP)</label></div>
+    <div class="row"><label>Troubleshooting</label><label><input type="checkbox" id="opt-record" ${o.recordFrames ? 'checked' : ''}> record a telemetry sample (frames-sample.jsonl)</label></div>
+    <div class="row"><label>Data folder</label><button id="btn-datafolder">Open season data folder</button><span class="muted">contains tracker.log, backups and your season files</span></div></div>
+    <div class="box"><h3>Linked overlay series</h3>
+    <div class="row"><label>Auto-activate when</label><select id="opt-link"><option value="">(not linked)</option>${overlaySeries.map(s => `<option value="${esc(s.id)}" ${state.season.linkedSeries === s.id ? 'selected' : ''}>${esc(s.id === 'default' ? s.name : s.id)}</option>`).join('')}</select><span class="muted">is selected in All In One NR2003's Series dropdown</span></div></div>
+    <div class="box"><h3>Season standings overlay</h3>
+    <div class="muted">Enable <b>Season Standings</b> in the Layout Editor to show it over NR2003. For OBS, add a Browser Source with:</div>
+    <div class="row"><code>${esc(obs)}</code><button id="btn-copyobs">Copy</button></div>
+    <div class="muted">Modes: <code>seasonmode=auto|standings|live</code> · rows: <code>seasonrows=5..40</code></div></div>
+    <div class="box"><h3>Import from NR2003 AutoStages</h3>
+    <div class="muted" style="margin-bottom:6px">Bring over an existing AutoStages season. Race result HTML files keep full detail (stage results, laps led…); a SeasonInfo.xml only carries totals.</div>
+    <div class="row"><button id="btn-imp-html">Import race result .html files…</button>
+    <button id="btn-imp-xml" ${state.races.length ? 'disabled title="Only for a season with no races yet"' : ''}>Import SeasonInfo.xml totals…</button></div></div>
+    <div class="box"><h3>Unassigned races</h3><div id="pending-list" class="muted">Loading…</div></div>`;
+}
+async function loadPending() {
+  const el = $('pending-list'); if (!el) return;
+  const list = await api.pendingList();
+  if (!list.length) { el.textContent = 'None — every finished race has been scored.'; return; }
+  el.innerHTML = list.map(p => `<div class="row"><b>${esc(p.track)}</b><span class="muted">${p.cars} cars · winner ${esc(p.winner || '?')} · ${esc(String(p.savedAt).slice(0, 16).replace('T', ' '))} · ${esc(p.why)}</span>` +
+    `<button class="primary btn-assign" data-f="${esc(p.file)}">Add to “${esc(state.season.name)}”</button><button class="danger btn-dismiss" data-f="${esc(p.file)}">Discard</button></div>`).join('');
+  document.querySelectorAll('.btn-assign').forEach(b => b.onclick = async () => { const r = await call(api.pendingAssign({ file: b.dataset.f, id: state.season.id }), 'Race added'); await refresh(); loadPending(); });
+  document.querySelectorAll('.btn-dismiss').forEach(b => b.onclick = async () => { if (confirm('Discard this race result?')) { await api.pendingDismiss(b.dataset.f); await refresh(); loadPending(); } });
+}
+
+function bindTab() {
+  if (tab === 'standings') {
+    $('chk-live') && ($('chk-live').onchange = e => { showLive = e.target.checked; render(); });
+    $('btn-export') && ($('btn-export').onclick = () => call(api.exportHtml(state.season.id), 'Exported — opening folder'));
+  }
+  if (tab === 'races') {
+    document.querySelectorAll('.race-row').forEach(tr => tr.onclick = async ev => {
+      if (ev.target.closest('button')) return;
+      const id = tr.dataset.id;
+      if (openRace === id) { openRace = null; render(); return; }
+      const r = await api.getRace({ id: state.season.id, raceId: id });
+      if (r.ok) { raceCache[id] = r; openRace = id; render(); }
+    });
+    document.querySelectorAll('.btn-rm').forEach(b => b.onclick = async () => {
+      if (!confirm('Remove this race and its points from the season?\n(A backup of the season is kept.)')) return;
+      await call(api.removeRace({ id: state.season.id, raceId: b.dataset.id }), 'Race removed'); openRace = null; await refresh();
+    });
+    $('btn-save-mult') && ($('btn-save-mult').onclick = async () => {
+      const v = $('sel-mult').value;
+      await call(api.updateRace({ id: state.season.id, raceId: openRace, patch: { pointsMultiplier: v === '' ? null : Number(v) } }), 'Saved — season recomputed');
+      raceCache = {}; const r = await api.getRace({ id: state.season.id, raceId: openRace }); if (r.ok) raceCache[openRace] = r; await refresh();
+    });
+    $('btn-save-fl') && ($('btn-save-fl').onclick = async () => {
+      await call(api.updateRace({ id: state.season.id, raceId: openRace, patch: { fastestKey: $('sel-fl').value || null } }), 'Saved');
+      raceCache = {}; const r = await api.getRace({ id: state.season.id, raceId: openRace }); if (r.ok) raceCache[openRace] = r; await refresh();
+    });
+  }
+  if (tab === 'schedule') {
+    const keepBuild = () => {
+      const st = $('sc-style'); if (st) schedBuild.style = st.value;
+      if ($('sc-ref')) schedBuild.ref = $('sc-ref').value;
+      if ($('sc-count')) schedBuild.count = Number($('sc-count').value) || 36;
+      if (document.querySelector('.sc-type')) schedBuild.types = [...document.querySelectorAll('.sc-type')].filter(c => c.checked).map(c => c.value);
+      if ($('sc-repeat')) schedBuild.repeat = $('sc-repeat').checked;
+    };
+    $('sc-style').onchange = () => { keepBuild(); render(); };
+    $('sc-build').onclick = async () => {
+      keepBuild();
+      const r = await call(api.calBuild({ style: schedBuild.style, ref: schedBuild.ref, count: schedBuild.count, types: schedBuild.types, repeat: schedBuild.repeat }));
+      if (r && r.ok) { schedDraft = r.events; schedDraft.name = r.name; const miss = r.events.filter(e => !e.track).length; toast(`${r.events.length} races${miss ? ' - ' + miss + ' need a track' : ''}. Save to keep it.`, !!miss); render(); }
+    };
+    document.querySelectorAll('.sc-f').forEach(el => el.onchange = () => {
+      if (!schedDraft) { schedDraft = JSON.parse(JSON.stringify(state.schedule.events)); schedDraft.name = state.schedule.name; }
+      const e = schedDraft[Number(el.dataset.i)], k = el.dataset.k;
+      if (k === 'stages') e.stages = el.value.split(/[,\s/]+/).map(Number).filter(x => x > 0);
+      else if (k === 'charters') e.charters = el.value.split(/[,;\s/]+/).map(x => x.trim()).filter(Boolean);
+      else if (k === 'laps' || k === 'day' || k === 'month') e[k] = Number(el.value) || 1;
+      else if (k === 'track') { e.track = el.value; const t = schedTracks.find(x => x.dir === el.value); e.trackName = t ? t.name : ''; }
+      else e[k] = el.value;
+      render();
+    });
+    $('sc-save') && ($('sc-save').onclick = async () => {
+      const r = await call(api.calSet({ id: state.season.id, schedule: { events: schedDraft, name: schedDraft.name || (state.schedule && state.schedule.name) || '', series: $('sc-series') ? $('sc-series').value : '', autoArm: $('sc-autoarm') ? $('sc-autoarm').checked : true } }), 'Schedule saved');
+      if (r && r.ok) { schedDraft = null; await refresh(); }
+    });
+    $('sc-discard') && ($('sc-discard').onclick = () => { schedDraft = null; render(); });
+    const saveEntry = async () => { const r = await call(api.setEntry({ id: state.season.id, entry: { lockTop: $('en-top').checked, topN: Number($('en-topn').value) || 35, charters: $('en-charters').value } }), 'Guaranteed starters saved'); if (r && r.ok) await refresh(); };
+    $('en-save') && ($('en-save').onclick = saveEntry);
+    $('en-top') && ($('en-top').onchange = saveEntry);
+    $('en-topn') && ($('en-topn').onchange = saveEntry);
+    $('sc-autoarm') && ($('sc-autoarm').onchange = async e => { if (state.schedule) { await call(api.calSet({ id: state.season.id, schedule: Object.assign({}, state.schedule, { autoArm: e.target.checked }) })); await refresh(); } });
+    $('sc-setup') && ($('sc-setup').onclick = async () => { const r = await call(api.setupNext($('sc-dist').checked)); if (r && r.ok !== false) toast('Set up: stages' + (r.distance ? (r.distance.ok ? ' and race length' : ' (race length: ' + r.distance.error + ')') : '')); });
+    $('sc-export') && ($('sc-export').onclick = async () => { if (schedDraft) return toast('Save the schedule first.', true); const s = $('sc-series').value; if (!confirm(`Write this schedule to NR2003's ${s} season file? (the game's own is kept as a backup)`)) return; const r = await call(api.calExport({ id: state.season.id, series: s })); if (r && r.ok) toast('Written: ' + r.file); });
+    $('sc-import') && ($('sc-import').onclick = async () => { const s = $('sc-series').value; if (state.schedule && !confirm('Replace this season\'s schedule with ' + s + '\'s season file?')) return; const r = await call(api.calImport({ id: state.season.id, series: s }), 'Schedule read from ' + s); if (r && r.ok) { schedDraft = null; await refresh(); } });
+    $('sc-clear') && ($('sc-clear').onclick = async () => { if (!confirm('Remove this season\'s schedule?')) return; await call(api.calSet({ id: state.season.id, schedule: null })); schedDraft = null; await refresh(); });
+  }
+  if (tab === 'career') {
+    $('h2h-go') && ($('h2h-go').onclick = async () => { h2hData = await api.headToHead({ a: $('h2h-a').value, b: $('h2h-b').value }); render(); });
+    $('al-go') && ($('al-go').onclick = async () => {
+      const f = $('al-from').value, t = $('al-to').value;
+      if (!confirm(`Count "${f}" as "${t}" in every season?`)) return;
+      const r = await call(api.aliasSet({ from: f, to: t, name: t }), 'Merged'); if (r && r.ok) { await refresh(); await loadCareer(); }
+    });
+    document.querySelectorAll('.al-rm').forEach(b => b.onclick = async () => { await call(api.aliasRemove(b.dataset.f), 'Merge undone'); await refresh(); await loadCareer(); });
+  }
+  if (tab === 'rivals') {
+    document.querySelectorAll('.btn-rival-rm').forEach(b => b.onclick = async () => { await call(api.rivalRemove({ id: state.season.id, key: b.dataset.k }), 'Rivalry removed'); await refresh(); });
+    $('btn-rivals-clear') && ($('btn-rivals-clear').onclick = async () => { if (confirm('Clear every rivalry of this season?')) { await call(api.rivalsClear(state.season.id), 'Rivalries cleared'); await refresh(); } });
+  }
+  if (tab === 'rules') {
+    loadRules();
+    $('btn-system').onclick = async () => {
+      const id = $('sel-system').value, s = systems.find(x => x.id === id);
+      if (!confirm(`Score "${state.season.name}" with ${s ? s.name : id}? Every race is re-scored (your edits to the ruleset JSON are replaced; a backup is kept).`)) return;
+      await call(api.setSystem({ id: state.season.id, system: id }), 'Points system changed — season recomputed'); await refresh(); loadRules();
+    };
+    $('btn-rules-save').onclick = async () => {
+      let rs; try { rs = JSON.parse($('rules-json').value); } catch (e) { toast('Invalid JSON: ' + e.message, true); return; }
+      await call(api.setRuleset({ id: state.season.id, ruleset: rs }), 'Ruleset saved — season recomputed'); await refresh(); loadRules();
+    };
+    $('btn-rules-reset').onclick = async () => {
+      if (!confirm('Replace this season\'s ruleset with the series\' current points system?')) return;
+      const d = await api.defaultRuleset(state.season.series);
+      if (d.ok) { await call(api.setRuleset({ id: state.season.id, ruleset: d.ruleset }), 'Defaults restored'); await refresh(); loadRules(); }
+    };
+  }
+  if (tab === 'setup') {
+    loadPending();
+    $('opt-link').onchange = async e => { await api.setLinked({ id: state.season.id, linkedSeries: e.target.value }); toast('Link saved'); await loadSeasons(); };
+    $('opt-requirearm').onchange = async e => { await api.setOptions({ requireArm: e.target.checked }); toast(e.target.checked ? 'Races count only when you activate them' : 'Every finished race counts'); await refresh(); };
+    $('opt-autoexport').onchange = e => api.setOptions({ autoExport: e.target.checked });
+    $('opt-passes').onchange = e => api.setOptions({ trackPasses: e.target.checked });
+    $('opt-record').onchange = e => api.setOptions({ recordFrames: e.target.checked });
+    $('btn-exportdir').onclick = async () => { const r = await api.chooseExportDir(); if (r.ok) { toast('Export folder set'); await refresh(); } };
+    $('btn-datafolder').onclick = () => api.openDataFolder();
+    $('btn-copyobs').onclick = () => { const t = [...document.querySelectorAll('code')].find(c => c.textContent.startsWith('http')); navigator.clipboard.writeText(t.textContent); toast('OBS URL copied'); };
+    $('btn-imp-html').onclick = async () => {
+      const r = await api.importHtml(state.season.id);
+      if (r.canceled) return;
+      if (r.errors && r.errors.length) toast(`Imported ${r.imported}. Problems: ${r.errors.join('; ')}`, true); else toast(`Imported ${r.imported} race(s)`);
+      await refresh();
+    };
+    $('btn-imp-xml').onclick = async () => { const r = await call(api.importXml(state.season.id)); if (r && r.ok) toast(`Imported ${r.drivers} drivers, ${r.racesRun} race(s) of totals`); await refresh(); };
+  }
+}
+
+// ── global controls ──────────────────────────────────────────────────────────
+$('chk-enabled').onchange = e => api.setOptions({ enabled: e.target.checked });
+$('btn-arm').onclick = async () => {
+  const on = !(lastStatus && lastStatus.armed);
+  const r = await call(api.arm(on));
+  if (r && r.ok) { try { const s = await api.getState(); paintStatus(s); } catch (_) {} await loadState(); }
+};
+$('btn-create').onclick = async () => {
+  const name = $('new-name').value.trim() || ($('new-series').selectedOptions[0].textContent + ' ' + new Date().getFullYear());
+  const r = await call(api.create({ name, series: $('new-series').value, linkedSeries: $('new-link').value, system: $('new-system').value }), 'Season created');
+  if (r && r.ok) { $('new-name').value = ''; viewId = r.id; await refresh(); }
+};
+$('new-series').onchange = () => { fillSystems(); updateHint(); };
+$('new-system').onchange = updateHint;
+function familyOf(seriesId) { const p = presets.find(x => x.id === seriesId); return (p && p.family) || 'nascar'; }
+function fillSystems() {
+  const fam = familyOf($('new-series').value);
+  const list = systems.filter(s => s.family === fam);
+  const def = fam === 'nascar' ? 'nascar-2026' : fam === 'indycar' ? 'indycar-2023' : 'f1-2025';
+  $('new-system').innerHTML = list.map(s => `<option value="${esc(s.id)}" ${s.id === def ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+}
+function updateHint() {
+  const p = presets.find(x => x.id === $('new-series').value);
+  const s = systems.find(x => x.id === $('new-system').value);
+  const chase = p && p.chaseRaces && s && s.id === 'nascar-2026' ? ` + ${p.chaseRaces}-race Chase (top ${p.chaseField})` : '';
+  $('new-hint').textContent = (p ? `${p.regularSeasonRaces} races${chase}. ` : '') + (s ? s.note : '');
+}
+
+(async function init() {
+  presets = await api.seriesPresets();
+  systems = await api.systems();
+  $('new-series').innerHTML = presets.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  fillSystems();
+  try {
+    overlaySeries = (await window.shl.getSeries()) || [];
+    const cfg = await window.shl.getConfig();
+    $('new-link').innerHTML = '<option value="">Link to overlay series: none</option>' + overlaySeries.map(s => `<option value="${esc(s.id)}" ${cfg.series === s.id && s.id !== 'default' ? 'selected' : ''}>Link to: ${esc(s.id === 'default' ? s.name : s.id)}</option>`).join('');
+  } catch (_) { $('new-link').innerHTML = '<option value="">Link to overlay series: none</option>'; }
+  updateHint();
+  await refresh();
+  connectEvents();
+  try { const s = await api.getState(); paintStatus(s); } catch (_) {}
+})();
+</script>
+</body>
+</html>

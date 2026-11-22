@@ -1,0 +1,16 @@
+# build output and scratch
+dist/
+_tmp/
+_sync*/
+node_modules/
+app_1.0.*/
+backups/
+
+# NR2003's own game exe is not redistributed in this repository
+extra/root/NR2003 game exe/
+
+# local / generated
+__pycache__/
+*.pyc
+*.log
+*.dmp

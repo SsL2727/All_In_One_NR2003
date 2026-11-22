@@ -1,0 +1,45 @@
+CRASHCATCH - crash and freeze reports for NR2003
+=================================================
+
+CrashCatch watches NR2003 while you play and writes down exactly how the game
+ended when it crashes, closes on its own, or freezes. It does not change the
+game: it only watches, the way a debugger does.
+
+USING IT
+  1. Double-click "Start CrashCatch.cmd" in this folder. Windows asks for
+     administrator rights: NR2003 runs as administrator, so CrashCatch has to
+     as well. Accept.
+  2. A window opens: "Waiting for NR2003.exe / NR2003_MS.exe /
+     NR2003_RaceLabV2.exe ...". Leave it open.
+  3. Start NR2003 as usual (with "Launch NR2003" in All In One NR2003).
+     CrashCatch attaches by itself as soon as the game starts.
+  4. Play until the problem happens.
+       - Crash or the game closing: a report is written at once.
+       - Freeze: when the game window has not responded for 8 seconds,
+         the window says "FROZEN" and writes the report while the game is
+         still stuck. Wait for "minidump written" before you close the game.
+  5. Close the CrashCatch window when you are done.
+
+WHERE THE REPORTS GO
+  Documents\NR2003 CrashCatch
+    nr2003-<date>-<time>.txt        how the game ended: the error and where it
+                                    happened, the stack, the last errors before
+                                    it, and every loaded module
+    nr2003-<date>-<time>.dmp        a minidump of the game at that moment
+    nr2003-<date>-<time>-hang.txt   a freeze: every thread's stack
+    nr2003-<date>-<time>-hang.dmp   a minidump taken during the freeze
+
+  When you report a problem, send the .txt file. Send the .dmp too if you are
+  asked for it. Dumps are large (100-200 MB): zip them first.
+
+OPTIONS (for advanced use, from a PowerShell window in this folder)
+  .\catch.ps1 -HangSeconds 15          wait 15 s before a freeze counts
+  .\catch.ps1 -Out "D:\Reports"        save the reports somewhere else
+  .\catch.ps1 -Process NR2003_MS       watch one game EXE name only
+  .\catch.ps1 -Runs 1                  stop after one game session
+
+NOTES
+  - Only one debugger can watch the game at a time. Close other debuggers or
+    crash tools first.
+  - A game EXE with a different name: add it with -Process, for example
+    -Process "NR2003,MyNR2003Build".

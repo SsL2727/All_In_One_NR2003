@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>RaceLab</title>
+<link rel="stylesheet" href="ui.css">
+<style>
+  .hide { display: none !important; }
+  .tabpanel { display: none; } .tabpanel.on { display: block; }
+  .tabs .tab.on { color: var(--text); border-bottom: 2px solid var(--accent-2); }
+  .frow { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; align-items: center; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+  .frow:last-child { border-bottom: 0; }
+  .frow .help { grid-column: 1 / -1; color: var(--dim); font-size: 11px; margin-top: -2px; }
+  .frow input[type=number] { width: 110px; } .frow input[type=text] { width: 110px; }
+  pre.out { font: 12px Consolas, monospace; background: #0b0d11; border: 1px solid var(--line-2); border-radius: 4px; padding: 8px 10px; margin: 8px 0 0; max-height: 260px; overflow: auto; white-space: pre-wrap; }
+  table.tune { border-collapse: collapse; } table.tune td, table.tune th { padding: 3px 10px; text-align: left; } table.tune input { width: 70px; }
+  .career { border: 1px solid var(--line-2); border-radius: 6px; padding: 8px 12px; margin: 0 0 8px; }
+  .career b { display: block; margin-bottom: 4px; } .career div { font-size: 12px; color: var(--dim); }
+</style>
+</head>
+<body>
+<header class="app-header">
+  <h1>🧪 RaceLab</h1>
+  <span class="chip" id="chip-found">—</span>
+  <span class="chip" id="chip-launch">—</span>
+  <span class="grow"></span>
+  <span class="chip" id="chip-active">Not running</span>
+</header>
+<nav class="tabs" id="tabs">
+  <button class="tab on" data-tab="main">RaceLab</button>
+  <button class="tab" data-tab="modules">Modules</button>
+  <button class="tab" data-tab="tires">Tire failures</button>
+  <button class="tab" data-tab="damage">Crash damage</button>
+  <button class="tab" data-tab="traffic">Traffic</button>
+  <button class="tab" data-tab="lines">Racing lines</button>
+  <button class="tab" data-tab="rivals">Allies / rivals</button>
+  <button class="tab" data-tab="career">Career</button>
+  <button class="tab" data-tab="log">Log</button>
+</nav>
+<main class="page narrow">
+
+<section class="tabpanel on" data-panel="main">
+  <div class="card hero"><div class="body stack">
+    <div class="switch-row">
+      <label class="switch"><input type="checkbox" id="rl-on"><span class="knob"></span></label>
+      <div class="txt">
+        <div class="ttl">Launch NR2003 through RaceLab</div>
+        <div class="desc">All In One NR2003's Launch NR2003 starts the game with RaceLab's SpinMod.dll (AI racecraft, tire failures, crash panels or soft body, traffic yield, drafting rows, allies / rivals, Career). The shim, bridge and overlays start as always, and NR2003 Background (if on) attaches to the game as soon as it starts. Starting the game from RaceLab's own window instead loads RaceLab but not All In One NR2003's overlays.</div>
+      </div>
+    </div>
+    <div class="row"><span class="muted">RaceLab folder</span><code id="rl-dir">—</code><button class="btn sm" id="rl-browse">Choose…</button></div>
+    <div class="row"><span class="muted">Game EXE</span><select id="rl-gexe"></select><button class="btn sm" id="rl-check">Validate</button><span class="small" id="rl-check-res"></span></div>
+    <div class="muted small">RaceLab only loads into its own game builds and they must keep their names, so the game then runs as NR2003_RaceLabV2.exe or NR2003_MS.exe. All In One NR2003's mods (Race Control, AIMOD, AI Enhanced, RaceVision, the overlays) find the game under those names too. Pick the build that matches your rend_dxg.dll (RaceLab's Game EXEs\Choosing a game EXE.txt); a build not in the game folder yet is copied there from Game EXEs. Start the game with All In One NR2003's Launch NR2003 so the shim, bridge and overlays start with it.</div>
+    <pre class="out hide" id="rl-check-out"></pre>
+    <div class="row"><span class="muted">Renderer</span><code id="rl-rend">—</code></div>
+    <div class="row"><button class="btn sm" id="rl-rend-switch">Switch to RaceLab's renderer</button><button class="btn sm" id="rl-rend-pick" title="Choose the rend_dxg.dll for this game EXE yourself (it is checked by its SHA-256)">Pick the file…</button><button class="btn sm" id="rl-rend-restore">Restore original</button><span class="small" id="rl-rend-res"></span></div>
+    <div class="muted small">Soft body checks rend_dxg.dll as a pair with the game EXE. Switching backs up your own rend_dxg.dll first (rend_dxg.dll.steelfire-original in the game folder, made once and never overwritten) and Restore original puts it back. Both are checked by SHA-256. Close NR2003 before switching.</div>
+  </div></div>
+
+  <div class="card"><div class="head"><h2>Body damage</h2></div><div class="body stack">
+    <div class="row"><select id="rl-body"></select><button class="btn sm" id="rl-assets" title="Installs the selected mode's body models into the game (a soft-body launch also does this by itself). Close NR2003 first.">Install assets</button><span class="small muted" id="rl-assets-res"></span></div>
+    <div class="muted small">RaceLab panels: detachable panels and wheels for Original Cup, 2003WC_sng, 2005NCS_sng, COT, cup2000, ncts09, nnc, oreilly2026_ultra, truck2026_ultra. A soft-body mode is for one exact installed series: make that series active in NR2003 first (and exit the game normally so it saves), then pick its mode here. Close the game before switching modes.</div>
+  </div></div>
+
+  <div class="card"><div class="head"><h2>All In One NR2003 alongside RaceLab</h2></div><div class="body stack">
+    <div class="small" id="rl-owns"></div>
+    <div class="muted small">While RaceLab runs in the game, All In One NR2003 never steers the same cars twice: with RaceLab's racing lines on, Superspeedway Lines and AI Enhanced's tandem / MultiGroove step aside; with its allies / rivals on, AIMOD's racing intensity and rivals step aside (every driver gets his own aggression back). AIMOD's pit strategy, Race Control, the TV director, the season tracker and the overlays keep running. RaceLab's Career and All In One NR2003's season tracker each keep their own records.</div>
+    <div class="row"><button class="btn sm" id="rl-launcher" title="RaceLab's own window: Schedule Creator, Career, soft-body replays and every setting All In One NR2003 doesn't show">Open RaceLab's launcher</button><button class="btn sm" id="rl-ini">Open SpinMod.ini</button><button class="btn sm" id="rl-folder">Open RaceLab's folder</button></div>
+  </div></div>
+</section>
+
+<section class="tabpanel" data-panel="modules"><div class="card"><div class="body" id="f-modules"></div></div></section>
+<section class="tabpanel" data-panel="tires"><div class="card"><div class="body" id="f-tires"></div></div></section>
+<section class="tabpanel" data-panel="damage">
+  <div class="card"><div class="head"><h2>Panels, wheels and pit repairs</h2></div><div class="body" id="f-damage"></div></div>
+  <div class="card"><div class="head"><h2>Soft body tuning</h2></div><div class="body">
+    <div class="muted small">Each region: contact deformation % (more = more crush) and fastener strength % (more = stays on longer). 100 / 100 is the fitted response; 25-250 each. A front bumper that crumples right but comes off too soon: try 100 / 125. Shared by every soft-body profile (CupPanelTuning.ini); restart the game after changing.</div>
+    <table class="tune"><thead><tr><th>Region</th><th>Deformation %</th><th>Fastener %</th></tr></thead><tbody id="tune"></tbody></table>
+  </div></div>
+</section>
+<section class="tabpanel" data-panel="traffic"><div class="card"><div class="body" id="f-traffic"></div></div></section>
+<section class="tabpanel" data-panel="lines"><div class="card"><div class="body" id="f-lines"></div></div></section>
+<section class="tabpanel" data-panel="rivals"><div class="card"><div class="body" id="f-rivals"></div></div></section>
+<section class="tabpanel" data-panel="career"><div class="card"><div class="head"><h2>RaceLab careers</h2></div><div class="body">
+  <div class="muted small" style="margin-bottom:8px">RaceLab's Career runs in the game (Inbox, Garage, sponsors, money). Its schedules come from RaceLab's Schedule Creator (Open RaceLab's launcher). Saves are in RaceLabCareer beside RaceLab.</div>
+  <div id="careers"></div>
+</div></div></section>
+<section class="tabpanel" data-panel="log"><div class="card"><div class="head"><h2>SpinMod.log (latest)</h2><span class="grow"></span><button class="btn sm" id="rl-log-open">Open the whole log</button></div><div class="body"><pre class="out" id="log" style="max-height:560px"></pre></div></div></section>
+<div class="muted small" style="margin:10px 2px">Settings are written to RaceLab's own files (its launcher shows the same values). They take effect the next time NR2003 starts through RaceLab.</div>
+</main>
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id), RL = window.shl.racelab;
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+let S = null, tab = 'main';
+for (const b of document.querySelectorAll('#tabs .tab')) b.onclick = () => {
+  tab = b.dataset.tab;
+  for (const x of document.querySelectorAll('#tabs .tab')) x.classList.toggle('on', x === b);
+  for (const p of document.querySelectorAll('.tabpanel')) p.classList.toggle('on', p.dataset.panel === tab);
+  if (tab === 'log') loadLog();
+};
+function field(f) {
+  const id = 'f_' + f.sec + '_' + f.key, v = f.value;
+  let input;
+  if (f.kind === 'bool') input = `<label class="switch"><input type="checkbox" id="${id}"${v === '1' ? ' checked' : ''}><span class="knob"></span></label>`;
+  else if (f.kind === 'choice') input = `<select id="${id}">${f.extra.map(o => `<option${o === v ? ' selected' : ''}>${esc(o)}</option>`).join('')}${v != null && !f.extra.includes(v) ? `<option selected>${esc(v)}</option>` : ''}</select>`;
+  else if (f.kind === 'num') input = `<input type="number" id="${id}" min="${f.extra[0]}" max="${f.extra[1]}" step="${f.extra[2]}" value="${esc(v == null ? '' : v)}">`;
+  else input = `<input type="text" id="${id}" value="${esc(v == null ? '' : v)}">`;
+  return `<div class="frow"><span>${esc(f.label)}${v == null ? ' <span class="faint small">(not set: RaceLab default)</span>' : ''}</span><span>${input}</span>${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}</div>`;
+}
+function paintFields(tabName) {
+  const host = $('f-' + tabName), list = S.fields[tabName] || [];
+  if (host.contains(document.activeElement)) return;
+  host.innerHTML = S.found ? list.map(field).join('') : '<span class="muted">Choose RaceLab\'s folder on the RaceLab tab first.</span>';
+  for (const f of list) {
+    const el = $('f_' + f.sec + '_' + f.key);
+    if (!el) continue;
+    el.onchange = async () => { S = await RL.set({ [f.sec + '.' + f.key]: el.type === 'checkbox' ? el.checked : el.value }); paint(); };
+  }
+}
+function paint() {
+  if (!S) return;
+  $('chip-found').textContent = S.found ? 'RaceLab found' : 'RaceLab not found'; $('chip-found').className = 'chip ' + (S.found ? 'ok' : 'warn');
+  $('chip-launch').textContent = S.enabled ? 'Launches with NR2003' : 'Not launched by All In One NR2003'; $('chip-launch').className = 'chip ' + (S.enabled ? 'ok' : '');
+  $('chip-active').textContent = S.active ? 'Running in the game' : 'Not running'; $('chip-active').className = 'chip ' + (S.active ? 'ok' : '');
+  $('rl-on').checked = !!S.enabled; $('rl-on').disabled = !S.found;
+  $('rl-dir').textContent = S.dir || 'not found - choose the folder with SpinModLauncher.exe'; const ge = $('rl-gexe'); ge.innerHTML = `<option value="">${esc(S.exe ? S.exe.split(/[\\/]/).pop() + ' (your NR2003 EXE)' : 'set the game EXE on the main page')}</option>` + (S.gameExes || []).map(x => `<option value="${esc(x.name)}"${x.name === S.gameExe ? ' selected' : ''}>${esc(x.name)}${x.inGame ? '' : ' (copied from Game EXEs)'}</option>`).join(''); ge.value = S.gameExe || ''; paintRenderer();
+  if (S.check) { $('rl-check-res').textContent = S.check.ok ? 'RaceLab supports this EXE' : 'Not supported: RaceLab will not inject'; $('rl-check-res').style.color = S.check.ok ? 'var(--green)' : 'var(--red)'; $('rl-check-out').textContent = S.check.text; $('rl-check-out').classList.remove('hide'); }
+  if (document.activeElement !== $('rl-body')) $('rl-body').innerHTML = S.bodyModes.map(m => `<option${m === S.bodyMode ? ' selected' : ''}>${esc(m)}</option>`).join('');
+  $('rl-owns').innerHTML = !S.active ? 'RaceLab is not running in the game now: All In One NR2003\'s own AI features run as set.'
+    : `RaceLab is running: racing lines <b>${S.owns.lines ? 'RaceLab' : 'All In One NR2003'}</b>, allies / rivals <b>${S.owns.relationships ? 'RaceLab' : 'All In One NR2003 (AIMOD)'}</b>.`;
+  for (const t of ['modules', 'tires', 'damage', 'traffic', 'lines', 'rivals']) paintFields(t);
+  const tb = $('tune');
+  if (!tb.contains(document.activeElement)) {
+    tb.innerHTML = S.regions.map(r => `<tr><td>${esc(r.replace(/_/g, ' '))}</td><td><input type="number" min="25" max="250" data-r="${r}" data-i="0" value="${S.tuning[r][0]}"></td><td><input type="number" min="25" max="250" data-r="${r}" data-i="1" value="${S.tuning[r][1]}"></td></tr>`).join('');
+    for (const el of tb.querySelectorAll('input')) el.onchange = async () => { const pair = S.tuning[el.dataset.r].slice(); pair[+el.dataset.i] = +el.value; S = await RL.setTuning({ [el.dataset.r]: pair }); paint(); };
+  }
+  $('careers').innerHTML = (S.careers || []).map(c => `<div class="career"><b>${esc(c.id)}</b>${c.values.map(([k, v]) => `<div>${esc(k)}: ${esc(v)}</div>`).join('') || '<div>(no summary values)</div>'}<div class="faint">updated ${c.updated ? new Date(c.updated).toLocaleString() : '-'}</div></div>`).join('') || '<span class="muted">No RaceLab careers yet.</span>';
+}
+async function refresh() { S = await RL.state(); paint(); }
+async function loadLog() { $('log').textContent = (await RL.log()).join('\n'); $('log').scrollTop = 1e9; }
+$('rl-on').onchange = async () => { S = await RL.enable($('rl-on').checked); paint(); };
+function paintRenderer() {
+  const r = S.renderer || {}, short = (h) => (h ? h.slice(0, 12) + '…' : 'not found');
+  let t = 'rend_dxg.dll ' + short(r.current) + (r.matches ? ' = RaceLab\'s renderer for ' + r.matches : (r.original ? ' (your original)' : ''));
+  if (!r.gameExe) t += ' · pick a RaceLab game EXE above to switch';
+  else if (r.ok) t += ' · matches ' + r.gameExe;
+  else t += ' · ' + r.gameExe + ' needs ' + short(r.need) + (r.source ? ' (found: ' + r.source.split(/[\\/]/).slice(-3).join('\\') + ')' : ' (not found on this PC: use Pick the file…)');
+  $('rl-rend').textContent = t;
+  $('rl-rend-switch').disabled = !r.gameExe || r.ok || !r.source;
+  $('rl-rend-pick').disabled = !r.gameExe || r.ok;
+  $('rl-rend-restore').disabled = !r.backup || r.original;
+}
+async function rendDo(fn) {
+  $('rl-rend-res').textContent = 'Working…'; $('rl-rend-res').style.color = '';
+  const res = await fn();
+  if (res && res.text) { $('rl-rend-res').textContent = res.text; $('rl-rend-res').style.color = res.ok ? 'var(--green)' : 'var(--red)'; } else $('rl-rend-res').textContent = '';
+  S = await RL.state(); paint();
+}
+$('rl-rend-switch').onclick = () => rendDo(RL.rendererSwitch);
+$('rl-rend-pick').onclick = () => rendDo(RL.rendererPick);
+$('rl-rend-restore').onclick = () => rendDo(RL.rendererRestore);
+$('rl-gexe').onchange = async () => { S = await RL.gameExe($('rl-gexe').value); paint(); };
+$('rl-browse').onclick = async () => { S = await RL.browse(); paint(); };
+$('rl-check').onclick = async () => { $('rl-check-res').textContent = 'Checking…'; await RL.check(); refresh(); };
+$('rl-body').onchange = async () => { S = await RL.set({ bodyMode: $('rl-body').value }); paint(); };
+$('rl-assets').onclick = async () => { $('rl-assets-res').textContent = 'Installing…'; const r = await RL.installAssets(); $('rl-assets-res').textContent = (r.ok ? '' : 'Failed: ') + String(r.text || '').split(/\r?\n/).pop(); };
+$('rl-launcher').onclick = () => RL.openLauncher();
+$('rl-ini').onclick = () => RL.openFile('ini'); $('rl-folder').onclick = () => RL.openFile('folder'); $('rl-log-open').onclick = () => RL.openFile('log');
+refresh(); setInterval(() => { refresh(); if (tab === 'log') loadLog(); }, 3000);
+</script>
+</body>
+</html>

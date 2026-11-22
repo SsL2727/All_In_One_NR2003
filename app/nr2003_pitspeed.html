@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="perf-shim.js"></script>
+<meta charset="utf-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: transparent;
+  overflow: hidden;
+  width: 220px;
+  height: 90px;
+}
+#scale-root {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  opacity: 0;
+  transform-origin: top left;
+  background: #1a1a1a;
+  border-radius: 6px;
+  padding: 8px 12px;
+  width: 220px;
+  height: 90px;
+}
+#sign {
+  background: #fff;
+  border: 4px solid #111;
+  border-radius: 8px;
+  padding: 8px 18px 12px;
+  min-width: 90px;
+  text-align: center;
+  outline: 3px solid #fff;
+  outline-offset: -9px;
+}
+.sign-lbl {
+  font-family: 'Arial Black', Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 900;
+  color: #111;
+  letter-spacing: 1.5px;
+}
+#sign-speed {
+  font-family: 'Arial Black', Arial, sans-serif;
+  font-size: 44px;
+  font-weight: 900;
+  color: #111;
+  line-height: 1;
+  margin-top: 2px;
+}
+#you { text-align: center; min-width: 80px; }
+#you-lbl {
+  font-family: 'Arial Black', Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: #c8a84b;
+  letter-spacing: 1.5px;
+}
+#you-speed {
+  font-family: 'Arial Black', Arial, sans-serif;
+  font-size: 44px;
+  font-weight: 900;
+  color: #fff;
+  line-height: 1;
+  margin-top: 2px;
+}
+</style>
+</head>
+<body>
+<div id="scale-root">
+  <div id="sign">
+    <div class="sign-lbl">LIMIT</div>
+    <div id="sign-speed">--</div>
+  </div>
+  <div id="you">
+    <div id="you-lbl">YOU</div>
+    <div id="you-speed">0</div>
+  </div>
+</div>
+<script>
+var params      = new URLSearchParams(location.search);
+var root        = document.getElementById('scale-root');
+var signSpeed   = document.getElementById('sign-speed');
+var youSpeed    = document.getElementById('you-speed');
+var SCALE       = parseFloat(params.get('scale')   || '1');
+var OPACITY     = parseFloat(params.get('opacity') || '1');
+var ALWAYS_SHOW = params.get('visibilitymode') === 'always';
+var PIT_BEEP    = params.get('pitbeep') !== '0';
+
+root.style.transform = 'scale(' + SCALE + ')';
+document.body.style.width  = Math.round(220 * SCALE) + 'px';
+document.body.style.height = Math.round(90  * SCALE) + 'px';
+
+// Pit beep audio
+var _beepCtx       = null;
+var _beepInterval  = null;
+var _beepPlaying   = false;
+
+function _startBeep() {
+  if (!PIT_BEEP || _beepPlaying) return;
+  _beepPlaying = true;
+  try {
+    _beepCtx = new (window.AudioContext || window.webkitAudioContext)();
+  } catch(x) { return; }
+  _beepInterval = setInterval(function() {
+    if (!_beepCtx) return;
+    var osc  = _beepCtx.createOscillator();
+    var gain = _beepCtx.createGain();
+    osc.connect(gain);
+    gain.connect(_beepCtx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.3, _beepCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, _beepCtx.currentTime + 0.08);
+    osc.start(_beepCtx.currentTime);
+    osc.stop(_beepCtx.currentTime + 0.08);
+  }, 300);
+}
+
+function _stopBeep() {
+  if (!_beepPlaying) return;
+  _beepPlaying = false;
+  if (_beepInterval) { clearInterval(_beepInterval); _beepInterval = null; }
+  if (_beepCtx) { try { _beepCtx.close(); } catch(x){} _beepCtx = null; }
+}
+
+var _preview     = false;
+var _previewTick = 0;
+var _steps       = [43,44,45,46,47,46,45,44,43];
+
+function update(limit, speed) {
+  signSpeed.textContent = limit > 0 ? Math.round(limit) : '--';
+  youSpeed.textContent  = Math.round(speed);
+  youSpeed.style.color  = (limit > 0 && speed > limit) ? '#e84040' : '#fff';
+}
+
+// Layout editor preview
+window.addEventListener('message', function(e) {
+  if (typeof e.data !== 'string') return;
+  try {
+    var d = JSON.parse(e.data);
+    if (d.reset) return;
+    _preview = true;
+    root.style.opacity = OPACITY;
+    update(d.pitSpeedLimit || 45, _steps[_previewTick % _steps.length]);
+    _previewTick++;
+  } catch(x) {}
+});
+
+// Live WebSocket
+function connect() {
+  var host = location.hostname || 'localhost';
+  var ws = new WebSocket('ws://' + host + ':8765');
+  ws.onmessage = function(e) {
+    if (_preview) return;
+    try {
+      var d      = JSON.parse(e.data);
+      var inCar  = !!(d.atTrack && d.player && d.player.inCar !== false);
+      var onPit  = !!d.onPitRoad;
+      var show   = ALWAYS_SHOW || (inCar && onPit);
+      root.style.opacity = show ? OPACITY : 0;
+      if (show) {
+        var limit = d.pitSpeedLimit || 0;
+        var speed = (d.player && d.player.speedMph) || 0;
+        update(limit, speed);
+        if (limit > 0 && speed > limit) { _startBeep(); }
+        else { _stopBeep(); }
+      } else {
+        _stopBeep();
+      }
+    } catch(x) {}
+  };
+  ws.onclose = function() {
+    if (!_preview) setTimeout(connect, 2000);
+  };
+}
+connect();
+</script>
+</body>
+</html>

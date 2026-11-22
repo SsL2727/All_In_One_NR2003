@@ -1,0 +1,7 @@
+{
+  "description": "AI cars burn no fuel.\n\nSets:\n  ai_fuel_use = 0.0\n\nAll other settings unchanged.",
+  "settings": {
+    "ai_fuel_use": 0.0
+  },
+  "auto_keywords": []
+}

@@ -1,0 +1,1641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="stage_shim.js"></script>
+<script src="perf-shim.js"></script>
+<meta charset="UTF-8">
+<title>NR2003 Fox2026</title>
+<!-- Poppins is a Google Font, not a local file like every other font here.
+     Using the CDN link for mockup preview purposes (this sandbox has
+     internet access) — but Electron overlays don't always have reliable
+     internet. Recommend dropping a local Poppins-Regular.ttf into the
+     fonts folder for production, matching how every other font in this
+     project is a local file, then swap this <link> for an @font-face
+     pointing at assetPath('fonts/Poppins-Regular.ttf') like the rest. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400&display=swap" rel="stylesheet">
+<style>
+/* Chase highlight — drivers in the chase get a yellow name background */
+.chase { background: #f5d100 !important; color: #111 !important; text-shadow: none !important;
+         box-shadow: -3px 0 0 #f5d100, 3px 0 0 #f5d100; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  background: transparent;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  font-family: sans-serif;
+}
+
+#app {
+  position: relative;
+  width: 327px;
+  height: 1013px;
+}
+
+#canvas-frame {
+  position: relative;
+  width: 327px;
+  height: 1013px;
+}
+
+#scale-root {
+  position: relative;
+  width: 327px;
+  height: 1013px;
+  transform-origin: top left;
+}
+
+/* ── Layer 1: Sponsors ───────────────────────────────────────────── */
+#sponsor-layer {
+  position: absolute;
+  inset: 0;
+  width: 327px;
+  height: 1013px;
+  pointer-events: none;
+  z-index: 1;
+}
+#sponsor-img, #sponsor-img-next {
+  position: absolute;
+  inset: 0;
+  width: 327px;
+  height: 1013px;
+}
+#sponsor-img-next { opacity: 0; }
+
+/* ── Layer 2: Overlay chrome (overlay.png) ──────────────────────────── */
+#overlay-layer {
+  position: absolute;
+  inset: 0;
+  width: 327px;
+  height: 1013px;
+  pointer-events: none;
+  z-index: 2;
+}
+/* overlay-header / overlay-body are the same overlay.png, each clipped to
+   show only its half — lets us fade the body (standings panel) independently
+   of the header (track name/lap info/flag bar) when there's no data yet,
+   e.g. right after a session-cookie reset. Cut line sits at the thin
+   divider line in the asset itself (~real y187) between the black/navy
+   gradient header and the solid navy body. */
+#overlay-header, #overlay-body {
+  position: absolute;
+  inset: 0;
+  width: 327px;
+  height: 1013px;
+  pointer-events: none;
+}
+#overlay-header { clip-path: inset(0 0 826px 0); }   /* show only 0-187px */
+#overlay-body   { clip-path: inset(187px 0 0 0); }   /* show only 187px-1013px */
+#overlay-body {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+/* ── Header data: flag bar + track name + lap info ──────────────────── */
+#header-data {
+  position: absolute;
+  inset: 0;
+  width: 327px;
+  height: 1013px;
+  z-index: 3;
+  pointer-events: none;
+}
+#flag-bar {
+  position: absolute;
+  display: block;
+}
+#track-name-text {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: #ffffff;
+  white-space: nowrap;
+  line-height: 1;
+}
+/* Non-final stage racing replaces the (centered) track name with "STAGE X"
+   left-aligned and "XX | YY" (or "XX TO GO" past halfway) right-aligned —
+   track-name-text hides, these two show instead. Same top/font as the
+   track name row for visual consistency. */
+#stage-track-left, #stage-track-right {
+  position: absolute;
+  color: #ffffff;
+  white-space: nowrap;
+  line-height: 1;
+  display: none;
+}
+#stage-track-left  { text-align: left; }
+#stage-track-right { text-align: right; }
+#lap-num-text, #laps-togo-text {
+  position: absolute;
+  color: #b9c2cf;
+  white-space: nowrap;
+  line-height: 1;
+}
+/* Replaces LAP X / X TO GO entirely on the final lap — spans the exact
+   same horizontal bounds those two elements normally occupy (lapLeft to
+   togoRight), centered, rather than sitting in its own separate spot. */
+#final-lap-text {
+  position: absolute;
+  text-align: center;
+  color: #ffffff;
+  white-space: nowrap;
+  line-height: 1;
+  display: none;
+}
+
+/* ── Layer 3: Standings ──────────────────────────────────────────── */
+#standings-data {
+  position: absolute;
+  inset: 0;
+  width: 327px;
+  height: 1013px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+/* Green-flag / caution announcement banner — greenanimation.png/
+   yellowanimation.png, same full-canvas asset split into a top black-
+   banner half and a bottom colored-gradient half, exactly like overlay
+   itself. The header half sits above EVERYTHING (covers track name/lap
+   info/flag bar); the body half sits at the same z-index as
+   standings-data but earlier in DOM, so standings text renders on top of
+   it via the z-index tie going to DOM order, while it still sits above
+   overlay-layer. Both start off-canvas to the right and swipe in together. */
+#flag-anim-body {
+  position: absolute;
+  inset: 0;
+  width: 327px;
+  height: 1013px;
+  pointer-events: none;
+  z-index: 3;
+  display: none;
+}
+#flag-anim-header {
+  position: absolute;
+  inset: 0;
+  width: 327px;
+  height: 1013px;
+  pointer-events: none;
+  z-index: 10;
+  display: none;
+}
+/* checkered.webm — covers sponsor + track-name-row only, stopping before
+   the lap-info row so CHECKERED/RESULTS text stays visible in its own
+   space below it, not overlaid on top of moving video. Sits above
+   sponsor-layer(1)/overlay-layer(2)/header-data(3) so it fully covers
+   whatever's normally in that zone. */
+#checkered-video {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 327px;
+  height: var(--checkered-video-h, 145px);
+  object-fit: cover;
+  z-index: 8;
+  display: none;
+  pointer-events: none;
+}
+/* Position/name/gap switch to black for readability against the bright
+   green/yellow background while the banner is visible. */
+#standings-data.flag-anim-active .s-pos,
+#standings-data.flag-anim-active .s-name,
+#standings-data.flag-anim-active .s-gap {
+  color: #000000;
+}
+.s-row {
+  position: absolute;
+  left: 0; right: 0;
+  overflow: hidden;
+}
+/* Position-change swap animation — entire row gets a thin colored outline
+   (green = gaining, red = losing) and its position number is replaced by
+   a double-stacked triangle icon while the row physically slides into its
+   new slot via transform. outline-offset is negative (inset) so overflow:
+   hidden on .s-row doesn't clip it, and z-index lifts the moving rows
+   above whatever they're sliding past. */
+.s-row.swap-gain {
+  outline: 1.5px solid #2ecc40;
+  outline-offset: -1.5px;
+  z-index: 6;
+}
+.s-row.swap-lose {
+  outline: 1.5px solid #e84444;
+  outline-offset: -1.5px;
+  z-index: 5;
+}
+.s-pos {
+  position: absolute;
+  width: var(--pos-w);
+  left: var(--pos-x);
+  text-align: right;
+  white-space: nowrap;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 400;
+  font-size: var(--pos-font);
+  color: #ffffff;
+  transition: color 0.3s ease;
+  top: 50%; transform: translateY(-50%);
+  line-height: 1;
+}
+.s-pos.swap-active .s-pos-num  { display: none; }
+.s-pos.swap-active .s-pos-icon { display: flex; }
+.s-pos-icon {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5px;
+  width: 100%;
+}
+.s-pos-icon .tri { width: 0; height: 0; }
+.s-pos-icon.up .tri {
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-bottom: 6px solid #2ecc40;
+}
+.s-pos-icon.down .tri {
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 6px solid #e84444;
+}
+.s-num-wrap {
+  position: absolute;
+  left: var(--num-x);
+  width: var(--num-w);
+  top: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.s-num-bg {
+  display: flex; align-items: center; justify-content: center;
+  width: var(--num-w);
+  height: var(--num-badge-h, 30px);
+  line-height: 0;
+  /* Reproduces foxnumberbox.png's silhouette (sharp corners, one rounded
+     bottom-right) via plain border-radius rather than image-masking it —
+     mask-image under file:// enforces CORS checks that plain <img src>
+     doesn't, and fails outright there ("origin 'null'" is exactly what a
+     file:// page is treated as). Measured a clean, consistent circular
+     arc on the source PNG, so this reproduces it exactly with zero
+     external resource loading involved at all. */
+  border-radius: 0 0 var(--num-badge-radius, 12px) 0;
+}
+.s-num-img {
+  max-width: 100%;
+  max-height: var(--num-h);
+  width: auto; height: auto;
+  object-fit: contain;
+  display: block;
+}
+.s-num-text {
+  font-family: 'AkhandExtrabold', sans-serif;
+  font-size: var(--num-fallback-font, 15px);
+  color: var(--num-fallback-color, #fbff00);
+  text-align: center;
+  line-height: 1;
+  display: none;
+}
+.s-name {
+  position: absolute;
+  left: var(--name-x);
+  right: var(--name-right);
+  font-family: 'AkhandExtrabold', sans-serif;
+  font-size: var(--name-font);
+  color: #ffffff;
+  transition: color 0.3s ease;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  top: 50%; transform: translateY(-50%);
+  line-height: 1;
+}
+.s-gap {
+  position: absolute;
+  right: var(--gap-right);
+  width: var(--gap-w);
+  text-align: right;
+  font-family: 'AmericaneCondensedRegular', sans-serif;
+  font-size: var(--gap-font);
+  color: #ffffff;
+  transition: color 0.3s ease;
+  top: 50%; transform: translateY(-50%);
+  line-height: 1;
+  white-space: nowrap;
+}
+.s-gap.pq-leader { color: #f5c518; }
+.s-gap-winner-icon {
+  width: var(--winner-icon-size, 28px);
+  height: var(--winner-icon-size, 28px);
+  object-fit: contain;
+  vertical-align: middle;
+}
+
+#rows-bottom {
+  position: absolute;
+  inset: 0;
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="canvas-frame">
+    <div id="scale-root">
+
+      <div id="sponsor-layer">
+        <img id="sponsor-img"      src="" alt="">
+        <img id="sponsor-img-next" src="" alt="">
+      </div>
+
+      <div id="overlay-layer">
+        <img id="overlay-header" src="" alt="">
+        <img id="overlay-body" src="" alt="">
+      </div>
+
+      <img id="flag-anim-body" src="" alt="">
+
+      <div id="header-data">
+        <img id="flag-bar" src="" alt="">
+        <span id="track-name-text"></span>
+        <span id="stage-track-left"></span>
+        <span id="stage-track-right"></span>
+        <span id="lap-num-text"></span>
+        <span id="laps-togo-text"></span>
+        <span id="final-lap-text"></span>
+      </div>
+
+      <div id="standings-data">
+        <!-- Top 10 — fixed slots -->
+        <div class="s-row" id="row-1"></div>
+        <div class="s-row" id="row-2"></div>
+        <div class="s-row" id="row-3"></div>
+        <div class="s-row" id="row-4"></div>
+        <div class="s-row" id="row-5"></div>
+        <div class="s-row" id="row-6"></div>
+        <div class="s-row" id="row-7"></div>
+        <div class="s-row" id="row-8"></div>
+        <div class="s-row" id="row-9"></div>
+        <div class="s-row" id="row-10"></div>
+
+        <!-- Bottom 10 — rotating group (11-20, 21-30, ...) -->
+        <div id="rows-bottom">
+          <div class="s-row" id="row-11"></div>
+          <div class="s-row" id="row-12"></div>
+          <div class="s-row" id="row-13"></div>
+          <div class="s-row" id="row-14"></div>
+          <div class="s-row" id="row-15"></div>
+          <div class="s-row" id="row-16"></div>
+          <div class="s-row" id="row-17"></div>
+          <div class="s-row" id="row-18"></div>
+          <div class="s-row" id="row-19"></div>
+          <div class="s-row" id="row-20"></div>
+        </div>
+      </div>
+
+      <video id="checkered-video" muted loop playsinline></video>
+
+      <img id="flag-anim-header" src="" alt="">
+
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Chase highlight ─────────────────────────────────────────────────────────
+// The main process tells every overlay which car numbers are in the chase
+// (empty list = feature off). Name elements carry data-chase-num; the class
+// is toggled here so it updates instantly, without waiting for a re-render.
+let _CHASE = new Set();
+const chaseKey = n => String(n == null ? '' : n).trim().replace(/"/g, '');
+const chaseCls = n => (_CHASE.size && _CHASE.has(chaseKey(n))) ? ' chase' : '';
+function chaseMark(el, n) {
+  if (!el) return;
+  const k = chaseKey(n);
+  el.dataset.chaseNum = k;
+  el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(k));
+}
+function _chasePass() {
+  document.querySelectorAll('[data-chase-num]').forEach(el =>
+    el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(el.dataset.chaseNum)));
+}
+function _setChase(list) {
+  _CHASE = new Set((Array.isArray(list) ? list : []).map(chaseKey));
+  _chasePass();
+}
+if (window.shl && window.shl.onChaseSet) {
+  window.shl.onChaseSet(_setChase);
+  if (window.shl.getChaseSet) window.shl.getChaseSet().then(_setChase).catch(() => {});
+}
+window.addEventListener('message', e => {      // layout-editor preview
+  if (typeof e.data !== 'string' || e.data.indexOf('"_chase"') < 0) return;
+  try { const m = JSON.parse(e.data); if (Array.isArray(m._chase)) _setChase(m._chase); } catch (x) {}
+});
+// ── PSF bootstrap ─────────────────────────────────────────────────────────
+const psf         = window.__PSF || {};
+const params      = new URLSearchParams(location.search);
+const INSTALL_DIR = psf.installDir || params.get('installdir') || '';
+let SERIES_ID     = psf.series || params.get('series') || 'default';
+let IS_DEFAULT    = !SERIES_ID || SERIES_ID === 'default';
+const WS_URL      = psf.wsUrl || `ws://${location.hostname || 'localhost'}:8765`;
+const HTTP_BASE   = psf.assetBase ? psf.assetBase.replace(/\/assets$/, '') : `http://${location.hostname || 'localhost'}:8766`;
+
+const SCALE   = Math.max(0.1, Math.min(4.0, parseFloat(psf.scale   || params.get('scale')   || '1.0')));
+const OPACITY = Math.max(0.0, Math.min(1.0, parseFloat(psf.opacity || params.get('opacity') || '1.0')));
+let VISIBILITY_MODE     = psf.visibilitymode || params.get('visibilitymode') || 'at_track';
+let SPONSOR_ROTATION_MS = (parseInt(psf.sponsorrotationtime || params.get('sponsorrotationtime') || '10') * 1000) || 10000;
+let customName          = psf.customname ? decodeURIComponent(psf.customname) : (params.get('customname') ? decodeURIComponent(params.get('customname')) : '');
+
+(function applyScaleOpacity() {
+  const root    = document.getElementById('scale-root');
+  const overlay = document.getElementById('overlay-layer');
+  if (root)    root.style.transform    = `scale(${SCALE})`;
+  if (overlay) overlay.style.opacity   = OPACITY;
+})();
+
+function encodeRelPath(rel) {
+  return rel.split('/').map(encodeURIComponent).join('/');
+}
+function assetPath(rel) {
+  if (psf.assetBase) return psf.assetBase + '/' + encodeRelPath(rel);
+  if (INSTALL_DIR) {
+    const enc = INSTALL_DIR.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+    return 'file:///' + enc + '/' + encodeRelPath(rel);
+  }
+  return encodeRelPath(rel);
+}
+
+const FOX_BASE = assetPath('images/Fox2026');
+let NUM_SOURCE_MODE = 'auto';
+
+// ── Font injection ───────────────────────────────────────────────────────
+(function injectFonts() {
+  const fonts = [
+    { family: 'AmericaneCondensedBold',    file: 'AmericaneCondensed-Bold.otf',    fmt: 'opentype', weight: 700, style: 'normal' },
+    { family: 'AmericaneCondensedRegular', file: 'AmericaneCondensed-Regular.otf', fmt: 'opentype', weight: 400, style: 'normal' },
+    { family: 'AkhandExtrabold',           file: 'Akhand_Extrabold.otf',           fmt: 'opentype', weight: 800, style: 'normal' },
+  ];
+  const css = fonts.map(f =>
+    `@font-face { font-family: '${f.family}'; src: url('${assetPath('fonts/' + f.file)}') format('${f.fmt}'); font-weight: ${f.weight}; font-style: ${f.style}; font-display: swap; }`
+  ).join('\n');
+  const el = document.createElement('style');
+  el.textContent = css;
+  document.head.appendChild(el);
+})();
+
+// ── Overlay chrome ────────────────────────────────────────────────────────
+document.getElementById('overlay-header').src = FOX_BASE + '/overlay.png';
+document.getElementById('overlay-body').src   = FOX_BASE + '/overlay.png';
+// flag-bar starts with src="" in the HTML — an empty img src makes the
+// browser try to load the current page itself as an image (triggers a
+// console security warning and does nothing useful). Give it a real
+// default synchronously here, same timing as overlay-img above, rather
+// than waiting for the first WS message to set it via updateFlagBar().
+document.getElementById('flag-bar').src = FOX_BASE + '/flags/green.png';
+// Same empty-src issue applies here — set a real default synchronously
+// even though these stay display:none and off-canvas until triggered,
+// since display:none doesn't stop the browser from attempting to fetch
+// the src attribute itself.
+document.getElementById('flag-anim-header').src = FOX_BASE + '/flags/greenanimation.png';
+document.getElementById('flag-anim-body').src   = FOX_BASE + '/flags/greenanimation.png';
+document.getElementById('checkered-video').src  = FOX_BASE + '/checkered.webm';
+
+// ── Sponsor rotation (same probe/count logic as Prime/Fox2022) ───────────
+let sponsorFiles  = [];
+let sponsorIndex  = 0;
+let _sponsorTimer = null;
+
+async function loadSponsors() {
+  let count = 0;
+  try {
+    const r = await fetch(`${HTTP_BASE}/fox-sponsor-count?base=Fox2026`);
+    if (r.ok) { const j = await r.json(); count = j.count || 0; }
+  } catch (_) {}
+
+  if (count > 0) {
+    sponsorFiles = [];
+    for (let i = 1; i <= count; i++) {
+      sponsorFiles.push(`${FOX_BASE}/sponsors/sponsor${String(i).padStart(2, '0')}.png`);
+    }
+  } else {
+    const probes = [];
+    for (let i = 1; i <= 20; i++) {
+      probes.push(new Promise(res => {
+        const img = new Image();
+        const src = `${FOX_BASE}/sponsors/sponsor${String(i).padStart(2, '0')}.png`;
+        img.onload  = () => res(src);
+        img.onerror = () => res(null);
+        img.src = src;
+      }));
+    }
+    sponsorFiles = (await Promise.all(probes)).filter(Boolean);
+  }
+
+  if (sponsorFiles.length > 0) {
+    document.getElementById('sponsor-img').src = sponsorFiles[0];
+    if (sponsorFiles.length > 1) startSponsorRotation();
+  }
+}
+
+function startSponsorRotation() {
+  if (_sponsorTimer) clearInterval(_sponsorTimer);
+  let curr = document.getElementById('sponsor-img');
+  let next = document.getElementById('sponsor-img-next');
+
+  _sponsorTimer = setInterval(() => {
+    if (sponsorFiles.length < 2) return;
+    sponsorIndex = (sponsorIndex + 1) % sponsorFiles.length;
+    next.src = sponsorFiles[sponsorIndex];
+    next.onload = () => {
+      next.style.transition = 'opacity 0.8s ease-in-out';
+      curr.style.transition = 'opacity 0.8s ease-in-out';
+      next.style.opacity = '1';
+      curr.style.opacity = '0';
+      setTimeout(() => {
+        [curr, next] = [next, curr];
+        next.style.transition = 'none';
+      }, 850);
+    };
+  }, SPONSOR_ROTATION_MS);
+}
+
+// ── Live layout controls ───────────────────────────────────────────────────
+function applyLayout() {
+  const root = document.documentElement.style;
+  root.setProperty('--pos-x',      '5px');
+  root.setProperty('--pos-w',      '20px');
+  root.setProperty('--pos-font',   '20.5px');
+  root.setProperty('--num-x',      '30px');
+  root.setProperty('--num-w',      '34px');
+  root.setProperty('--num-h',      '24px');
+  root.setProperty('--name-x',     '70px');
+  root.setProperty('--name-right', '90px');
+  root.setProperty('--name-font',  '27px');
+  root.setProperty('--gap-right',  '15px');
+  root.setProperty('--gap-w',      '70px');
+  root.setProperty('--gap-font',   '26px');
+  root.setProperty('--winner-icon-size', '28px');
+  root.setProperty('--num-fallback-color', '#fbff00');
+  root.setProperty('--num-fallback-font',  '28.5px');
+  root.setProperty('--num-badge-h', '30px');
+  root.setProperty('--num-badge-radius', '12px');
+  root.setProperty('--checkered-video-h', '145px');
+
+  positionRows();
+}
+
+function positionRows() {
+  const top   = 195;
+  const pitch = 41;
+  const rowh  = 38;
+  for (let i = 0; i < 20; i++) {
+    const el = document.getElementById(`row-${i + 1}`);
+    if (!el) continue;
+    el.style.top    = (top + i * pitch) + 'px';
+    el.style.height = rowh + 'px';
+  }
+}
+
+// Tells the bridge to reload colors.json/rookies.json/names.json for a
+// given series and switch its own _PSF_SERIES to match. Without this,
+// switching SERIES_ID here only ever changes which local numbers.png/
+// headshots folder we read images from — driverColors and the rookie
+// suffix baked into entry.name always reflect whatever _PSF_SERIES the
+// bridge itself is configured with, completely independent of this
+// dropdown, since those come from the bridge's own live payload. This
+// endpoint exists in the bridge already but nothing has called it before
+// (Prime's series dropdown has the same gap — not Fox2026-specific).
+async function reloadSeriesOnBridge(seriesId) {
+  try {
+    await fetch(`http://${location.hostname}:8766/reload-series?series=${encodeURIComponent(seriesId)}`, { method: 'POST' });
+  } catch (_) {
+    // Bridge may not be reachable (e.g. previewing the mockup standalone) — harmless to fail silently.
+  }
+}
+
+const seriesFromUrl = psf.series || params.get('series');
+if (seriesFromUrl) {
+  SERIES_ID = seriesFromUrl;
+}
+reloadSeriesOnBridge(SERIES_ID);
+
+applyLayout();
+
+// ── Number image ────────────────────────────────────────────────────────
+function numImgSrc(num) {
+  if (NUM_SOURCE_MODE === 'chip') return '';
+  const n = (num || '').trim();
+  if (!n || n === '??') return '';
+  if (NUM_SOURCE_MODE === 'auto' && IS_DEFAULT) return '';
+  return assetPath(`series/${SERIES_ID}/numbers/${n}.png`);
+}
+
+// ── Name display ────────────────────────────────────────────────────────
+function displayName(entry) {
+  const raw = entry.name || '?';
+  return raw.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+
+// ── Gap formatting ──────────────────────────────────────────────────────
+function fmtGap(entry, isLeader, session, leaderBest, entryBest) {
+  const lapsDown = entry.lapsDown || 0;
+  const status   = (entry.status || '').toLowerCase();
+  const t        = entry.time || 0;
+  const isPQ     = session === 'practice' || session === 'qualifying' || session === 'testing';
+
+  if (status && status !== 'running') return status.toUpperCase().slice(0, 8);
+  if (isPQ) {
+    const bl = entryBest || 0;
+    if (bl <= 0) return '';
+    return bl.toFixed(3);
+  }
+  if (lapsDown > 0) return `-${lapsDown}L`;
+  if (isLeader) return '—';
+  return t > 0 ? `-${t.toFixed(2)}` : '';
+}
+
+let _driverColors = {};
+
+// ── Build a single row ────────────────────────────────────────────────────
+// Checks the live sessionState directly (not resolveLapInfoOverride) since
+// this needs to be checkable from buildRow/updateGaps without threading a
+// new parameter through their whole call chain — matches the exact same
+// trigger RESULTS text already uses (sessionState === 'cool down').
+function isResultsState() {
+  return !!(_latestData && (_latestData.sessionState || '').toLowerCase() === 'cool down');
+}
+
+function winnerIconHTML(mode) {
+  const file = mode === 'stage' ? 'stagefinish.png' : 'checkeredfinish.png';
+  return `<img class="s-gap-winner-icon" src="${assetPath('images/Fox2026/' + file)}" alt="Winner">`;
+}
+
+// Which winner-icon (if any) applies to this specific car — 'stage' takes
+// priority since stage-results and race-results are mutually exclusive in
+// time anyway (stage-results only mid-race, race-results only at the end).
+function resolveGapIconMode(entry, displayPos) {
+  if (_stageResultsActive && entry.carIdx === _stageWinnerCarIdx) return 'stage';
+  if (displayPos === 1 && isResultsState()) return 'race';
+  return null;
+}
+
+// ── Stage results (checkered.webm's stage-racing equivalent) ──────────────
+// Same proven pattern as Prime: wait for the bridge's CONFIRMED stageWinners
+// data (not just whoever's currently leading) before showing anything, then
+// hold for a fixed number of laps from when it actually started showing —
+// regardless of whether a caution comes out during that window, per
+// Johnathon's request. Much simpler than Prime overall since there's no
+// per-car finisher-card reveal here — just the video + one winner icon.
+let _stageResultsActive      = false;
+let _stageResultsForStage    = -1;
+let _stageResultsShownAtLap  = -1;
+let _stageResultsHoldExpired = false;
+let _stageWinnerCarIdx       = -1;
+const STAGE_RESULTS_HOLD_LAPS = 1;
+
+function checkStageResultsFox(d) {
+  const bridgeActive = !!d.stageCompleteActive;
+  const stageNum      = d.stageCompleteNum || 0;
+  const curLap         = d.lapsComplete || 0;
+
+  if (bridgeActive && stageNum !== _stageResultsForStage) {
+    _stageResultsForStage    = stageNum;
+    _stageResultsShownAtLap  = -1;
+    _stageResultsHoldExpired = false;
+    _stageWinnerCarIdx       = -1;
+    _stageResultsActive      = false;
+  }
+  if (!bridgeActive) {
+    _stageResultsForStage   = -1;
+    _stageResultsActive     = false;
+    _stageResultsShownAtLap = -1;
+    return;
+  }
+
+  if (_stageResultsHoldExpired) return;
+
+  if (!_stageResultsActive) {
+    const winners = (d.stageWinners || []).filter(w => w && w.stage === _stageResultsForStage);
+    const winnerEntry = winners.find(w => w.pos === 1);
+    if (!winnerEntry) return; // not confirmed yet — keep showing normal behavior until it is
+    _stageWinnerCarIdx      = winnerEntry.carIdx;
+    _stageResultsActive     = true;
+    _stageResultsShownAtLap = curLap;
+  }
+
+  if (_stageResultsShownAtLap >= 0 && curLap > _stageResultsShownAtLap + STAGE_RESULTS_HOLD_LAPS) {
+    _stageResultsActive     = false;
+    _stageResultsHoldExpired = true;
+  }
+}
+
+function buildRow(el, entry, displayPos, session, playerCarIdx, leaderBest, lapTracker) {
+  if (!entry) { el.innerHTML = ''; el.className = 's-row'; return; }
+
+  const isPlayer = entry.carIdx === playerCarIdx;
+  el.className   = 's-row' + (isPlayer ? ' is-player' : '');
+
+  const isLeader  = displayPos === 1;
+  const entryBest = (lapTracker && lapTracker[entry.carIdx]?.bestLap) || 0;
+  // Winner's normal "—" gets replaced with checkeredfinish.png/
+  // stagefinish.png once race/stage results are official — everyone
+  // else's gap is unaffected.
+  const iconMode = resolveGapIconMode(entry, displayPos);
+  const gap = iconMode
+    ? winnerIconHTML(iconMode)
+    : fmtGap(entry, isLeader, session, leaderBest, entryBest);
+  const numSrc    = numImgSrc(entry.number);
+  const name      = displayName(entry);
+
+  const numColor = _driverColors[(entry.number || '').trim()] || '';
+  const numBg    = numColor ? `background:${numColor}` : '';
+  const numHtml = numSrc
+    ? `<div class="s-num-wrap"><div class="s-num-bg" style="${numBg}">
+         <img class="s-num-img" src="${numSrc}"
+              onerror="this.style.display='none';this.nextElementSibling.style.display='block';" alt="${entry.number}">
+         <span class="s-num-text">${entry.number || ''}</span>
+       </div></div>`
+    : `<div class="s-num-wrap"><div class="s-num-bg" style="${numBg}"><span class="s-num-text" style="display:block">${entry.number || ''}</span></div></div>`;
+
+  el.innerHTML = `
+    <span class="s-pos">
+      <span class="s-pos-num">${displayPos}</span>
+      <span class="s-pos-icon"><span class="tri"></span><span class="tri"></span></span>
+    </span>
+    ${numHtml}
+    <span class="s-name${chaseCls(entry.number)}" data-chase-num="${chaseKey(entry.number)}">${name}</span>
+    <span class="s-gap">${gap}</span>
+  `;
+  el.dataset.caridx = entry.carIdx;
+}
+
+// ── Position-swap animation (shared by top-10 and the rotating group) ────
+// Decomposes any reordering into a sequence of adjacent-position swaps via
+// insertion sort — this naturally handles both a simple one-for-one pass
+// AND a multi-position jump (car passes several others at once), chaining
+// through each adjacent swap in turn rather than trying to animate an
+// arbitrary jump directly.
+let _animatingRows = new Set(); // row numbers (1-indexed) currently mid swap-animation
+
+function computeSwapChain(oldOrder, newOrder) {
+  const working = oldOrder.slice();
+  const swaps = [];
+  for (let targetIdx = 0; targetIdx < newOrder.length; targetIdx++) {
+    const carIdx = newOrder[targetIdx];
+    let curIdx = working.indexOf(carIdx);
+    if (curIdx === -1) continue; // wasn't visible before (e.g. just promoted from the bottom group) — no swap animation, it just appears
+    while (curIdx > targetIdx) {
+      const otherCarIdx = working[curIdx - 1];
+      swaps.push({ moverCarIdx: carIdx, displacedCarIdx: otherCarIdx, toIndex: curIdx - 1 });
+      const tmp = working[curIdx - 1];
+      working[curIdx - 1] = working[curIdx];
+      working[curIdx] = tmp;
+      curIdx--;
+    }
+  }
+  return swaps;
+}
+
+function markSwapState(rowEl, kind) {
+  rowEl.classList.add(kind === 'gain' ? 'swap-gain' : 'swap-lose');
+  const posEl = rowEl.querySelector('.s-pos');
+  if (!posEl) return;
+  posEl.classList.add('swap-active');
+  const icon = posEl.querySelector('.s-pos-icon');
+  if (icon) icon.className = 's-pos-icon ' + (kind === 'gain' ? 'up' : 'down');
+}
+function clearSwapState(rowEl) {
+  rowEl.classList.remove('swap-gain', 'swap-lose');
+  const posEl = rowEl.querySelector('.s-pos');
+  if (posEl) posEl.classList.remove('swap-active');
+}
+
+// Groups consecutive swaps that share the same mover into one sequential
+// chain (a multi-position climb), while independent movers elsewhere in
+// the field animate concurrently since they never touch the same rows.
+function animateSwapChain(chain, domRowOffset, posLabelOffset, standings, session, playerCarIdx, lapTracker) {
+  const groups = [];
+  for (const swap of chain) {
+    const last = groups[groups.length - 1];
+    if (last && last[0].moverCarIdx === swap.moverCarIdx) last.push(swap);
+    else groups.push([swap]);
+  }
+  groups.forEach(group => runSwapGroup(group, 0, domRowOffset, posLabelOffset, standings, session, playerCarIdx, lapTracker));
+}
+
+function runSwapGroup(group, stepIdx, domRowOffset, posLabelOffset, standings, session, playerCarIdx, lapTracker) {
+  if (stepIdx >= group.length) return;
+  const swap = group[stepIdx];
+  const rowNumTop    = domRowOffset + swap.toIndex + 1;  // which DOM row-N element — fixed slots 1-10 or 11-20
+  const rowNumBottom = domRowOffset + swap.toIndex + 2;
+  const posTop    = posLabelOffset + swap.toIndex + 1;   // displayed position number — accounts for rotation's groupStart too
+  const posBottom = posLabelOffset + swap.toIndex + 2;
+
+  const rowTop    = document.getElementById(`row-${rowNumTop}`);
+  const rowBottom = document.getElementById(`row-${rowNumBottom}`);
+  if (!rowTop || !rowBottom) return;
+  if (_animatingRows.has(rowNumTop) || _animatingRows.has(rowNumBottom)) return; // safety net against overlap
+
+  _animatingRows.add(rowNumTop);
+  _animatingRows.add(rowNumBottom);
+
+  const pitch = 41;
+  const durMs = parseFloat(600) || 450;
+  const startGen = _sessionGen; // invalidates this callback if a session change happens mid-animation
+
+  // rowTop currently shows the car about to be passed (loses the spot);
+  // rowBottom currently shows the car passing it (gains the spot).
+  markSwapState(rowTop, 'lose');
+  markSwapState(rowBottom, 'gain');
+
+  rowTop.style.transition    = `transform ${durMs}ms ease`;
+  rowBottom.style.transition = `transform ${durMs}ms ease`;
+  void rowTop.offsetWidth; // force reflow so the transition starts clean
+  rowTop.style.transform    = `translateY(${pitch}px)`;
+  rowBottom.style.transform = `translateY(-${pitch}px)`;
+
+  setTimeout(() => {
+    _animatingRows.delete(rowNumTop);
+    _animatingRows.delete(rowNumBottom);
+    if (startGen !== _sessionGen) return; // a session change happened mid-animation — checkSessionChange already reset these rows, don't overwrite with stale data
+
+    // Snap content into place and reset transforms simultaneously — the
+    // row's actual slot content now matches where the animation visually
+    // left it, so there's no visible jump.
+    rowTop.style.transition = 'none';
+    rowBottom.style.transition = 'none';
+    rowTop.style.transform = '';
+    rowBottom.style.transform = '';
+    clearSwapState(rowTop);
+    clearSwapState(rowBottom);
+
+    const moverEntry     = standings.find(s => s.carIdx === swap.moverCarIdx);
+    const displacedEntry = standings.find(s => s.carIdx === swap.displacedCarIdx);
+    const leaderBest = (lapTracker && lapTracker[standings[0]?.carIdx]?.bestLap) || 0;
+    if (moverEntry)     buildRow(rowTop, moverEntry, posTop, session, playerCarIdx, leaderBest, lapTracker);
+    if (displacedEntry) buildRow(rowBottom, displacedEntry, posBottom, session, playerCarIdx, leaderBest, lapTracker);
+
+    runSwapGroup(group, stepIdx + 1, domRowOffset, posLabelOffset, standings, session, playerCarIdx, lapTracker);
+  }, durMs);
+}
+
+// ── Bottom-half rotation (11-20, 21-30, ... same cadence as Prime) ───────
+let _rotGroupIdx = 0;
+let _rotTimer    = null;
+const BOTTOM_GROUP_SIZE = 10;
+let _prevBottomOrder    = [];
+let _prevBottomGroupIdx = -1;
+
+function renderBottom(standings, session, playerCarIdx, lapTracker) {
+  const rest       = standings.slice(10);
+  const groupStart = _rotGroupIdx * BOTTOM_GROUP_SIZE;
+  const leaderBest = (lapTracker && lapTracker[standings[0]?.carIdx]?.bestLap) || 0;
+
+  const slice = [];
+  for (let i = 0; i < BOTTOM_GROUP_SIZE; i++) slice.push(rest[groupStart + i] || null);
+  const newOrder = slice.filter(e => e).map(e => e.carIdx);
+
+  // Only detect swaps within the SAME rotation window — a window change
+  // (rotation cascade to a different set of 10 cars) is a completely
+  // different, already-existing animation, not this swap detection.
+  const sameWindow = _prevBottomGroupIdx === _rotGroupIdx;
+  const oldOrder = sameWindow ? _prevBottomOrder.slice() : [];
+  const chain = oldOrder.length > 0 ? computeSwapChain(oldOrder, newOrder) : [];
+  const animatedRowNums = new Set();
+  chain.forEach(s => { animatedRowNums.add(10 + s.toIndex + 1); animatedRowNums.add(10 + s.toIndex + 2); });
+
+  for (let i = 0; i < BOTTOM_GROUP_SIZE; i++) {
+    const rowNum = 11 + i;
+    if (animatedRowNums.has(rowNum)) continue;
+    const rowEl  = document.getElementById(`row-${rowNum}`);
+    const entry  = slice[i];
+    const absPos = entry ? (11 + groupStart + i) : null;
+    buildRow(rowEl, entry, absPos, session, playerCarIdx, leaderBest, lapTracker);
+  }
+
+  _prevBottomOrder    = newOrder;
+  _prevBottomGroupIdx = _rotGroupIdx;
+  if (chain.length) animateSwapChain(chain, 10, 10 + groupStart, standings, session, playerCarIdx, lapTracker);
+}
+
+function startRotation() {
+  if (_rotTimer) clearInterval(_rotTimer);
+  const rotMs = parseFloat(10) * 1000;
+  _rotTimer = setInterval(runRotation, rotMs);
+}
+
+function runRotation() {
+  if (!_latestData) return;
+  const src  = getStandings(_latestData);
+  const rest = src.slice(10);
+  if (rest.length <= BOTTOM_GROUP_SIZE) return;
+
+  const sess     = (_latestData.session || '').toLowerCase();
+  const pid      = _latestData.playerCarIdx ?? -1;
+  const maxGroup = Math.ceil(rest.length / BOTTOM_GROUP_SIZE);
+
+  const fadeMs    = parseInt(350, 10);
+  const slideMs   = parseInt(550, 10);
+  const slidePx   = parseInt(16, 10);
+  const staggerMs = parseInt(30, 10);
+
+  const rows = [];
+  for (let i = 0; i < BOTTOM_GROUP_SIZE; i++) rows.push(document.getElementById(`row-${11 + i}`));
+
+  rows.forEach((el, i) => {
+    if (!el) return;
+    el.style.transition = `opacity ${fadeMs}ms ease ${i * staggerMs}ms`;
+    el.style.opacity = '0';
+  });
+
+  const fadeTotal = fadeMs + (BOTTOM_GROUP_SIZE - 1) * staggerMs;
+
+  setTimeout(() => {
+    _rotGroupIdx = (_rotGroupIdx + 1) % maxGroup;
+    renderBottom(src, sess, pid, _latestData.lapTracker || {});
+
+    rows.forEach(el => {
+      if (!el) return;
+      el.style.transition = 'none';
+      el.style.opacity    = '0';
+      el.style.transform  = `translateY(-${slidePx}px)`;
+    });
+    if (rows[0]) void rows[0].offsetWidth;
+
+    requestAnimationFrame(() => {
+      rows.forEach((el, i) => {
+        if (!el) return;
+        const delay = i * staggerMs;
+        el.style.transition = `opacity ${slideMs}ms ease-out ${delay}ms, transform ${slideMs}ms cubic-bezier(0.22, 1, 0.36, 1) ${delay}ms`;
+        el.style.opacity    = '1';
+        el.style.transform  = 'translateY(0)';
+      });
+    });
+  }, fadeTotal);
+}
+
+// ── Standings source selection ────────────────────────────────────────────
+// Same priority chain as Prime — checkered prefers computedStandings
+// (a bridge-frozen snapshot) over raw live gaps, which go erratic once
+// cars are just cruising rather than actually racing; cooldown/gridding/
+// pacing prefer plain official standings.
+function getStandings(d) {
+  const isPQ  = ['practice', 'qualifying', 'testing'].includes((d.session || '').toLowerCase());
+  const state = (d.sessionState || '').toLowerCase();
+  const liveEnabled = d.liveStandingsEnabled !== false;
+
+  if (isPQ) return d.standings || [];
+  if (state === 'cool down' || state === 'get in car' || state === 'warmup' || state === 'parade laps') {
+    return d.standings || [];
+  }
+  if (state === 'checkered' && liveEnabled && Array.isArray(d.computedStandings) && d.computedStandings.length) {
+    return d.computedStandings;
+  }
+  const live = d.liveStandings || d.standings || [];
+  return (liveEnabled && live.length) ? live : (d.standings || []);
+}
+
+// ── Position-change tracking ─────────────────────────────────────────────
+let _prevOrder = [];
+
+function renderStandings(standings, session, playerCarIdx, lapTracker) {
+  const top10 = standings.slice(0, 10);
+  const oldOrder = _prevOrder.slice();
+  const newOrder = top10.map(s => s.carIdx);
+  const leaderBest = (lapTracker && lapTracker[standings[0]?.carIdx]?.bestLap) || 0;
+
+  const chain = oldOrder.length > 0 ? computeSwapChain(oldOrder, newOrder) : [];
+  const animatedRowNums = new Set();
+  chain.forEach(s => { animatedRowNums.add(s.toIndex + 1); animatedRowNums.add(s.toIndex + 2); });
+
+  top10.forEach((entry, i) => {
+    const rowNum = i + 1;
+    if (animatedRowNums.has(rowNum)) return; // handled by the swap animation instead
+    const el = document.getElementById(`row-${rowNum}`);
+    buildRow(el, entry, rowNum, session, playerCarIdx, leaderBest, lapTracker);
+  });
+  for (let i = top10.length; i < 10; i++) {
+    const rowNum = i + 1;
+    if (animatedRowNums.has(rowNum)) continue;
+    const el = document.getElementById(`row-${rowNum}`);
+    el.innerHTML = ''; el.className = 's-row'; el.dataset.caridx = '';
+  }
+
+  _prevOrder = newOrder;
+  if (chain.length) animateSwapChain(chain, 0, 0, standings, session, playerCarIdx, lapTracker);
+  renderBottom(standings, session, playerCarIdx, lapTracker);
+}
+
+// ── Fast gap update — no DOM rebuild, runs every tick ─────────────────────
+function updateGaps(standings, session, lapTracker) {
+  const leaderBest = (lapTracker && lapTracker[standings[0]?.carIdx]?.bestLap) || 0;
+  const isPQ = ['practice', 'qualifying', 'testing'].includes((session || '').toLowerCase());
+  standings.slice(0, 10).forEach((entry, i) => {
+    const rowNum = i + 1;
+    if (_animatingRows.has(rowNum)) return; // mid swap-animation — don't touch it
+    const el  = document.getElementById(`row-${rowNum}`);
+    const gapEl = el?.querySelector('.s-gap');
+    if (!gapEl) return;
+    const iconMode = resolveGapIconMode(entry, rowNum);
+    if (iconMode) {
+      gapEl.innerHTML = winnerIconHTML(iconMode);
+      return;
+    }
+    const entryBest = (lapTracker && lapTracker[entry.carIdx]?.bestLap) || 0;
+    gapEl.textContent = fmtGap(entry, i === 0, session, leaderBest, entryBest);
+    gapEl.classList.toggle('pq-leader', i === 0 && isPQ);
+  });
+
+  const rest       = standings.slice(10);
+  const groupStart = _rotGroupIdx * BOTTOM_GROUP_SIZE;
+  for (let i = 0; i < BOTTOM_GROUP_SIZE; i++) {
+    const rowNum = 11 + i;
+    if (_animatingRows.has(rowNum)) continue; // mid swap-animation — don't touch it
+    const el    = document.getElementById(`row-${rowNum}`);
+    const entry = rest[groupStart + i];
+    const gapEl = el?.querySelector('.s-gap');
+    if (!gapEl || !entry) continue;
+    const entryBest = (lapTracker && lapTracker[entry.carIdx]?.bestLap) || 0;
+    gapEl.textContent = fmtGap(entry, false, session, leaderBest, entryBest);
+    gapEl.classList.remove('pq-leader');
+  }
+}
+
+// ── Flag bar (green/white/yellow/checkered) ───────────────────────────────
+// Same mapping approach as Prime's flag-state system, simplified for now —
+// no caution/results overlays yet, just the four base flag images swapped
+// based on sessionFlag/sessionState.
+// Same trigger Prime/Fox2022 use for the white-flag icon — sessionFlag
+// never actually carries a 'white' value (only 'green'|'yellow'|'red' per
+// the payload spec), so final-lap has to be derived, not read directly.
+function isFinalLap(d) {
+  const state = (d.sessionState || '').toLowerCase();
+  if (state !== 'racing') return false;
+  const lapsComplete  = d.lapsComplete || 0;
+  const lapsTotal     = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  const lapsRemaining = (d.lapsRemaining !== undefined) ? d.lapsRemaining : Math.max(0, lapsTotal - lapsComplete);
+  return lapsRemaining === 1;
+}
+
+// ── Green-flag / caution announcement banner ──────────────────────────────
+// Fires on specific EDGE transitions, not sustained states — the initial
+// green after pacing, any restart (yellow -> green), and whenever caution
+// first comes out (anything -> yellow). Race sessions only.
+function resolveFlagCategory(d) {
+  const session = (d.session || '').toLowerCase();
+  if (session !== 'race') return 'other';
+  const state = (d.sessionState || '').toLowerCase();
+  const flag  = (d.sessionFlag  || '').toLowerCase();
+  if (state === 'get in car') return 'gridding';
+  if (state === 'warmup' || state === 'parade laps') return 'pacing';
+  if (state === 'checkered') return 'checkered';
+  if (state === 'cool down') return 'cooldown';
+  if (flag === 'yellow') return 'yellow';
+  return 'green';
+}
+
+let _prevFlagCategory = null;
+let _flagAnimTimers = [];
+
+// Deferred separately from the immediate green/yellow triggers below —
+// the bridge throws caution the instant the stage-ending leader crosses,
+// but confirmed stageWinners data (and therefore _stageResultsActive)
+// doesn't arrive until several seconds later. Firing the caution banner
+// immediately would show it BEFORE stage results, which is backwards —
+// so when a caution coincides with stageCompleteActive, hold it until
+// the stage-results cycle has actually resolved.
+let _pendingYellowBanner = false;
+
+function checkFlagAnnouncement(d) {
+  const cat = resolveFlagCategory(d);
+  if (_prevFlagCategory !== null && cat !== _prevFlagCategory) {
+    const enteringGreen  = cat === 'green'  && (_prevFlagCategory === 'yellow' || _prevFlagCategory === 'pacing' || _prevFlagCategory === 'gridding');
+    const enteringYellow = cat === 'yellow' && _prevFlagCategory !== 'yellow';
+    if (enteringGreen) triggerFlagAnimation('green');
+    else if (enteringYellow) {
+      if (d.stageCompleteActive) {
+        _pendingYellowBanner = true; // this caution is (likely) stage-ending — stage results show first
+      } else {
+        triggerFlagAnimation('yellow');
+      }
+    }
+  }
+  _prevFlagCategory = cat;
+
+  // Fire the deferred banner once the stage-results cycle has resolved —
+  // either it showed and its hold expired, or stageCompleteActive ended
+  // without ever confirming (fallback so this can't get stuck forever).
+  if (_pendingYellowBanner && (_stageResultsHoldExpired || !d.stageCompleteActive)) {
+    _pendingYellowBanner = false;
+    triggerFlagAnimation('yellow');
+  }
+}
+
+// Wipe-reveal rather than translate — the image itself never moves or
+// extends past the canvas bounds; only how much of it is currently
+// visible changes, animating the clip-path's LEFT-inset from fully
+// clipped (327px, nothing shown) down to 0 (fully shown), with the right
+// side held at 0 throughout. That anchors the visible region at the
+// canvas's right edge and grows it leftward as the left-inset shrinks —
+// a right-to-left reveal. header/body keep their own fixed top/bottom
+// clip (splitting the asset the same way overlay.png is split) — only
+// the left-inset value is what's actually animated.
+const FLAG_ANIM_HEADER_CLIP_TOP = 0;
+const FLAG_ANIM_HEADER_CLIP_BOTTOM = 826;
+const FLAG_ANIM_BODY_CLIP_TOP = 187;
+const FLAG_ANIM_BODY_CLIP_BOTTOM = 0;
+
+function triggerFlagAnimation(kind) {
+  _flagAnimTimers.forEach(t => clearTimeout(t));
+  _flagAnimTimers = [];
+
+  const headerEl = document.getElementById('flag-anim-header');
+  const bodyEl   = document.getElementById('flag-anim-body');
+  const src = `${FOX_BASE}/flags/${kind}animation.png`;
+  headerEl.src = src;
+  bodyEl.src   = src;
+
+  const swipeMs = parseFloat(500) || 500;
+  const holdMs  = parseFloat(4000)  || 4000;
+  const fadeMs  = parseFloat(700)  || 700;
+  const startGen = _sessionGen;
+
+  headerEl.style.display = 'block';
+  bodyEl.style.display   = 'block';
+  headerEl.style.opacity = '1';
+  bodyEl.style.opacity   = '1';
+  headerEl.style.transition = 'none';
+  bodyEl.style.transition   = 'none';
+  headerEl.style.clipPath = `inset(${FLAG_ANIM_HEADER_CLIP_TOP}px 0 ${FLAG_ANIM_HEADER_CLIP_BOTTOM}px 327px)`;
+  bodyEl.style.clipPath   = `inset(${FLAG_ANIM_BODY_CLIP_TOP}px 0 ${FLAG_ANIM_BODY_CLIP_BOTTOM}px 327px)`;
+  document.getElementById('standings-data').classList.add('flag-anim-active');
+  void headerEl.offsetWidth; // force reflow so the reveal transition starts clean
+
+  headerEl.style.transition = `clip-path ${swipeMs}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+  bodyEl.style.transition   = `clip-path ${swipeMs}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+  headerEl.style.clipPath = `inset(${FLAG_ANIM_HEADER_CLIP_TOP}px 0 ${FLAG_ANIM_HEADER_CLIP_BOTTOM}px 0)`;
+  bodyEl.style.clipPath   = `inset(${FLAG_ANIM_BODY_CLIP_TOP}px 0 ${FLAG_ANIM_BODY_CLIP_BOTTOM}px 0)`;
+
+  const t1 = setTimeout(() => {
+    if (startGen !== _sessionGen) return;
+    [headerEl, bodyEl].forEach(el => {
+      el.style.transition = `opacity ${fadeMs}ms ease`;
+      el.style.opacity    = '0';
+    });
+    // Switch text color back the moment the background starts fading,
+    // not after it's fully gone — otherwise there's a window where the
+    // background's already invisible but the text is still black.
+    document.getElementById('standings-data').classList.remove('flag-anim-active');
+    const t2 = setTimeout(() => {
+      if (startGen !== _sessionGen) return;
+      [headerEl, bodyEl].forEach(el => { el.style.display = 'none'; });
+    }, fadeMs);
+    _flagAnimTimers.push(t2);
+  }, swipeMs + holdMs);
+  _flagAnimTimers.push(t1);
+}
+
+function resetFlagAnnouncement() {
+  _flagAnimTimers.forEach(t => clearTimeout(t));
+  _flagAnimTimers = [];
+  _prevFlagCategory = null;
+  const headerEl = document.getElementById('flag-anim-header');
+  const bodyEl   = document.getElementById('flag-anim-body');
+  headerEl.style.transition = 'none';
+  bodyEl.style.transition   = 'none';
+  headerEl.style.display = 'none';
+  bodyEl.style.display   = 'none';
+  headerEl.style.opacity = '1';
+  bodyEl.style.opacity   = '1';
+  headerEl.style.clipPath = `inset(${FLAG_ANIM_HEADER_CLIP_TOP}px 0 ${FLAG_ANIM_HEADER_CLIP_BOTTOM}px 327px)`;
+  bodyEl.style.clipPath   = `inset(${FLAG_ANIM_BODY_CLIP_TOP}px 0 ${FLAG_ANIM_BODY_CLIP_BOTTOM}px 327px)`;
+  document.getElementById('standings-data').classList.remove('flag-anim-active');
+}
+
+function resolveFlagImage(d) {
+  // Stage results also hide the flag bar — greencheckered.webm covers that
+  // zone the same way checkered.webm does for race results.
+  if (_stageResultsActive) return null;
+
+  const state = (d.sessionState || '').toLowerCase();
+  const flag  = (d.sessionFlag  || '').toLowerCase();
+
+  // Checkered/cooldown hide the flag bar — checkered.webm covers that zone
+  // instead (only the header TEXT still differs between them — CHECKERED
+  // vs RESULTS, handled in resolveLapInfoOverride).
+  if (state === 'checkered' || state === 'cool down') return null;
+  if (flag === 'yellow') return 'yellow';
+  if (isFinalLap(d)) return 'white';
+  return 'green';
+}
+
+function layoutFlagBar() {
+  const el = document.getElementById('flag-bar');
+  el.style.top    = 130 + 'px';
+  el.style.left   = 0 + 'px';
+  el.style.width  = 10 + 'px';
+  el.style.height = 58 + 'px';
+}
+
+let _lastFlagImage = 'green'; // matches the synchronous boot default set above
+function updateFlagBar(d) {
+  const which = resolveFlagImage(d);
+  if (which === _lastFlagImage) return;
+  _lastFlagImage = which;
+  const el = document.getElementById('flag-bar');
+  if (!which) {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = '';
+  el.src = `${FOX_BASE}/flags/${which}.png`;
+}
+
+// ── Track name / lap number / laps to go ──────────────────────────────────
+function layoutHeaderText() {
+  const trackTop    = 112;
+  const trackOffset = 0; // now a centering nudge, not a raw left position
+  const trackFont   = 24;
+  const lapTop    = 155;
+  const lapLeft   = 20;
+  const togoRight = 15;
+  const lapFont   = 26;
+
+  const trackEl = document.getElementById('track-name-text');
+  trackEl.style.top       = trackTop + 'px';
+  trackEl.style.transform = `translateX(${trackOffset}px)`;
+  trackEl.style.fontFamily = "'AmericaneCondensedBold', sans-serif";
+  trackEl.style.fontSize   = trackFont + 'px';
+
+  const stageLeftInset  = 20;
+  const stageRightInset = 15;
+  const stageLeftEl  = document.getElementById('stage-track-left');
+  const stageRightEl = document.getElementById('stage-track-right');
+  [stageLeftEl, stageRightEl].forEach(el => {
+    el.style.top = trackTop + 'px';
+    el.style.fontFamily = "'AmericaneCondensedBold', sans-serif";
+    el.style.fontSize   = trackFont + 'px';
+  });
+  stageLeftEl.style.left   = stageLeftInset + 'px';
+  stageRightEl.style.right = stageRightInset + 'px';
+
+  const lapEl = document.getElementById('lap-num-text');
+  lapEl.style.top    = lapTop + 'px';
+  lapEl.style.left   = lapLeft + 'px';
+  lapEl.style.fontFamily = "'AmericaneCondensedRegular', sans-serif";
+  lapEl.style.fontSize   = lapFont + 'px';
+
+  const togoEl = document.getElementById('laps-togo-text');
+  togoEl.style.top   = lapTop + 'px';
+  togoEl.style.right = togoRight + 'px';
+  togoEl.style.fontFamily = "'AmericaneCondensedRegular', sans-serif";
+  togoEl.style.fontSize   = lapFont + 'px';
+
+  // Final-lap text spans the exact same left/right bounds as the pair it
+  // replaces, centered within them, same top/font as the row it's swapping.
+  const finalEl = document.getElementById('final-lap-text');
+  finalEl.style.top    = lapTop + 'px';
+  finalEl.style.left   = lapLeft + 'px';
+  finalEl.style.right  = togoRight + 'px';
+  finalEl.style.fontFamily = "'AmericaneCondensedRegular', sans-serif";
+  finalEl.style.fontSize   = lapFont + 'px';
+}
+
+let _lastTrackName = null;
+
+// Single priority-ordered source of truth for what goes in the centered
+// override slot (replacing LAP X / X TO GO entirely) — mirrors Prime's
+// buildLapStageSegments/resolveFlagState priority pattern: checkered/
+// results > PQ time remaining > final lap > null (show normal lap info).
+function resolveLapInfoOverride(d) {
+  // Stage results take priority over everything — mutually exclusive with
+  // race-checkered/results in time anyway (only mid-race, non-final stage).
+  if (_stageResultsActive) return `STAGE ${_stageResultsForStage} RESULTS`;
+
+  const session = (d.session || '').toLowerCase();
+  const isPQ = session === 'practice' || session === 'qualifying' || session === 'testing';
+  if (isPQ) {
+    const label = session === 'qualifying' ? 'QUALIFYING' : session === 'testing' ? 'TESTING' : 'PRACTICE';
+    const timeRem = (d.timeRemaining !== undefined) ? d.timeRemaining : -1;
+    if (timeRem >= 0) {
+      const mins = Math.floor(timeRem / 60);
+      const secs = Math.floor(timeRem % 60);
+      return `${label} - ${mins}:${String(secs).padStart(2, '0')}`;
+    }
+    return label;
+  }
+
+  // Same trigger conditions as Prime — gridding/pacing checked right after
+  // the PQ branch, before flag-state overrides, taking priority over both.
+  const state = (d.sessionState || '').toLowerCase();
+  if (state === 'get in car') return 'GRIDDING';
+  if (state === 'warmup' || state === 'parade laps') return 'PACING';
+  if (state === 'checkered') return 'CHECKERED';
+  if (state === 'cool down') return 'RESULTS';
+  if (isFinalLap(d)) return 'FINAL LAP';
+
+  return null; // show normal LAP X / X TO GO
+}
+
+// checkered.webm covers sponsor + track-name-row for the entire duration of
+// CHECKERED/RESULTS — sustained visibility tied directly to that state
+// (not an edge-triggered one-shot like the flag announcement banner),
+// checked every tick via the same resolveLapInfoOverride the header text
+// already uses.
+function updateCheckeredVideo(d) {
+  const override = resolveLapInfoOverride(d);
+  const isRaceResults  = override === 'CHECKERED' || override === 'RESULTS';
+  const isStageResults = _stageResultsActive;
+  const shouldShow = isRaceResults || isStageResults;
+  const mode = isStageResults ? 'stage' : (isRaceResults ? 'race' : null);
+
+  const videoEl = document.getElementById('checkered-video');
+  const trackEl      = document.getElementById('track-name-text');
+  const stageLeftEl  = document.getElementById('stage-track-left');
+  const stageRightEl = document.getElementById('stage-track-right');
+  const isShown = videoEl.style.display === 'block';
+
+  if (shouldShow) {
+    const wantedFile = mode === 'stage' ? 'greencheckered.webm' : 'checkered.webm';
+    if (!isShown || !videoEl.dataset.mode || videoEl.dataset.mode !== mode) {
+      videoEl.src = `${FOX_BASE}/${wantedFile}`;
+      videoEl.dataset.mode = mode;
+      videoEl.currentTime = 0;
+      videoEl.play().catch(() => {}); // muted autoplay should always be allowed, but don't let a rejection throw
+    }
+    videoEl.style.display = 'block';
+    trackEl.style.visibility      = 'hidden';
+    stageLeftEl.style.visibility  = 'hidden';
+    stageRightEl.style.visibility = 'hidden';
+  } else if (isShown) {
+    videoEl.pause();
+    videoEl.style.display = 'none';
+    videoEl.dataset.mode  = '';
+    trackEl.style.visibility      = '';
+    stageLeftEl.style.visibility  = '';
+    stageRightEl.style.visibility = '';
+  }
+}
+
+// Non-final-stage racing replaces the (centered) track name with "STAGE X"
+// left-aligned and "XX | YY" (or "XX TO GO" past halfway in the stage)
+// right-aligned. The separate LAP X / X TO GO row is untouched — only the
+// track-name row changes. Final stage reverts to normal track name.
+function resolveStageTrackOverride(d) {
+  const session = (d.session || '').toLowerCase();
+  if (session !== 'race') return null;
+
+  // Stay on the normal track name through gridding/pacing — stageRacingActive
+  // is apparently already populated before the green flag even waves (stage
+  // boundaries are known for the whole race in advance), so this needs an
+  // explicit exclusion rather than assuming stage fields imply real racing.
+  const state = (d.sessionState || '').toLowerCase();
+  if (state === 'get in car' || state === 'warmup' || state === 'parade laps') return null;
+
+  const stageActive = !!d.stageRacingActive;
+  const stageFinal  = !!d.stageFinalStage;
+  if (!stageActive || stageFinal) return null;
+
+  const stageNum       = d.stageNum       || 0;
+  const stageLap       = d.stageLap       || 0;
+  const stageTotalLaps = d.stageTotalLaps || 0;
+  const stageLapNum    = stageLap + 1;
+  const stageLapsRemaining = Math.max(0, stageTotalLaps - stageLap);
+
+  const stageHalfway = Math.floor(stageTotalLaps / 2);
+  const pastHalfway  = stageTotalLaps > 0 && stageLap >= stageHalfway;
+
+  // COMPLETE takes priority whenever the stage's laps are actually done
+  // (shows through the gap between stage end and stage-results actually
+  // confirming/showing — once results start, the video covers this
+  // anyway). FINAL LAP checked independently of pastHalfway, since a very
+  // short stage could have 1 lap remaining without technically being past
+  // the halfway formula.
+  let right;
+  if (stageLapsRemaining <= 0) {
+    right = 'COMPLETE';
+  } else if (stageLapsRemaining === 1) {
+    right = 'FINAL LAP';
+  } else if (pastHalfway) {
+    right = `${stageLapsRemaining} TO GO`;
+  } else {
+    right = `${stageLapNum} | ${stageTotalLaps}`;
+  }
+
+  return {
+    left: `STAGE ${stageNum}`,
+    right,
+  };
+}
+
+function updateHeaderText(d) {
+  const trackEl      = document.getElementById('track-name-text');
+  const stageLeftEl  = document.getElementById('stage-track-left');
+  const stageRightEl = document.getElementById('stage-track-right');
+
+  const stageOverride = resolveStageTrackOverride(d);
+  if (stageOverride) {
+    trackEl.style.display = 'none';
+    stageLeftEl.style.display  = 'block';
+    stageRightEl.style.display = 'block';
+    stageLeftEl.textContent  = stageOverride.left;
+    stageRightEl.textContent = stageOverride.right;
+  } else {
+    trackEl.style.display = '';
+    stageLeftEl.style.display  = 'none';
+    stageRightEl.style.display = 'none';
+    const trackName = (customName || d.trackNameShort || d.track || 'TRACK').toString().toUpperCase();
+    trackEl.textContent = trackName;
+  }
+
+  const override = resolveLapInfoOverride(d);
+  const lapEl   = document.getElementById('lap-num-text');
+  const togoEl  = document.getElementById('laps-togo-text');
+  const overrideEl = document.getElementById('final-lap-text');
+
+  if (override) {
+    lapEl.style.display      = 'none';
+    togoEl.style.display     = 'none';
+    overrideEl.style.display = 'block';
+    overrideEl.textContent   = override;
+    return;
+  }
+
+  lapEl.style.display      = '';
+  togoEl.style.display     = '';
+  overrideEl.style.display = 'none';
+
+  const lapsComplete = d.lapsComplete || 0;
+  const lapsTotal     = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  const lapNum        = lapsComplete + 1;
+  const lapsRemaining = (d.lapsRemaining !== undefined) ? d.lapsRemaining : Math.max(0, lapsTotal - lapsComplete);
+
+  lapEl.textContent  = `LAP ${lapNum}`;
+  togoEl.textContent = `${lapsRemaining} TO GO`;
+}
+
+function setBottomVisible(v) {
+  const opacity = v ? '1' : '0';
+  document.getElementById('overlay-body').style.opacity   = opacity;
+  document.getElementById('standings-data').style.opacity = opacity;
+  // When hiding (no data — gridding/pacing), force the flag bar hidden
+  // unconditionally, same as before. When showing, don't just blindly
+  // force it visible — checkered/results ALSO have valid standings data
+  // (computedStandings/official results), but the flag bar should still
+  // stay hidden then (checkered.webm covers that zone instead), so defer
+  // to the real visibility decision rather than overriding it back on.
+  const flagBarEl = document.getElementById('flag-bar');
+  if (!v) {
+    flagBarEl.style.display = 'none';
+  } else if (_latestData) {
+    updateFlagBar(_latestData);
+  }
+}
+
+// ── Session-change detection ────────────────────────────────────────────
+// papytelemapp.h: "sessionCookie will change whenever a session is
+// restarted... you must clear any cache." Same pattern as Prime — without
+// this, stale rows/colors/track name/rotation state can linger on screen
+// after a session transition until fresh data happens to overwrite them.
+// This is also very likely what was causing driverColors/rookie-status to
+// look wrong after switching series in the panel: that dropdown only
+// changes which local numbers.png/headshots FOLDER we read images from —
+// it can't and doesn't change what driverColors the bridge reports, which
+// always reflects whatever's actually racing right now, independent of
+// our cosmetic series selector. Clearing the cache on a real session
+// change is what actually keeps that data honest.
+let _lastSessionCookie = null;
+let _sessionGen = 0; // bumped on every session change, invalidates in-flight swap-animation callbacks from the previous session
+
+function checkSessionChange(d) {
+  const cookie = d.sessionCookie;
+  if (cookie == null || cookie === _lastSessionCookie) return;
+  _lastSessionCookie = cookie;
+  _sessionGen++; // invalidates any in-flight swap-animation callbacks from before this change
+
+  _prevOrder          = [];
+  _prevBottomOrder     = [];
+  _prevBottomGroupIdx  = -1;
+  _animatingRows       = new Set();
+  _lastStandingsKey  = '';
+  _rotGroupIdx       = 0;
+  _driverColors      = {};
+  _lastFlagImage     = null;
+
+  for (let i = 1; i <= 20; i++) {
+    const el = document.getElementById(`row-${i}`);
+    if (el) { el.innerHTML = ''; el.className = 's-row'; el.dataset.caridx = ''; }
+  }
+  document.getElementById('track-name-text').textContent = '';
+  document.getElementById('stage-track-left').textContent = '';
+  document.getElementById('stage-track-right').textContent = '';
+  document.getElementById('stage-track-left').style.display = 'none';
+  document.getElementById('stage-track-right').style.display = 'none';
+  document.getElementById('lap-num-text').textContent = '';
+  document.getElementById('laps-togo-text').textContent = '';
+  document.getElementById('final-lap-text').textContent = '';
+  setBottomVisible(false);
+  resetFlagAnnouncement();
+  const videoEl = document.getElementById('checkered-video');
+  videoEl.pause();
+  videoEl.style.display = 'none';
+  videoEl.dataset.mode  = '';
+  document.getElementById('track-name-text').style.visibility = '';
+  document.getElementById('stage-track-left').style.visibility  = '';
+  document.getElementById('stage-track-right').style.visibility = '';
+  _stageResultsActive      = false;
+  _stageResultsForStage    = -1;
+  _stageResultsShownAtLap  = -1;
+  _stageResultsHoldExpired = false;
+  _stageWinnerCarIdx       = -1;
+  _pendingYellowBanner     = false;
+}
+
+// ── Main data handler ─────────────────────────────────────────────────────
+let _latestData = null;
+let _lastStandingsKey = '';
+
+function handleData(d) {
+  if (!_preview) {
+    if (!d.atTrack) { document.getElementById('app').style.display = 'none'; return; }
+    if (VISIBILITY_MODE === 'in_car' && !d.player?.inCar) { document.getElementById('app').style.display = 'none'; return; }
+    document.getElementById('app').style.display = '';
+  }
+  _latestData = d;
+  checkSessionChange(d);
+  if (d.driverColors) _driverColors = d.driverColors;
+
+  checkStageResultsFox(d); // must run before anything below that reads _stageResultsActive this tick
+
+  updateFlagBar(d);
+  updateHeaderText(d);
+  checkFlagAnnouncement(d);
+  updateCheckeredVideo(d);
+
+  const session      = (d.session || '').toLowerCase();
+  const playerCarIdx = d.playerCarIdx ?? -1;
+  const standings    = getStandings(d);
+  if (!standings.length) { setBottomVisible(false); return; }
+  setBottomVisible(true);
+
+  const lapTracker = d.lapTracker || {};
+  const key = standings.map(s => s.carIdx).join(',');
+  if (key !== _lastStandingsKey) {
+    _lastStandingsKey = key;
+    renderStandings(standings, session, playerCarIdx, lapTracker);
+  } else {
+    updateGaps(standings, session, lapTracker);
+  }
+}
+
+// ── Live editor preview ───────────────────────────────────────────────────
+let _preview = false;
+
+window.addEventListener('message', e => {
+  if (typeof e.data !== 'string') return;
+  try {
+    const m = JSON.parse(e.data);
+    if (m.reset) return;
+    _preview = true;
+    document.getElementById('app').style.display = '';
+    if (m._visibilityMode      !== undefined) VISIBILITY_MODE = m._visibilityMode;
+    if (m._sponsorRotationTime !== undefined) SPONSOR_ROTATION_MS = parseInt(m._sponsorRotationTime) * 1000;
+    if (m._series !== undefined) { SERIES_ID = m._series; }
+    if (m._customName !== undefined) customName = m._customName;
+    handleData(m);
+  } catch(_) {}
+});
+
+// ── WebSocket ─────────────────────────────────────────────────────────────
+let ws;
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onmessage = e => { try { handleData(JSON.parse(e.data)); } catch (_) {} };
+  ws.onclose = () => setTimeout(connect, 2000);
+  ws.onerror = () => ws.close();
+}
+connect();
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+loadSponsors();
+startRotation();
+positionRows();
+layoutFlagBar();
+layoutHeaderText();
+setBottomVisible(false); // hidden until the first real data arrives
+
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => {
+    // Nothing measurement-based yet in this first pass, but keep the hook
+    // for parity with Prime in case auto-fit logic gets added later.
+  });
+}
+</script>
+</body>
+</html>

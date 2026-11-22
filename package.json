@@ -1,0 +1,32 @@
+{
+  "name": "all-in-one-nr2003-build",
+  "private": true,
+  "devDependencies": { "electron": "41.7.1", "electron-builder": "^26.0.0" },
+  "build": {
+    "appId": "com.allinone.nr2003",
+    "productName": "All In One NR2003",
+    "copyright": "All In One NR2003",
+    "directories": { "app": "app", "output": "dist" },
+    "asar": false,
+    "npmRebuild": false,
+    "extraFiles": [ { "from": "extra/root", "to": ".", "filter": ["**/*"] } ],
+    "extraResources": [ { "from": "extra/resources", "to": ".", "filter": ["**/*"] } ],
+    "win": {
+      "target": [ { "target": "nsis", "arch": ["x64"] } ],
+      "icon": "app/static/images/app_icon.ico",
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "All In One NR2003",
+      "uninstallDisplayName": "All In One NR2003",
+      "installerIcon": "app/static/images/app_icon.ico",
+      "uninstallerIcon": "app/static/images/app_icon.ico",
+      "artifactName": "All-In-One-NR2003-Setup-${version}.exe"
+    }
+  }
+}

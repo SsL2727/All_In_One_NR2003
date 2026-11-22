@@ -1,0 +1,21 @@
+NR2003 Dynamic Rubber
+
+1. Extract this ZIP and close NR2003.
+2. Run NR2003 Dynamic Rubber Setup.exe. Use Browse to select NR2003.exe if the game folder did not appear automatically.
+3. Click Install, then start NR2003 the usual way. Run a Single Race and watch the front bumper, leading edge of the hood, and lower sides as laps go by.
+
+Setup uses the game folder you select. It enables the replay telemetry needed to track race progress. For a fresh NR2003 installation, it downloads the required 32-bit graphics files from the official ReShade and d3d8to9 release pages. An existing compatible setup can install without a download. A different custom graphics wrapper may require manual setup. If the game is installed in a protected folder, run Setup as administrator.
+
+Official graphics downloads
+https://reshade.me/ (ReShade 6.8.0 with full add-on support)
+https://github.com/crosire/d3d8to9/releases/tag/v1.16.0
+
+Rubber works with standard NR2003 car paints, including GNS and CTS. It detects new carsets when NR2003 starts. Unfamiliar body templates get a lighter scatter across the paint. Saved replays do not reconstruct the buildup from an earlier race.
+
+Removal
+
+Close NR2003 and rename NR2003BodyRubber.addon32 to NR2003BodyRubber.disabled. The add-on is next to NR2003.exe unless ReShade is configured to load add-ons from a subfolder. Keep ReShade and the graphics wrapper in place if you use them for other mods.
+
+For a full rollback immediately after installation, open the newest folder under NR2003 Dynamic Rubber Backups. The Install record lists the files Setup added and the files it updated. Remove the files marked Added and restore those marked Updated from that backup. If you have since changed game settings, transfer only the old record_telem and record_telem_state_a values from the backed-up core.ini into your current [Replay] section. Restore any updated ReShade.ini only if you also want the settings it contains.
+
+The installer is a community-made, unsigned Windows executable. It contains the rubber add-on and obtains third-party graphics dependencies directly from their publishers when needed.

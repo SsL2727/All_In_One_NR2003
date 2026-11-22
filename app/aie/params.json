@@ -1,0 +1,609 @@
+[
+ {
+  "name": "yaw_accel_k1",
+  "addr": 7645824,
+  "confirmed": true
+ },
+ {
+  "name": "yaw_accel_k2",
+  "addr": 7645848,
+  "confirmed": true
+ },
+ {
+  "name": "yaw_accel_control_angle",
+  "addr": 7645872
+ },
+ {
+  "name": "yaw_accel_control_dropoff",
+  "addr": 7645896
+ },
+ {
+  "name": "dlong_accel_to_sep_k1",
+  "addr": 7645920
+ },
+ {
+  "name": "dlong_accel_to_sep_k2",
+  "addr": 7645944
+ },
+ {
+  "name": "alt_accel_k1",
+  "addr": 7645968
+ },
+ {
+  "name": "alt_accel_k2",
+  "addr": 7645992
+ },
+ {
+  "name": "dlat_accel_k1",
+  "addr": 7646016
+ },
+ {
+  "name": "dlat_accel_k2",
+  "addr": 7646040
+ },
+ {
+  "name": "inertial_factor",
+  "addr": 7646064
+ },
+ {
+  "name": "pitch_accel_coeff",
+  "addr": 7646088,
+  "confirmed": true
+ },
+ {
+  "name": "roll_accel_coeff",
+  "addr": 7646112,
+  "confirmed": true
+ },
+ {
+  "name": "idle_scaled_power",
+  "addr": 7646136
+ },
+ {
+  "name": "minimum_rpm",
+  "addr": 7646160
+ },
+ {
+  "name": "gear_shift_rpm_decrement",
+  "addr": 7646184
+ },
+ {
+  "name": "ai_inverse_slipcurve_k",
+  "addr": 7646208,
+  "confirmed": true
+ },
+ {
+  "name": "drive_train_friction_adj",
+  "addr": 7646232
+ },
+ {
+  "name": "wheelspin_min_adj_coeff",
+  "addr": 7646256
+ },
+ {
+  "name": "max_ws_interval",
+  "addr": 7646280
+ },
+ {
+  "name": "min_ws_interval",
+  "addr": 7646304
+ },
+ {
+  "name": "cold_tire_coeff",
+  "addr": 7646328
+ },
+ {
+  "name": "tire_temp_increment",
+  "addr": 7646352
+ },
+ {
+  "name": "nominal_max_accel",
+  "addr": 7646376
+ },
+ {
+  "name": "braking_efficiency_coeff",
+  "addr": 7646400
+ },
+ {
+  "name": "base_suspension_problem_coeff",
+  "addr": 7646424
+ },
+ {
+  "name": "base_suspension_failure_coeff",
+  "addr": 7646448
+ },
+ {
+  "name": "suspension_problem_slip_angle_adj",
+  "addr": 7646472
+ },
+ {
+  "name": "suspension_problem_pitch_adj_coeff",
+  "addr": 7646496
+ },
+ {
+  "name": "suspension_problem_roll_adj_coeff",
+  "addr": 7646520
+ },
+ {
+  "name": "base_tire_failure_coeff",
+  "addr": 7646544
+ },
+ {
+  "name": "tire_problem_slip_angle_adj",
+  "addr": 7646568
+ },
+ {
+  "name": "suspension_mechanical_drag_coeff",
+  "addr": 7646592
+ },
+ {
+  "name": "tire_failure_mechanical_drag_coeff",
+  "addr": 7646616
+ },
+ {
+  "name": "tire_cond_accel_scaling",
+  "addr": 7646640
+ },
+ {
+  "name": "suspension_cond_accel_scaling",
+  "addr": 7646664
+ },
+ {
+  "name": "tire_cond_decel_scaling",
+  "addr": 7646688
+ },
+ {
+  "name": "suspension_cond_decel_scaling",
+  "addr": 7646712
+ },
+ {
+  "name": "mechanical_failure_interval",
+  "addr": 7646736,
+  "confirmed": true
+ },
+ {
+  "name": "mechanical_failure_chance",
+  "addr": 7646760,
+  "confirmed": true
+ },
+ {
+  "name": "suspension_problem_chance",
+  "addr": 7646784,
+  "confirmed": true
+ },
+ {
+  "name": "tire_problem_chance",
+  "addr": 7646808,
+  "confirmed": true
+ },
+ {
+  "name": "fuel_system_problem_chance",
+  "addr": 7646832,
+  "confirmed": true
+ },
+ {
+  "name": "engine_problem_chance",
+  "addr": 7646856,
+  "confirmed": true
+ },
+ {
+  "name": "brake_problem_chance",
+  "addr": 7646880,
+  "confirmed": true
+ },
+ {
+  "name": "suspension_failure_chance",
+  "addr": 7646904,
+  "confirmed": true
+ },
+ {
+  "name": "tire_failure_chance",
+  "addr": 7646928,
+  "confirmed": true
+ },
+ {
+  "name": "fuel_system_failure_chance",
+  "addr": 7646952,
+  "confirmed": true
+ },
+ {
+  "name": "engine_failure_chance",
+  "addr": 7646976,
+  "confirmed": true
+ },
+ {
+  "name": "brake_failure_chance",
+  "addr": 7647000,
+  "confirmed": true
+ },
+ {
+  "name": "fuel_leak_chance",
+  "addr": 7647024,
+  "confirmed": true
+ },
+ {
+  "name": "coolant_leak_chance",
+  "addr": 7647048,
+  "confirmed": true
+ },
+ {
+  "name": "oil_leak_chance",
+  "addr": 7647072,
+  "confirmed": true
+ },
+ {
+  "name": "base_tire_wear",
+  "addr": 7647096
+ },
+ {
+  "name": "base_brake_wear",
+  "addr": 7647120
+ },
+ {
+  "name": "driver_tire_break_wear_scaling",
+  "addr": 7647144
+ },
+ {
+  "name": "driver_fuel_consumption_scaling",
+  "addr": 7647168
+ },
+ {
+  "name": "base_gearshift_hiatus",
+  "addr": 7647192
+ },
+ {
+  "name": "crashing_recovery_slip_angle",
+  "addr": 7647216
+ },
+ {
+  "name": "crashing_recovery_yaw_velocity",
+  "addr": 7647240
+ },
+ {
+  "name": "crashing_recovery_pitch_roll",
+  "addr": 7647264
+ },
+ {
+  "name": "crashing_recovery_alt",
+  "addr": 7647288
+ },
+ {
+  "name": "pace_merge_from_pit_line_dlong",
+  "addr": 7647312
+ },
+ {
+  "name": "pace_merge_to_pit_line_dlong",
+  "addr": 7647336
+ },
+ {
+  "name": "pace_speed_limit_MPH",
+  "addr": 7647360,
+  "confirmed": true
+ },
+ {
+  "name": "ai_accel_modifier",
+  "addr": 7647384,
+  "confirmed": true
+ },
+ {
+  "name": "ai_decel_modifier",
+  "addr": 7647408,
+  "confirmed": true
+ },
+ {
+  "name": "ai_fuel_use",
+  "addr": 7647432,
+  "confirmed": true
+ },
+ {
+  "name": "ai_grip_modifier",
+  "addr": 7650316,
+  "confirmed": true
+ },
+ {
+  "name": "ai_drag_modifier",
+  "addr": 7650320,
+  "confirmed": true
+ },
+ {
+  "name": "ai_line_modifier",
+  "addr": 7647504,
+  "confirmed": true
+ },
+ {
+  "name": "ai_qual_modifier",
+  "addr": 7647528
+ },
+ {
+  "name": "ai_wall_offset",
+  "addr": 7647552,
+  "confirmed": true
+ },
+ {
+  "name": "ai_tire_wear_left",
+  "addr": 7647576,
+  "confirmed": true
+ },
+ {
+  "name": "ai_tire_wear_right",
+  "addr": 7647600,
+  "confirmed": true
+ },
+ {
+  "name": "ai_arcade_grip_modifier",
+  "addr": 7647624
+ },
+ {
+  "name": "ai_arcade_drag_modifier",
+  "addr": 7647648
+ },
+ {
+  "name": "ai_arcade_qual_modifier",
+  "addr": 7647672
+ },
+ {
+  "name": "ai_arcade_tire_wear",
+  "addr": 7647696
+ },
+ {
+  "name": "ai_arcade_fuel_use",
+  "addr": 7647720
+ },
+ {
+  "name": "strategy_percent_per_second",
+  "addr": 7647744
+ },
+ {
+  "name": "strategy_lap_time_wear_loss",
+  "addr": 7647768
+ },
+ {
+  "name": "strategy_lap_time_fuel_use_gain",
+  "addr": 7647792
+ },
+ {
+  "name": "strategy_base_pitting_cost",
+  "addr": 7647816
+ },
+ {
+  "name": "ai_pacing_distance",
+  "addr": 7647840,
+  "confirmed": true
+ },
+ {
+  "name": "ai_bunching_distance",
+  "addr": 7647864,
+  "confirmed": true
+ },
+ {
+  "name": "ai_drafting_distance",
+  "addr": 7647888,
+  "confirmed": true
+ },
+ {
+  "name": "ai_panic_decel",
+  "addr": 7647912
+ },
+ {
+  "name": "ai_dlongpad_scale",
+  "addr": 7647936
+ },
+ {
+  "name": "ai_dlat_pad",
+  "addr": 7647960,
+  "confirmed": true
+ },
+ {
+  "name": "ai_squeeze_pcnt",
+  "addr": 7647984
+ },
+ {
+  "name": "ai_offset_long_lookahead",
+  "addr": 7648008
+ },
+ {
+  "name": "ai_offset_lat_lookahead",
+  "addr": 7648032
+ },
+ {
+  "name": "ai_strength_to_traction_circle",
+  "addr": 7648056
+ },
+ {
+  "name": "ai_strength_to_aero_drag",
+  "addr": 7648080
+ },
+ {
+  "name": "ai_strength_to_engine_power",
+  "addr": 7648104
+ },
+ {
+  "name": "ai_strength_to_traction_circle_spread",
+  "addr": 7648128
+ },
+ {
+  "name": "ai_strength_to_engine_power_spread",
+  "addr": 7648152
+ },
+ {
+  "name": "ai_strength_to_aero_drag_spread",
+  "addr": 7648176
+ },
+ {
+  "name": "driver_qualifying_to_traction_circle",
+  "addr": 7648200
+ },
+ {
+  "name": "driver_qualifying_to_aero_drag",
+  "addr": 7648224
+ },
+ {
+  "name": "driver_qualifying_to_engine_power",
+  "addr": 7648248
+ },
+ {
+  "name": "driver_roadcourse_to_traction_circle",
+  "addr": 7648272
+ },
+ {
+  "name": "driver_shorttrack_to_traction_circle",
+  "addr": 7648296
+ },
+ {
+  "name": "driver_speedway_to_traction_circle",
+  "addr": 7648320
+ },
+ {
+  "name": "driver_superspeedway_to_traction_circle",
+  "addr": 7648344
+ },
+ {
+  "name": "vehicle_aero_to_aero_drag",
+  "addr": 7648368
+ },
+ {
+  "name": "vehicle_engine_to_engine_power",
+  "addr": 7648392
+ },
+ {
+  "name": "vehicle_chassis_to_traction_circle",
+  "addr": 7648416
+ },
+ {
+  "name": "ai_strength_to_driver_consistency_spread",
+  "addr": 7648440
+ },
+ {
+  "name": "driver_consistency",
+  "addr": 7648464
+ },
+ {
+  "name": "driver_consistency_to_driver_commitment_dev",
+  "addr": 7648488
+ },
+ {
+  "name": "driver_consistency_to_dlong_lookahead_dev",
+  "addr": 7648512
+ },
+ {
+  "name": "driver_consistency_to_dlat_lookahead_dev",
+  "addr": 7648536
+ },
+ {
+  "name": "driver_consistency_to_left_offset_dev",
+  "addr": 7648560,
+  "confirmed": true
+ },
+ {
+  "name": "pitcrew_speed_to_pitcrew_speed",
+  "addr": 7648584
+ },
+ {
+  "name": "pitcrew_consistency_to_pitcrew_consistency",
+  "addr": 7648608
+ },
+ {
+  "name": "driver_finishing_to_driver_consistency",
+  "addr": 7648632
+ },
+ {
+  "name": "fuel_risk_factor",
+  "addr": 7648656
+ },
+ {
+  "name": "fuel_stupidity_factor",
+  "addr": 7648680
+ },
+ {
+  "name": "tire_wear_risk_factor",
+  "addr": 7648704
+ },
+ {
+  "name": "tire_wear_stupidity_factor",
+  "addr": 7648728
+ },
+ {
+  "name": "lose_lap_to_caution_risk_factor",
+  "addr": 7648752
+ },
+ {
+  "name": "caution_pitting_cost_base",
+  "addr": 7648776
+ },
+ {
+  "name": "caution_pitting_cost_increase_per_lap",
+  "addr": 7648800
+ },
+ {
+  "name": "caution_pitting_cost_per_extra_stop",
+  "addr": 7648824
+ },
+ {
+  "name": "update_interval",
+  "addr": 7648848
+ },
+ {
+  "name": "max_str_delta_neg",
+  "addr": 7648872
+ },
+ {
+  "name": "max_str_delta_pos",
+  "addr": 7648896
+ },
+ {
+  "name": "kdt1",
+  "addr": 7648920
+ },
+ {
+  "name": "kdt3_ahead",
+  "addr": 7648944
+ },
+ {
+  "name": "kdt3_behind",
+  "addr": 7648968
+ },
+ {
+  "name": "kddt1",
+  "addr": 7648992
+ },
+ {
+  "name": "kddt3_fast",
+  "addr": 7649016
+ },
+ {
+  "name": "kddt3_slow",
+  "addr": 7649040
+ },
+ {
+  "name": "str_min",
+  "addr": 7649064
+ },
+ {
+  "name": "str_max",
+  "addr": 7649088
+ },
+ {
+  "name": "gain_rate",
+  "addr": 7649112
+ },
+ {
+  "name": "base_bias_low",
+  "addr": 7649136
+ },
+ {
+  "name": "base_bias_high",
+  "addr": 7649160
+ },
+ {
+  "name": "display_lone_qualifying",
+  "addr": 7649184
+ },
+ {
+  "name": "disable_random_modifiers",
+  "addr": 7649208
+ },
+ {
+  "name": "tire_wear_calibration_enable",
+  "addr": 7649232
+ }
+]

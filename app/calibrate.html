@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<title>Wheel &amp; Pedal Calibration</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0e1014; color:#e0e4ec; font-family:'Segoe UI',sans-serif; font-size:14px; display:flex; flex-direction:column; height:100vh; user-select:none; }
+
+  #header { background:#1a1d23; border-bottom:1px solid #252830; padding:16px 28px; display:flex; align-items:center; gap:16px; }
+  #header h2 { font-size:18px; font-weight:700; color:#fff; }
+  #header p  { font-size:12px; color:#555; margin-top:2px; }
+  #header-step { margin-left:auto; font-size:13px; color:#3a7bd5; font-weight:600; letter-spacing:1px; }
+
+  /* Two-column main area */
+  #main { flex:1; display:flex; overflow:hidden; }
+
+  /* Left: step content */
+  #left { flex:1; padding:28px; display:flex; flex-direction:column; gap:20px; overflow-y:auto; border-right:1px solid #1e2128; }
+
+  /* Right: live monitor */
+  #right { width:380px; flex-shrink:0; padding:28px; display:flex; flex-direction:column; gap:16px; background:#0a0c10; overflow-y:auto; }
+  #right-title { font-size:11px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#333; margin-bottom:4px; }
+
+  .section { background:#1a1d23; border:1px solid #252830; border-radius:8px; padding:20px; }
+  .section-title { font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#555; margin-bottom:14px; }
+  .step { display:none; flex-direction:column; gap:16px; }
+  .step.active { display:flex; }
+  .step-instruction { font-size:15px; color:#ccc; line-height:1.7; }
+  .step-instruction strong { color:#fff; }
+
+  /* Device list */
+  .device-item { display:flex; align-items:center; gap:10px; padding:12px 14px; border-radius:6px; cursor:pointer; border:1px solid #252830; margin-bottom:8px; transition:background 0.15s, border-color 0.15s; }
+  .device-item:last-child { margin-bottom:0; }
+  .device-item:hover { background:#1e2230; }
+  .device-item.selected { border-color:#3a7bd5; background:rgba(58,123,213,0.12); }
+  .device-name { font-size:14px; font-weight:600; }
+  .device-idx  { font-size:11px; color:#555; margin-top:3px; }
+
+  /* Axis monitor */
+  .axis-monitor { display:flex; flex-direction:column; gap:8px; }
+  .axis-row { display:flex; align-items:center; gap:8px; }
+  .axis-label { font-size:11px; color:#555; width:55px; flex-shrink:0; }
+  .axis-bar-wrap { flex:1; height:8px; background:#0e1014; border-radius:4px; overflow:hidden; border:1px solid #2a2d35; }
+  .axis-bar { height:100%; background:#252830; border-radius:4px; width:50%; transition:width 0.05s; }
+  .axis-bar.active { background:#3a7bd5; }
+  .axis-val { font-size:11px; color:#aaa; width:52px; text-align:right; font-variant-numeric:tabular-nums; }
+  .axis-row.detected .axis-label { color:#3a7bd5; font-weight:700; }
+  .axis-row.detected .axis-bar   { background:#3a7bd5; }
+
+  /* Value display */
+  .value-display { background:#0e1014; border:1px solid #2a2d35; border-radius:6px; padding:14px; font-size:36px; font-weight:700; text-align:center; font-variant-numeric:tabular-nums; color:#3a7bd5; }
+
+  /* Wheel preview */
+  .wheel-preview { display:flex; justify-content:center; padding:12px 0; }
+
+  /* Big wheel for right panel */
+  #live-wheel-svg { transition:transform 0.05s linear; }
+
+  /* Pedal bars — tall in right panel */
+  .pedal-bars { display:flex; gap:12px; height:160px; align-items:flex-end; }
+  .pedal-col { flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; height:100%; }
+  .pedal-bar-wrap { flex:1; width:100%; background:#0e1014; border:1px solid #2a2d35; border-radius:6px; overflow:hidden; position:relative; }
+  .pedal-bar-fill { position:absolute; bottom:0; left:0; width:100%; border-radius:4px 4px 0 0; transition:height 0.05s; }
+  .pedal-bar-label { font-size:11px; color:#555; text-transform:uppercase; letter-spacing:1px; }
+
+  /* Saved values */
+  .saved-values { display:grid; gap:8px; }
+  .saved-val { background:#0e1014; border:1px solid #2a2d35; border-radius:6px; padding:10px 12px; text-align:center; }
+  .saved-val-label { color:#555; font-size:10px; text-transform:uppercase; letter-spacing:1px; }
+  .saved-val-num   { color:#e0e4ec; font-size:15px; font-weight:700; margin-top:3px; }
+  .saved-val.set .saved-val-num { color:#2ecc71; }
+
+  /* Clutch/same-device rows */
+  .check-row { display:flex; align-items:center; gap:10px; padding:10px 0; }
+  .check-row label { font-size:14px; color:#ccc; cursor:pointer; display:flex; align-items:center; gap:8px; }
+  .check-row input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:#3a7bd5; }
+
+  /* Footer */
+  #footer { padding:16px 28px; background:#1a1d23; border-top:1px solid #252830; display:flex; gap:10px; align-items:center; }
+  button { border:none; border-radius:6px; padding:10px 22px; font-size:13px; font-weight:600; cursor:pointer; transition:background 0.15s; }
+  button:disabled { opacity:0.4; cursor:default; }
+  .btn-secondary { background:#252830; color:#aaa; }
+  .btn-secondary:hover:not(:disabled) { background:#2e3340; color:#fff; }
+  .btn-primary   { background:#3a7bd5; color:#fff; }
+  .btn-primary:hover:not(:disabled)   { background:#4a8be5; }
+  .btn-success   { background:#27ae60; color:#fff; min-width:160px; }
+  .btn-success:hover:not(:disabled)   { background:#2ecc71; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div>
+    <h2>&#127918; Wheel &amp; Pedal Calibration</h2>
+    <p>Calibrate your steering wheel and pedals for accurate overlay display</p>
+  </div>
+  <span id="header-step">STEP 1</span>
+</div>
+
+<div id="main">
+<div id="left">
+
+  <!-- Step 1: Select wheel device + detect axis -->
+  <div class="step active" id="step-1">
+    <div class="section">
+      <div class="section-title">Step 1 — Select Your Wheel</div>
+      <div id="device-list"><div id="no-devices" style="font-size:13px;color:#666;text-align:center;padding:12px 0">No gamepads detected. If your wheel is connected, press any button or wiggle the wheel to activate it.</div></div>
+    </div>
+    <div class="section">
+      <div class="section-title">Detecting Steering Axis</div>
+      <p class="step-instruction">After selecting your wheel, <strong>slowly turn the wheel</strong> left and right. The active axis will highlight in blue.</p>
+      <div id="axis-monitor" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <!-- Step 2: Full left -->
+  <div class="step" id="step-2">
+    <div class="section">
+      <div class="section-title">Step 2 — Full Left</div>
+      <p class="step-instruction">Turn your wheel <strong>all the way to the left</strong> and hold it, then click Next.</p>
+      <div class="value-display" id="lv-2">0.000</div>
+      <div class="wheel-preview"><svg class="wheel-svg" id="ws-2" width="80" height="80" viewBox="0 0 80 80">
+        <circle cx="40" cy="40" r="36" fill="none" stroke="#333" stroke-width="8"/>
+        <circle cx="40" cy="40" r="18" fill="none" stroke="#333" stroke-width="4"/>
+        <line x1="40" y1="4" x2="40" y2="22" stroke="#3a7bd5" stroke-width="4" stroke-linecap="round"/>
+        <line x1="40" y1="40" x2="22" y2="40" stroke="#555" stroke-width="3" stroke-linecap="round"/>
+        <line x1="40" y1="40" x2="58" y2="40" stroke="#555" stroke-width="3" stroke-linecap="round"/>
+      </svg></div>
+    </div>
+  </div>
+
+  <!-- Step 3: Full right -->
+  <div class="step" id="step-3">
+    <div class="section">
+      <div class="section-title">Step 3 — Full Right</div>
+      <p class="step-instruction">Turn your wheel <strong>all the way to the right</strong> and hold it, then click Next.</p>
+      <div class="value-display" id="lv-3">0.000</div>
+      <div class="wheel-preview"><svg class="wheel-svg" id="ws-3" width="80" height="80" viewBox="0 0 80 80">
+        <circle cx="40" cy="40" r="36" fill="none" stroke="#333" stroke-width="8"/>
+        <circle cx="40" cy="40" r="18" fill="none" stroke="#333" stroke-width="4"/>
+        <line x1="40" y1="4" x2="40" y2="22" stroke="#3a7bd5" stroke-width="4" stroke-linecap="round"/>
+        <line x1="40" y1="40" x2="22" y2="40" stroke="#555" stroke-width="3" stroke-linecap="round"/>
+        <line x1="40" y1="40" x2="58" y2="40" stroke="#555" stroke-width="3" stroke-linecap="round"/>
+      </svg></div>
+    </div>
+  </div>
+
+  <!-- Step 4: Center wheel -->
+  <div class="step" id="step-4">
+    <div class="section">
+      <div class="section-title">Step 4 — Center Wheel</div>
+      <p class="step-instruction"><strong>Center your wheel</strong> (straight ahead) and hold it, then click Next.</p>
+      <div class="value-display" id="lv-4">0.000</div>
+      <div class="wheel-preview"><svg class="wheel-svg" id="ws-4" width="80" height="80" viewBox="0 0 80 80">
+        <circle cx="40" cy="40" r="36" fill="none" stroke="#333" stroke-width="8"/>
+        <circle cx="40" cy="40" r="18" fill="none" stroke="#333" stroke-width="4"/>
+        <line x1="40" y1="4" x2="40" y2="22" stroke="#3a7bd5" stroke-width="4" stroke-linecap="round"/>
+        <line x1="40" y1="40" x2="22" y2="40" stroke="#555" stroke-width="3" stroke-linecap="round"/>
+        <line x1="40" y1="40" x2="58" y2="40" stroke="#555" stroke-width="3" stroke-linecap="round"/>
+      </svg></div>
+    </div>
+  </div>
+
+  <!-- Step 4r: Wheel rotation -->
+  <div class="step" id="step-4r">
+    <div class="section">
+      <div class="section-title">Step 5 — Wheel Rotation</div>
+      <p class="step-instruction">Enter your wheel's <strong>total rotation in degrees</strong> (lock-to-lock). Most wheels used with NR2003 are 270–360°.</p>
+      <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-top:16px">
+        <label style="font-size:13px;color:#aaa;white-space:nowrap">Degrees:</label>
+        <input type="number" id="rotation-input" min="90" max="1800" step="10" value="300"
+          style="background:#0e1014;border:1px solid #3a7bd5;border-radius:4px;padding:8px 12px;font-size:28px;font-weight:700;color:#3a7bd5;width:120px;text-align:center;">
+      </div>
+      <div style="font-size:11px;color:#555;text-align:center;margin-top:10px">Common values: 270° · 300° · 360° · 540° · 900°</div>
+    </div>
+  </div>
+
+  <!-- Step 5: Select pedal device -->
+  <div class="step" id="step-5">
+    <div class="section">
+      <div class="section-title">Step 5 — Pedal Device</div>
+      <p class="step-instruction">Select the device your pedals are on. If your pedals share the same USB device as your wheel, check the box below.</p>
+      <div id="same-device-row">
+        <label><input type="checkbox" id="same-device-chk"> Pedals are on the same device as wheel</label>
+      </div>
+    </div>
+    <div class="section" id="pedal-device-section">
+      <div class="section-title">Select Pedal Device</div>
+      <div id="pedal-device-list"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">Clutch</div>
+      <div class="clutch-row">
+        <label><input type="checkbox" id="clutch-chk" checked> Include clutch pedal calibration</label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 6: Throttle press -->
+  <div class="step" id="step-6">
+    <div class="section">
+      <div class="section-title">Step 6 — Throttle: Full Press</div>
+      <p class="step-instruction">Press the <strong>throttle pedal all the way down</strong> and hold it, then click Next.</p>
+      <div class="value-display" id="lv-thr-press">0.000</div>
+      <div class="pedal-preview">
+        <div><div class="pedal-bar-wrap"><div class="pedal-bar-fill" id="pb-thr" style="height:0%"></div></div><div class="pedal-bar-label">Throttle</div></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:#888;cursor:pointer"><input type="checkbox" id="thr-invert-chk"> Invert Axis <span style="font-size:11px;color:#555">(check if throttle shows reversed)</span></label>
+    </div>
+  </div>
+
+  <!-- Step 7: Throttle release -->
+  <div class="step" id="step-7">
+    <div class="section">
+      <div class="section-title">Step 7 — Throttle: Release</div>
+      <p class="step-instruction"><strong>Release the throttle pedal</strong> completely, then click Next.</p>
+      <div class="value-display" id="lv-thr-rest">0.000</div>
+      <div class="pedal-preview">
+        <div><div class="pedal-bar-wrap"><div class="pedal-bar-fill" id="pb-thr2" style="height:0%"></div></div><div class="pedal-bar-label">Throttle</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 8: Brake press -->
+  <div class="step" id="step-8">
+    <div class="section">
+      <div class="section-title">Step 8 — Brake: Full Press</div>
+      <p class="step-instruction">Press the <strong>brake pedal all the way down</strong> and hold it, then click Next.</p>
+      <div class="value-display" id="lv-brk-press">0.000</div>
+      <div class="pedal-preview">
+        <div><div class="pedal-bar-wrap"><div class="pedal-bar-fill" id="pb-brk" style="height:0%;background:#e84444"></div></div><div class="pedal-bar-label">Brake</div></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:#888;cursor:pointer"><input type="checkbox" id="brk-invert-chk"> Invert Axis <span style="font-size:11px;color:#555">(check if brake shows reversed)</span></label>
+    </div>
+  </div>
+
+  <!-- Step 9: Brake release -->
+  <div class="step" id="step-9">
+    <div class="section">
+      <div class="section-title">Step 9 — Brake: Release</div>
+      <p class="step-instruction"><strong>Release the brake pedal</strong> completely, then click Next.</p>
+      <div class="value-display" id="lv-brk-rest">0.000</div>
+      <div class="pedal-preview">
+        <div><div class="pedal-bar-wrap"><div class="pedal-bar-fill" id="pb-brk2" style="height:0%;background:#e84444"></div></div><div class="pedal-bar-label">Brake</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 10: Clutch press (optional) -->
+  <div class="step" id="step-10">
+    <div class="section">
+      <div class="section-title">Step 10 — Clutch: Full Press</div>
+      <p class="step-instruction">Press the <strong>clutch pedal all the way down</strong> and hold it, then click Next.</p>
+      <div class="value-display" id="lv-clt-press">0.000</div>
+      <div class="pedal-preview">
+        <div><div class="pedal-bar-wrap"><div class="pedal-bar-fill" id="pb-clt" style="height:0%;background:#4a9ee8"></div></div><div class="pedal-bar-label">Clutch</div></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:#888;cursor:pointer"><input type="checkbox" id="clt-invert-chk"> Invert Axis <span style="font-size:11px;color:#555">(check if clutch shows reversed)</span></label>
+    </div>
+  </div>
+
+  <!-- Step 11: Clutch release (optional) -->
+  <div class="step" id="step-11">
+    <div class="section">
+      <div class="section-title">Step 11 — Clutch: Release</div>
+      <p class="step-instruction"><strong>Release the clutch pedal</strong> completely, then click Next.</p>
+      <div class="value-display" id="lv-clt-rest">0.000</div>
+      <div class="pedal-preview">
+        <div><div class="pedal-bar-wrap"><div class="pedal-bar-fill" id="pb-clt2" style="height:0%;background:#4a9ee8"></div></div><div class="pedal-bar-label">Clutch</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Done -->
+  <div class="step" id="step-done">
+    <div class="section">
+      <div class="section-title">&#9989; Calibration Complete</div>
+      <p class="step-instruction">Your wheel and pedals have been calibrated. Click Save &amp; Close to apply.</p>
+      <br>
+      <div class="saved-values" style="grid-template-columns:1fr 1fr 1fr;margin-top:8px" id="done-vals"></div>
+    </div>
+  </div>
+
+</div><!-- /left -->
+
+  <!-- Right: persistent live monitor -->
+  <div id="right">
+    <div id="right-title">LIVE MONITOR</div>
+    <div class="section" id="right-axes">
+      <div class="section-title">Axes</div>
+      <div class="axis-monitor" id="axis-monitor"></div>
+    </div>
+    <div class="section" id="right-wheel">
+      <div class="section-title">Steering</div>
+      <div style="font-size:32px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums;color:#3a7bd5;margin-bottom:12px" id="live-wheel-val">—</div>
+      <div style="display:flex;justify-content:center">
+        <svg id="live-wheel-svg" width="130" height="130" viewBox="0 0 80 80" style="transition:transform 0.05s linear">
+          <circle cx="40" cy="40" r="36" fill="none" stroke="#2a2d35" stroke-width="8"/>
+          <circle cx="40" cy="40" r="18" fill="none" stroke="#2a2d35" stroke-width="4"/>
+          <line x1="40" y1="4" x2="40" y2="22" stroke="#3a7bd5" stroke-width="4" stroke-linecap="round"/>
+          <line x1="40" y1="40" x2="22" y2="40" stroke="#444" stroke-width="3" stroke-linecap="round"/>
+          <line x1="40" y1="40" x2="58" y2="40" stroke="#444" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+    <div class="section" id="right-pedals">
+      <div class="section-title">Pedals</div>
+      <div class="pedal-bars">
+        <div class="pedal-col">
+          <div class="pedal-bar-wrap"><div class="pedal-bar-fill" id="live-thr" style="height:0%;background:#3ddc6e"></div></div>
+          <div class="pedal-bar-label">Throttle</div>
+        </div>
+        <div class="pedal-col">
+          <div class="pedal-bar-wrap"><div class="pedal-bar-fill" id="live-brk" style="height:0%;background:#e84444"></div></div>
+          <div class="pedal-bar-label">Brake</div>
+        </div>
+        <div class="pedal-col" id="clt-col">
+          <div class="pedal-bar-wrap"><div class="pedal-bar-fill" id="live-clt" style="height:0%;background:#4a9ee8"></div></div>
+          <div class="pedal-bar-label">Clutch</div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /right -->
+
+</div><!-- /main -->
+
+<div id="footer">
+  <button class="btn-secondary" id="btn-back" style="display:none">&#8592; Back</button>
+  <button class="btn-primary"   id="btn-next" disabled>Next &#8594;</button>
+  <button class="btn-success"   id="btn-save" style="display:none">Save &amp; Close</button>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let step           = 1;
+let selectedDevice = null;   // wheel device index
+let detectedAxis   = null;
+let axisBaselines  = {};
+let _lastPadCount  = -1;
+let includeCltuch  = true;
+
+let calibration = {
+  deviceIndex: null, deviceName: '', axisIndex: null,
+  leftVal: -1, rightVal: 1, centerVal: 0, rotation: 300,
+  pedalDeviceIndex: null, pedalDeviceName: '',
+  throttleAxis: 1, throttlePress: 1, throttleRest: 0,
+  brakeAxis: 2,    brakePress: 1,    brakeRest: 0,
+  clutchAxis: 3,   clutchPress: 1,   clutchRest: 0,
+  hasClutch: true,
+};
+
+// Steps that are always shown
+const WHEEL_STEPS  = [1, 2, 3, 4, '4r', 5, 6, 7, 8, 9];
+const CLUTCH_STEPS = [10, 11];
+const DONE_STEP    = 'done';
+
+function getStepOrder() {
+  const steps = [...WHEEL_STEPS];
+  if (includeCltuch) steps.push(...CLUTCH_STEPS);
+  steps.push(DONE_STEP);
+  return steps;
+}
+
+function getNextStep(cur) {
+  const order = getStepOrder();
+  const idx = order.indexOf(cur);
+  return idx >= 0 && idx < order.length - 1 ? order[idx + 1] : null;
+}
+
+function getPrevStep(cur) {
+  const order = getStepOrder();
+  const idx = order.indexOf(cur);
+  return idx > 0 ? order[idx - 1] : null;
+}
+
+function getTotalSteps() { return getStepOrder().length - 1; } // -1 for done
+
+// ── Elements ───────────────────────────────────────────────────────────────
+const btnNext       = document.getElementById('btn-next');
+const btnBack       = document.getElementById('btn-back');
+const btnSave       = document.getElementById('btn-save');
+const stepIndicator = document.getElementById('step-indicator');
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function getGamepads() {
+  return Array.from(navigator.getGamepads ? navigator.getGamepads() : []).filter(Boolean);
+}
+
+function getWheelPad() {
+  return getGamepads().find(p => p.index === calibration.deviceIndex);
+}
+
+function getPedalPad() {
+  const idx = calibration.pedalDeviceIndex ?? calibration.deviceIndex;
+  return getGamepads().find(p => p.index === idx);
+}
+
+function wheelSVGDeg(val) {
+  const left = calibration.leftVal ?? -1, right = calibration.rightVal ?? 1;
+  const center = calibration.centerVal ?? ((left + right) / 2);
+  const half = (right - left) / 2;
+  if (half <= 0) return 0;
+  return Math.max(-270, Math.min(270, ((val - center) / half) * 270));
+}
+
+// ── Device list ────────────────────────────────────────────────────────────
+function buildDeviceList(containerId, onSelect, selectedIdx) {
+  const pads = getGamepads();
+  const list = document.getElementById(containerId);
+  if (!list) return;
+  if (!pads.length) {
+    list.innerHTML = '<div id="no-devices" style="font-size:13px;color:#666;text-align:center;padding:12px 0">No gamepads detected. Press any button or wiggle the wheel to activate it.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  pads.forEach(pad => {
+    const div = document.createElement('div');
+    div.className   = 'device-item' + (selectedIdx === pad.index ? ' selected' : '');
+    div.dataset.idx = pad.index;
+    div.innerHTML   = `<div style="pointer-events:none"><div class="device-name">${pad.id}</div><div class="device-idx">Index ${pad.index} &mdash; ${pad.axes.length} axes, ${pad.buttons.length} buttons</div></div>`;
+    list.appendChild(div);
+  });
+  list.onclick = e => {
+    const item = e.target.closest('.device-item');
+    if (!item) return;
+    const idx = parseInt(item.dataset.idx);
+    onSelect(idx);
+    list.querySelectorAll('.device-item').forEach(el => el.classList.toggle('selected', parseInt(el.dataset.idx) === idx));
+  };
+}
+
+function updateWheelDeviceList() {
+  buildDeviceList('device-list', idx => {
+    selectedDevice = idx;
+    const p = getGamepads().find(g => g.index === idx);
+    if (p) { axisBaselines = {}; p.axes.forEach((v, i) => { axisBaselines[i] = v; }); }
+    detectedAxis = null;
+    btnNext.disabled = true;
+  }, selectedDevice);
+}
+
+function updatePedalDeviceList() {
+  buildDeviceList('pedal-device-list', idx => {
+    calibration.pedalDeviceIndex = idx;
+    calibration.pedalDeviceName  = getGamepads().find(p => p.index === idx)?.id || '';
+    btnNext.disabled = false;
+    capturePedalBaselines();
+  }, calibration.pedalDeviceIndex);
+}
+
+let pedalBaselines = {};  // axis -> resting value when device selected
+
+function capturePedalBaselines() {
+  const pad = getPedalPad();
+  if (!pad) return;
+  pedalBaselines = {};
+  pad.axes.forEach((v, i) => { pedalBaselines[i] = v; });
+}
+
+// ── Same device checkbox ──────────────────────────────────────────────────
+document.getElementById('same-device-chk').addEventListener('change', e => {
+  const section = document.getElementById('pedal-device-section');
+  if (e.target.checked) {
+    calibration.pedalDeviceIndex = calibration.deviceIndex;
+    calibration.pedalDeviceName  = calibration.deviceName;
+    section.style.display = 'none';
+    btnNext.disabled = false;
+    capturePedalBaselines();
+  } else {
+    section.style.display = '';
+    btnNext.disabled = calibration.pedalDeviceIndex === null;
+    updatePedalDeviceList();
+  }
+});
+
+// ── Clutch checkbox ────────────────────────────────────────────────────────
+document.getElementById('clutch-chk').addEventListener('change', e => {
+  includeCltuch = e.target.checked;
+  calibration.hasClutch = includeCltuch;
+  const cltCol = document.getElementById('clt-col');
+  if (cltCol) cltCol.style.display = includeCltuch ? '' : 'none';
+});
+
+// ── Axis monitor ────────────────────────────────────────────────────────────
+function updateAxisMonitor() {
+  const monitor = document.getElementById('axis-monitor');
+  if (selectedDevice === null) { monitor.innerHTML = ''; return; }
+  const pad = getGamepads().find(p => p.index === selectedDevice);
+  if (!pad) return;
+  let maxDelta = 0.05, activeAxis = detectedAxis;
+  pad.axes.forEach((val, i) => {
+    const delta = Math.abs(val - (axisBaselines[i] ?? val));
+    if (delta > maxDelta) { maxDelta = delta; activeAxis = i; }
+  });
+  if (activeAxis !== detectedAxis) {
+    detectedAxis = activeAxis;
+    calibration.axisIndex = detectedAxis;
+    btnNext.disabled = false;
+  }
+  monitor.innerHTML = pad.axes.map((val, i) => {
+    const pct = ((val + 1) / 2 * 100).toFixed(0);
+    const ok  = i === detectedAxis;
+    return `<div class="axis-row${ok ? ' detected' : ''}">
+      <span class="axis-label">Axis ${i}${ok ? ' ✓' : ''}</span>
+      <div class="axis-bar-wrap"><div class="axis-bar${ok ? ' active' : ''}" style="width:${pct}%"></div></div>
+      <span class="axis-val">${val.toFixed(3)}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Live display updaters ───────────────────────────────────────────────────
+function updateLiveDisplay() {
+  if (step === 'done') return;
+
+  const pad = getWheelPad();
+  if (pad && calibration.axisIndex !== null) {
+    const val = pad.axes[calibration.axisIndex];
+
+    // Update main live wheel display
+    const wv = document.getElementById('live-wheel-val');
+    const ws = document.getElementById('live-wheel-svg');
+    if (wv) wv.textContent = val.toFixed(4);
+    if (ws) ws.style.transform = 'rotate(' + wheelSVGDeg(val) + 'deg)';
+
+    // Update the step-specific value display (steps 2, 3, 4)
+    if (step === 2) {
+      const el = document.getElementById('lv-2');
+      const sv = document.getElementById('ws-2');
+      if (el) el.textContent = val.toFixed(4);
+      if (sv) sv.style.transform = 'rotate(' + wheelSVGDeg(val) + 'deg)';
+    } else if (step === 3) {
+      const el = document.getElementById('lv-3');
+      const sv = document.getElementById('ws-3');
+      if (el) el.textContent = val.toFixed(4);
+      if (sv) sv.style.transform = 'rotate(' + wheelSVGDeg(val) + 'deg)';
+    } else if (step === 4) {
+      const el = document.getElementById('lv-4');
+      const sv = document.getElementById('ws-4');
+      if (el) el.textContent = val.toFixed(4);
+      if (sv) sv.style.transform = 'rotate(' + wheelSVGDeg(val) + 'deg)';
+    }
+  }
+
+  // Update pedal bars if we have a pedal device
+  const ppad = getPedalPad();
+  if (ppad) {
+    // Show all axes on the pedal bars based on detected axes
+    const thrRaw = ppad.axes[calibration.throttleAxis] ?? 0;
+    const brkRaw = ppad.axes[calibration.brakeAxis]    ?? 0;
+    const cltRaw = ppad.axes[calibration.clutchAxis]   ?? 0;
+
+    const pct = (raw) => ((raw + 1) / 2 * 100).toFixed(0) + '%';
+
+    const lt = document.getElementById('live-thr');
+    const lb = document.getElementById('live-brk');
+    const lc = document.getElementById('live-clt');
+    if (lt) lt.style.height = pct(thrRaw);
+    if (lb) lb.style.height = pct(brkRaw);
+    if (lc) lc.style.height = pct(cltRaw);
+
+    // Update the step-specific raw value readouts + bars (steps 6-11)
+    // These were previously dead elements — wired here so the numeric
+    // display actually reflects live axis movement during calibration.
+    if (step === 6) {
+      const el = document.getElementById('lv-thr-press');
+      const b  = document.getElementById('pb-thr');
+      if (el) el.textContent = thrRaw.toFixed(4);
+      if (b)  b.style.height = pct(thrRaw);
+    } else if (step === 7) {
+      const el = document.getElementById('lv-thr-rest');
+      const b  = document.getElementById('pb-thr2');
+      if (el) el.textContent = thrRaw.toFixed(4);
+      if (b)  b.style.height = pct(thrRaw);
+    } else if (step === 8) {
+      const el = document.getElementById('lv-brk-press');
+      const b  = document.getElementById('pb-brk');
+      if (el) el.textContent = brkRaw.toFixed(4);
+      if (b)  b.style.height = pct(brkRaw);
+    } else if (step === 9) {
+      const el = document.getElementById('lv-brk-rest');
+      const b  = document.getElementById('pb-brk2');
+      if (el) el.textContent = brkRaw.toFixed(4);
+      if (b)  b.style.height = pct(brkRaw);
+    } else if (step === 10) {
+      const el = document.getElementById('lv-clt-press');
+      const b  = document.getElementById('pb-clt');
+      if (el) el.textContent = cltRaw.toFixed(4);
+      if (b)  b.style.height = pct(cltRaw);
+    } else if (step === 11) {
+      const el = document.getElementById('lv-clt-rest');
+      const b  = document.getElementById('pb-clt2');
+      if (el) el.textContent = cltRaw.toFixed(4);
+      if (b)  b.style.height = pct(cltRaw);
+    }
+
+    // Auto-detect most-moved axis for press steps using delta from baseline
+    if ([6, 8, 10].includes(step)) {
+      let maxDelta = 0.08, best = -1;
+      ppad.axes.forEach((val, i) => {
+        if (i === calibration.axisIndex && calibration.deviceIndex === calibration.pedalDeviceIndex) return;
+        const baseline = pedalBaselines[i] ?? val;
+        const delta = Math.abs(val - baseline);
+        if (delta > maxDelta) { maxDelta = delta; best = i; }
+      });
+      if (best >= 0) {
+        if (step === 6) calibration.throttleAxis = best;
+        else if (step === 8) calibration.brakeAxis = best;
+        else if (step === 10) calibration.clutchAxis = best;
+      }
+    }
+  }
+}
+
+// ── Navigation ──────────────────────────────────────────────────────────────
+function showStep(n) {
+  step = n;
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById('step-' + n);
+  if (el) el.classList.add('active');
+
+  const order = getStepOrder();
+  const idx   = order.indexOf(n);
+  const isDone = n === DONE_STEP;
+
+  const headerStep = document.getElementById('header-step');
+  if (isDone) {
+    if (headerStep) headerStep.textContent = 'COMPLETE';
+  } else {
+    if (headerStep) headerStep.textContent = 'STEP ' + (idx + 1) + ' OF ' + getTotalSteps();
+  }
+
+  btnBack.style.display = (!isDone && getPrevStep(n) !== null) ? '' : 'none';
+  btnNext.style.display = isDone ? 'none' : '';
+  btnSave.style.display = isDone ? '' : 'none';
+
+  if (n === 1) btnNext.disabled = (selectedDevice === null || detectedAxis === null);
+  else if (n === 5) {
+    const sameChk = document.getElementById('same-device-chk');
+    btnNext.disabled = !sameChk.checked && calibration.pedalDeviceIndex === null;
+    if (!sameChk.checked) {
+      document.getElementById('pedal-device-section').style.display = '';
+      updatePedalDeviceList();
+    }
+  }
+  else btnNext.disabled = false;
+
+  // Show/hide right panel sections contextually
+  document.getElementById('right-axes').style.display   = n === 1    ? '' : 'none';
+  document.getElementById('right-wheel').style.display  = [1,2,3,4,'4r'].includes(n) ? '' : 'none';
+  document.getElementById('right-pedals').style.display = [5,6,7,8,9,10,11].includes(n) ? '' : 'none';
+}
+
+btnNext.addEventListener('click', () => {
+  const pad = getWheelPad();
+  const ppad = getPedalPad();
+
+  if (step === 1) {
+    calibration.deviceIndex = selectedDevice;
+    calibration.deviceName  = getGamepads().find(p => p.index === selectedDevice)?.id || '';
+    calibration.axisIndex   = detectedAxis;
+    // Default pedal device to same as wheel
+    if (calibration.pedalDeviceIndex === null) {
+      calibration.pedalDeviceIndex = selectedDevice;
+      calibration.pedalDeviceName  = calibration.deviceName;
+      document.getElementById('same-device-chk').checked = true;
+      document.getElementById('pedal-device-section').style.display = 'none';
+    }
+    showStep(getNextStep(step));
+
+  } else if (step === 2) {
+    if (!pad) return;
+    calibration.leftVal = pad.axes[calibration.axisIndex];
+    showStep(getNextStep(step));
+
+  } else if (step === 3) {
+    if (!pad) return;
+    calibration.rightVal = pad.axes[calibration.axisIndex];
+    showStep(getNextStep(step));
+
+  } else if (step === 4) {
+    if (!pad) return;
+    calibration.centerVal = pad.axes[calibration.axisIndex];
+    showStep(getNextStep(step));
+
+  } else if (step === '4r') {
+    const rotInput = document.getElementById('rotation-input');
+    calibration.rotation = parseInt(rotInput?.value) || 300;
+    showStep(getNextStep(step));
+
+  } else if (step === 5) {
+    calibration.hasClutch = document.getElementById('clutch-chk').checked;
+    includeCltuch = calibration.hasClutch;
+    capturePedalBaselines();  // ensure baselines fresh before pedal steps
+    showStep(getNextStep(step));
+
+  } else if (step === 6) {
+    if (!ppad) return;
+    calibration.throttlePress = ppad.axes[calibration.throttleAxis];
+    calibration.throttleInvert = document.getElementById('thr-invert-chk')?.checked || false;
+    showStep(getNextStep(step));
+
+  } else if (step === 7) {
+    if (!ppad) return;
+    calibration.throttleRest = ppad.axes[calibration.throttleAxis];
+    showStep(getNextStep(step));
+
+  } else if (step === 8) {
+    if (!ppad) return;
+    calibration.brakePress = ppad.axes[calibration.brakeAxis];
+    calibration.brakeInvert = document.getElementById('brk-invert-chk')?.checked || false;
+    showStep(getNextStep(step));
+
+  } else if (step === 9) {
+    if (!ppad) return;
+    calibration.brakeRest = ppad.axes[calibration.brakeAxis];
+    showStep(getNextStep(step));
+
+  } else if (step === 10) {
+    if (!ppad) return;
+    calibration.clutchPress = ppad.axes[calibration.clutchAxis];
+    calibration.clutchInvert = document.getElementById('clt-invert-chk')?.checked || false;
+    showStep(getNextStep(step));
+
+  } else if (step === 11) {
+    if (!ppad) return;
+    calibration.clutchRest = ppad.axes[calibration.clutchAxis];
+    showStep(getNextStep(step));
+  }
+
+  // Build done screen when we reach it
+  if (step === DONE_STEP || getNextStep(step) === null) buildDoneScreen();
+});
+
+function buildDoneScreen() {
+  const vals = document.getElementById('done-vals');
+  if (!vals) return;
+  const rows = [
+    ['Wheel Left',    calibration.leftVal?.toFixed(4)],
+    ['Wheel Center',  calibration.centerVal?.toFixed(4)],
+    ['Wheel Right',   calibration.rightVal?.toFixed(4)],
+    ['Rotation',      calibration.rotation + '°'],
+    ['Throttle Axis', calibration.throttleAxis],
+    ['Brake Axis',    calibration.brakeAxis],
+  ];
+  if (calibration.hasClutch) rows.push(['Clutch Axis', calibration.clutchAxis]);
+  vals.style.gridTemplateColumns = 'repeat(' + Math.min(rows.length, 4) + ', 1fr)';
+  vals.innerHTML = rows.map(([label, val]) => `
+    <div class="saved-val set">
+      <div class="saved-val-label">${label}</div>
+      <div class="saved-val-num">${val ?? '—'}</div>
+    </div>`).join('');
+}
+
+btnBack.addEventListener('click', () => {
+  const prev = getPrevStep(step);
+  if (prev !== null) showStep(prev);
+});
+
+btnSave.addEventListener('click', async () => {
+  console.log('Saving calibration:', JSON.stringify(calibration));
+  await window.shl.saveWheelCalibration(calibration);
+  window.close();
+});
+
+// ── Poll loop ──────────────────────────────────────────────────────────────
+function poll() {
+  const pads = getGamepads();
+  if (step === 1) {
+    if (pads.length !== _lastPadCount) { _lastPadCount = pads.length; updateWheelDeviceList(); }
+    updateAxisMonitor();
+  } else {
+    updateLiveDisplay();
+  }
+  requestAnimationFrame(poll);
+}
+
+window.addEventListener('gamepadconnected',    () => { _lastPadCount = -1; });
+window.addEventListener('gamepaddisconnected', () => { _lastPadCount = -1; });
+
+// ── Init ───────────────────────────────────────────────────────────────────
+calibration.hasClutch = true;
+showStep(1);
+poll();
+</script>
+</body>
+</html>

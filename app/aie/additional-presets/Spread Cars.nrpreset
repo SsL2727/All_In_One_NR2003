@@ -1,0 +1,8 @@
+{
+  "description": "Increases AI drafting distance and lateral padding to spread cars out on track.\n\nSets:\n  ai_drafting_distance = 4\n  ai_dlat_pad = 3\n\nAll other settings unchanged.",
+  "settings": {
+    "ai_drafting_distance": 4,
+    "ai_dlat_pad": 3
+  },
+  "auto_keywords": []
+}

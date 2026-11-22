@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="perf-shim.js"></script>
+<meta charset="UTF-8">
+<title>NR2003 Battle</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: transparent;
+    width: 360px;
+    overflow: hidden;
+    font-family: 'Barlow Condensed', sans-serif;
+  }
+
+  #scale-root {
+    transform-origin: top left;
+    width: 360px;
+    display: none;
+  }
+
+  .battle {
+    width: 360px;
+    background: rgba(18,20,24,0.92);
+    border: 1px solid #252525;
+    border-radius: 5px;
+    overflow: hidden;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 52px 28px 44px 1fr 68px;
+    align-items: center;
+    height: 44px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .row:last-child { border-bottom: none; }
+
+  .col-label {
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    color: #fff;
+    text-transform: uppercase;
+    text-align: center;
+    padding: 0 4px;
+    border-right: 1px solid #252525;
+  }
+
+  .col-pos {
+    font-size: 14px;
+    font-weight: 700;
+    color: #aaaaaa;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    padding: 0 2px;
+  }
+
+  .col-num {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 2px;
+    height: 100%;
+  }
+  .col-num img {
+    max-width: 40px;
+    max-height: 26px;
+    object-fit: contain;
+  }
+  .col-num .num-txt {
+    font-size: 18px;
+    font-weight: 600;
+    font-style: italic;
+    font-family: 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
+    color: #d0d0d0;
+  }
+
+  .col-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 0 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .col-delta {
+    font-size: 14px;
+    font-weight: 900;
+    font-family: 'Arial Narrow', Arial, sans-serif;
+    color: #ffffff;
+    text-align: right;
+    padding: 0 8px 0 2px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  /* Lapped car coloring */
+  .row.lap-ahead  .col-pos,
+  .row.lap-ahead  .col-name,
+  .row.lap-ahead  .col-delta,
+  .row.lap-ahead  .num-txt { color: #ff5252; }  /* they're ahead by a lap — red */
+
+  .row.lap-behind .col-pos,
+  .row.lap-behind .col-name,
+  .row.lap-behind .col-delta,
+  .row.lap-behind .num-txt { color: #888890; }  /* they're behind by a lap — dim */
+</style>
+</head>
+<body>
+<div id="scale-root">
+  <div class="battle" id="battle">
+    <div id="aheadRow"  class="row">
+      <span class="col-label">AHEAD</span>
+      <span class="col-pos">--</span>
+      <div  class="col-num"></div>
+      <span class="col-name">---</span>
+      <span class="col-delta">---</span>
+    </div>
+    <div id="behindRow" class="row">
+      <span class="col-label">BEHIND</span>
+      <span class="col-pos">--</span>
+      <div  class="col-num"></div>
+      <span class="col-name">---</span>
+      <span class="col-delta">---</span>
+    </div>
+  </div>
+</div>
+<script>
+// ── URL params ─────────────────────────────────────────────────────────────
+const params      = new URLSearchParams(location.search);
+const INSTALL_DIR = params.get('installdir') || '';
+function assetPath(rel) {
+  const psf = window.__PSF;
+  if (psf && psf.assetBase) return psf.assetBase + '/' + rel;
+  if (INSTALL_DIR) {
+    const encoded = INSTALL_DIR.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+    return 'file:///' + encoded + '/' + rel;
+  }
+  return rel;
+}
+const WS_HOST     = params.get('host')       || (location.hostname && location.hostname !== '' ? location.hostname : 'localhost');
+const WS_PORT     = params.get('port')       || '8765';
+const WS_URL      = window.__PSF?.wsUrl || `ws://${WS_HOST}:${WS_PORT}`;
+const SCALE       = parseFloat(params.get('scale')   || '1');
+const OPACITY     = parseFloat(params.get('opacity') || '1');
+const SERIES      = params.get('series') || 'default';
+const IS_DEFAULT  = !SERIES || SERIES === 'default';
+let VISIBILITY_MODE = params.get('visibilitymode') || 'in_car';
+const ALWAYS_VISIBLE = VISIBILITY_MODE === 'always'; // legacy compat
+
+// ── Visibility mode ───────────────────────────────────────────────────────────
+// Modes: 'in_car' | 'at_track' | 'always'
+// Responds to postMessage { _visibilityMode: '...' } from layout editor
+window.addEventListener('message', e => {
+  if (typeof e.data === 'string') {
+    try {
+      const m = JSON.parse(e.data);
+      if (m._visibilityMode !== undefined) {
+        VISIBILITY_MODE = m._visibilityMode;
+      }
+    } catch(ex) {}
+  }
+});
+
+function checkVisibility(d) {
+  if (!d) return false;
+  switch (VISIBILITY_MODE) {
+    case 'always':   return true;
+    case 'at_track': return !!d.atTrack;
+    case 'in_car':
+    default:         return !!(d.atTrack && d.player?.inCar);
+  }
+}
+
+
+const root     = document.getElementById('scale-root');
+const battleEl = document.getElementById('battle');
+
+function hideBattle() { root.style.display = 'none'; }
+function showBattle() { root.style.display = 'block'; }
+
+if (SCALE > 0 && SCALE !== 1) {
+  root.style.transform = `scale(${SCALE})`;
+  document.body.style.width = Math.round(360 * SCALE) + 'px';
+}
+if (OPACITY > 0 && OPACITY < 1) {
+  battleEl.style.background = `rgba(18,20,24,${OPACITY})`;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function numImgSrc(num) {
+  const n = (num || '').trim();
+  if (!n || n === '??' || IS_DEFAULT) return '';
+  return assetPath(`series/${SERIES}/numbers/${n}.png`);
+}
+
+function numHtml(num) {
+  const src = numImgSrc(num);
+  const n   = (num || '').trim();
+  if (src) {
+    return `<img src="${src}" alt="${n}" onerror="this.outerHTML='<span class=\\'num-txt\\'>${n}</span>'">`;
+  }
+  return `<span class="num-txt">${n}</span>`;
+}
+
+// ── Row image cache — prevents number flashing ─────────────────────────────
+const _numCache = {};  // carIdx -> last rendered number
+
+function setRow(id, entry, label, posNum, deltaText, lapCls) {
+  const el = document.getElementById(id);
+  if (!entry) {
+    el.style.visibility = 'hidden';
+    return;
+  }
+  el.style.visibility = 'visible';
+  el.className = 'row' + (lapCls ? ' ' + lapCls : '');
+
+  el.querySelector('.col-label').textContent = label;
+  el.querySelector('.col-pos').textContent   = posNum ? `${posNum})` : '--';
+  el.querySelector('.col-name').textContent  = (entry.name || '?').toUpperCase();
+  el.querySelector('.col-delta').textContent = deltaText || '--';
+
+  // Only rebuild number image if it changed
+  const ci      = entry.carIdx;
+  const numStr  = (entry.number || '??').trim();
+  if (_numCache[id] !== numStr) {
+    el.querySelector('.col-num').innerHTML = numHtml(numStr);
+    _numCache[id] = numStr;
+  }
+}
+
+function clearRow(id) {
+  const el = document.getElementById(id);
+  el.style.visibility = 'hidden';
+  el.className = 'row';
+  el.querySelector('.col-pos').textContent   = '--';
+  el.querySelector('.col-num').innerHTML     = '';
+  el.querySelector('.col-name').textContent  = '---';
+  el.querySelector('.col-delta').textContent = '---';
+  delete _numCache[id];
+}
+
+// ── Delta calculation ──────────────────────────────────────────────────────
+// Uses rawDeltaPct from relative array (normalized -.5 to +.5)
+// and confirmedLaps from bridge for lap-down detection
+
+function getDeltaText(relEntry, playerRelEntry, isAhead) {
+  if (!relEntry) return '--';
+
+  const confirmedDiff = relEntry.confirmedLapDiff || 0;
+
+  // Lapped cars
+  if (confirmedDiff !== 0) {
+    const laps = Math.abs(confirmedDiff);
+    return confirmedDiff > 0 ? `-${laps}L` : `+${laps}L`;
+  }
+
+  // Same lap — use rawDeltaPct * estimated lap time for seconds gap
+  // rawDeltaPct: negative = they're ahead, positive = they're behind
+  const rawDelta = relEntry.rawDeltaPct || 0;
+  const refLap   = relEntry.refLapTime  || 30.0;
+  const secs     = rawDelta * refLap;
+
+  // Format with sign
+  const abs  = Math.abs(secs);
+  const sign = secs < 0 ? '-' : '+';
+  return `${sign}${abs.toFixed(3)}`;
+}
+
+// ── Live standings engine (copied from nr2003_livestandings) ───────────────
+// Only the state vars needed for _computeLiveStandings and _syncWithOfficialStandings
+let   _refLapTime    = 0;
+let   _isLiveMode    = false;
+const _lappedState   = new Map();
+let   _lastOfficialHash = '';
+let   _stickyLeaderLap  = 0;
+
+function _syncWithOfficialStandings(d) {
+  const standings  = d.standings || [];
+  if (!standings.length) return;
+
+  const leaderLap = standings[0].lap || 0;
+
+  // Track leader lap — only process when it advances
+  if (leaderLap <= _stickyLeaderLap && _stickyLeaderLap > 0) return;
+  const prevLeaderLap  = _stickyLeaderLap;
+  _stickyLeaderLap = leaderLap;
+
+  standings.forEach(s => {
+    const ci           = s.carIdx;
+    const officialDown = leaderLap - (s.lap || 0);
+    const stickyDown   = _lappedState.get(ci) || 0;
+
+    if (officialDown === 0 && stickyDown > 0) {
+      // Car is back on lead lap per official standings AND leader lap advanced
+      // This is a genuine unlap — clear the lapped state
+      _lappedState.delete(ci);
+    } else if (officialDown > stickyDown) {
+      _lappedState.set(ci, officialDown);
+    }
+  });
+}
+
+function _computeLiveStandings(d) {
+  const opponents = d.opponents  || [];
+  const standings = d.standings  || [];
+  const drivers   = d.drivers    || [];
+  const relative  = d.relative   || [];
+  const playerIdx = d.playerCarIdx;
+  const session   = (d.session      || '').toLowerCase();
+  const state     = (d.sessionState || '').toLowerCase();
+
+  if (session !== 'race') return standings;
+
+  // During cool down — use official standings (authoritative results), stop live sort
+  if (state === 'cool down') return standings;
+
+  // Sync with official standings when they change (once per lap crossing)
+  const officialHash = standings.map(s => s.carIdx + ':' + s.lap).join(',');
+  if (officialHash !== _lastOfficialHash) {
+    _lastOfficialHash = officialHash;
+    _syncWithOfficialStandings(d);
+  }
+
+  // Build number/name/meta maps
+  const numMap = {}, nameMap = {}, metaMap = {};
+  standings.forEach(s => {
+    numMap[s.carIdx]  = s.number;
+    nameMap[s.carIdx] = s.name;
+    metaMap[s.carIdx] = s;
+  });
+  drivers.forEach(drv => {
+    if (drv.number && drv.number !== '??') numMap[drv.carIdx]  = drv.number;
+    if (drv.name)                          nameMap[drv.carIdx] = drv.name;
+  });
+  relative.forEach(r => {
+    if (r.number && r.number !== '??') numMap[r.carIdx]  = r.number;
+    if (r.name)                        nameMap[r.carIdx] = r.name;
+  });
+
+  // Known cars filter (exclude pace car)
+  const known = new Set([
+    ...relative.map(r => r.carIdx),
+    ...drivers.map(r => r.carIdx),
+    ...standings.map(r => r.carIdx),
+    playerIdx,
+  ]);
+
+  // Per-car lap counts from bridge
+  const carLaps = d.carLaps || {};
+
+  // Build totalProgress per car
+  // For cars in _lappedState, use their confirmed laps down to adjust progress
+  const cars = [];
+  opponents.forEach(opp => {
+    const ci = opp.carIdx;
+    if (!known.has(ci)) return;
+    const laps = carLaps[ci] !== undefined ? carLaps[ci] : (metaMap[ci]?.lap || 0);
+    cars.push({ carIdx: ci, trkPct: opp.trkPct||0, laps,
+                totalProgress: laps + (opp.trkPct||0) });
+  });
+
+  // Add player if not in opponents — but only if actually in car
+  const player = d.player || {};
+  if (player.trkPct !== undefined && player.inCar !== false &&
+      !cars.find(c => c.carIdx === playerIdx)) {
+    const laps = carLaps[playerIdx] !== undefined
+      ? carLaps[playerIdx] : (metaMap[playerIdx]?.lap || 0);
+    cars.push({ carIdx: playerIdx, trkPct: player.trkPct, laps,
+                totalProgress: laps + player.trkPct });
+  }
+
+  // Sort descending by totalProgress first pass
+  cars.sort((a, b) => b.totalProgress - a.totalProgress);
+  const leaderProgress = cars.length > 0 ? cars[0].totalProgress : 0;
+
+  // Apply lapped state to totalProgress so lapped cars sort below same-lap cars
+  // A car confirmed 1 lap down should sort as if their totalProgress is 1 less
+  // than the leader, adjusted by their trkPct within that lap
+  cars.forEach(car => {
+    const stickyDown = _lappedState.get(car.carIdx) || 0;
+    if (stickyDown > 0) {
+      // Sort lapped cars by: lap group (stickyDown) descending, then trkPct descending
+      // Use a base far below lead-lap cars, subtract stickyDown, add trkPct for intra-group sort
+      // Floor leaderProgress to avoid fractional leader position affecting lapped car sort
+      const leaderLaps = Math.round(leaderProgress);
+      car.totalProgress = (leaderLaps - stickyDown) + car.trkPct;
+    }
+  });
+
+  // Final sort: lead-lap cars by totalProgress, lapped cars by official standings order
+  const officialOrder = {};
+  standings.forEach((s, i) => { officialOrder[s.carIdx] = i; });
+
+  cars.sort((a, b) => {
+    const aDown = _lappedState.get(a.carIdx) || 0;
+    const bDown = _lappedState.get(b.carIdx) || 0;
+    // Lead-lap cars first, sorted by live progress
+    if (aDown === 0 && bDown === 0) return b.totalProgress - a.totalProgress;
+    // Lead-lap beats lapped
+    if (aDown === 0) return -1;
+    if (bDown === 0) return 1;
+    // Both lapped: sort by lap deficit first, then official standings order within group
+    if (aDown !== bDown) return aDown - bDown;
+    return (officialOrder[a.carIdx] ?? 999) - (officialOrder[b.carIdx] ?? 999);
+  });
+  const leader = cars[0];
+  if (!leader) return standings;
+
+  // Check live mode threshold — leader must be on lap 2+
+  _isLiveMode = leader.laps >= 2;
+  if (!_isLiveMode) return standings;
+
+  // Update reference lap time from leader's last lap or session fastest
+  const leaderMeta = metaMap[leader.carIdx];
+  if (leaderMeta?.lastLap && leaderMeta.lastLap > 0) _refLapTime = leaderMeta.lastLap;
+  else if (d.fastestLap && d.fastestLap > 0)         _refLapTime = d.fastestLap;
+  if (_refLapTime <= 0) return standings;
+
+  // Build live sorted array
+  return cars.map((car, i) => {
+    const meta    = metaMap[car.carIdx] || {};
+    const progDiff = leader.totalProgress - car.totalProgress;
+    const mathLaps = Math.floor(progDiff);
+
+    // Sticky lapped state — once a car is marked lapped it stays lapped
+    // until progDiff genuinely drops below 0.9 (unlapping themselves)
+    const prevLapped = _lappedState.get(car.carIdx) || 0;
+    const carAheadOfLeader = car.trkPct > leader.trkPct + 0.05;
+
+    // Once lapped, always lapped — position from official standings only
+    let lapsDiff = prevLapped > 0 ? prevLapped
+      : (mathLaps >= 1 && !carAheadOfLeader) ? mathLaps : 0;
+    if (lapsDiff > 0 && !prevLapped) _lappedState.set(car.carIdx, lapsDiff);
+
+    let time, liveStatus;
+    if (i === 0)            { time = 0;         liveStatus = 'running'; }
+    else if (lapsDiff >= 1) { time = -lapsDiff; liveStatus = 'lapped'; }
+    else                    { time = Math.max(0, progDiff) * _refLapTime; liveStatus = 'running'; }
+
+    // Check retirement — retired cars show OUT regardless of position
+    const officialStatus = (meta.status || 'running').toLowerCase();
+    const isRetired = officialStatus !== 'running' && officialStatus !== '';
+    if (isRetired) liveStatus = 'retired';
+
+    return {
+      carIdx:     car.carIdx,
+      number:     numMap[car.carIdx]  || meta.number || '??',
+      name:       nameMap[car.carIdx] || meta.name   || '?',
+      lap:        car.laps,
+      trkPct:     car.trkPct,
+      time:       time,
+      status:     meta.status     || 'running',
+      incidents:  meta.incidents  || 0,
+      lastLap:    meta.lastLap    || 0,
+      bestLap:    meta.bestLap    || 0,
+      liveStatus,
+    };
+  });
+}
+
+// ── Session reset handler ─────────────────────────────────────────────────
+function handleReset() {
+  // Clear all cached data so stale state doesn't persist
+  latestData = null;
+  if (typeof _rowCache !== 'undefined') _rowCache.clear();
+  _lastHash = '';
+  _isLiveMode = false;
+  _refLapTime = 0;
+  _lappedState.clear();
+  _lastOfficialHash = '';
+  _stickyLeaderLap  = 0;
+  _animatingRows.forEach(t => clearTimeout(t));
+  _animatingRows.clear();
+  _lastPos.clear();
+  _flashTimers.forEach(t => clearTimeout(t));
+  _flashTimers.clear();
+  if (typeof dotCache  !== 'undefined') Object.keys(dotCache).forEach(k => delete dotCache[k]);
+  if (typeof smoothPos !== 'undefined') Object.keys(smoothPos).forEach(k => delete smoothPos[k]);
+  if (typeof _sortedIdx !== 'undefined') { _sortedIdx = null; normalized = null; normBounds = null; }
+  if (typeof playerTrkPctSmooth !== 'undefined') playerTrkPctSmooth = -1;
+  // Clear SVG dots
+  ['field-dots','player-dot','leader-dot'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '';
+  });
+  // Clear track lines
+  ['track-border','track-surface'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.setAttribute('points',''); el.setAttribute('d',''); }
+  });
+}
+
+// ── State (from copied engine) ───────────────────────────────────────────
+let rotateGroupIdx    = 0;
+let lastStandingsLen  = 0;
+let pracDeltaMode     = false;
+let pracDeltaTimer    = null;
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function lastName(full) {
+  // Bridge handles deduplication and suffix logic — just uppercase and return
+  return (full || '?').toUpperCase();
+}
+
+// Format countdown time (seconds) → M:SS or H:MM:SS
+function fmtCountdownTime(sec) {
+  if (!sec || sec <= 0) return null;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function fmtLapInfo(d) {
+  const state     = (d.sessionState || '').toLowerCase();
+  const session   = (d.session      || '').toLowerCase();
+  const sessNum   = d.sessionNum !== undefined ? d.sessionNum : -1;
+  const lapsComp  = d.lapsComplete  || 0;
+  const lapsRem   = d.lapsRemaining || 0;
+  const lapsTotal = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  const timeRem   = d.timeRemaining || 0;
+  const flag      = (d.sessionFlag  || '').toLowerCase();
+  const cautions  = d.cautionFlags  || 0;
+
+  // ── Practice ─────────────────────────────────────────────────────────
+  if (session === 'practice' || session === 'testing') {
+    if (session === 'testing' || sessNum === 2) return 'TESTING';
+    const t = fmtCountdownTime(timeRem);
+    return t ? `Practice: ${t}` : 'PRACTICE';
+  }
+
+  // ── Qualifying ───────────────────────────────────────────────────────
+  if (session === 'qualifying') {
+    const t = fmtCountdownTime(timeRem);
+    return t ? `Qualifying: ${t}` : 'QUALIFYING';
+  }
+
+  // ── Race ─────────────────────────────────────────────────────────────
+  if (state === 'get in car')  return 'GRIDDING';
+  if (state === 'warmup' || state === 'parade laps') return 'PACING';
+  if (state === 'cool down')   return 'RESULTS';
+  if (state === 'checkered')   return 'CHECKERED';
+
+  if (lapsTotal <= 0) {
+    return lapsComp > 0 ? `LAP ${lapsComp + 1}` : 'PACING';
+  }
+
+  const halfway  = Math.floor(lapsTotal / 2);
+  const isYellow = flag === 'yellow';
+  const cautionPrefix = isYellow ? `CAUTION #${cautions} — ` : '';
+
+  // Last lap
+  if (lapsRem <= 1 && lapsComp > 0) {
+    return isYellow ? `${cautionPrefix}FINAL LAP` : 'FINAL LAP';
+  }
+
+  if (lapsComp < halfway) {
+    // First half
+    const lapNum = lapsComp + 1;
+    return `${cautionPrefix}LAP ${lapNum} of ${lapsTotal}`;
+  } else {
+    // Second half
+    return `${cautionPrefix}${lapsRem} TO GO`;
+  }
+}
+
+function fmtFlag(flag) {
+  switch ((flag || '').toLowerCase()) {
+    case 'yellow': return 'yellow';
+    case 'red':    return 'red';
+    default:       return 'green';
+  }
+}
+
+function fmtFlag2(d) {
+  const state   = (d.sessionState || '').toLowerCase();
+  const session = (d.session      || '').toLowerCase();
+  // Checkered bars for checkered flag and cool down (results screen)
+  if (state === 'checkered' || state === 'cool down') return 'checkered';
+  // White flag: 1 to go
+  if ((d.lapsRemaining || 0) === 1 && session === 'race' && state === 'racing') return 'white';
+  return fmtFlag(d.sessionFlag);
+}
+
+// numImgSrc defined above
+
+function fmtDelta(standing, leaderLap, isPracQual, pracMode, leaderBestLap) {
+  // Practice/Qualifying: show lap times or gaps
+  if (isPracQual) {
+    const best = standing.time || 0;
+    if (best <= 0) return { text: '—', cls: '' };
+    if (!pracMode) {
+      const isLeaderBest = leaderBestLap && leaderBestLap > 0 && Math.abs(best - leaderBestLap) < 0.001;
+      return { text: best.toFixed(3), cls: isLeaderBest ? 'leader-best' : '' };
+    } else {
+      if (!leaderBestLap || leaderBestLap <= 0) return { text: best.toFixed(3), cls: 'leader-best' };
+      const gap = best - leaderBestLap;
+      if (gap <= 0.0005) return { text: leaderBestLap.toFixed(3), cls: 'leader-best' };
+      return { text: `-${gap.toFixed(3)}`, cls: '' };
+    }
+  }
+
+  // Live race mode — use liveStatus if available
+  const liveStatus = standing.liveStatus;
+  const status     = (standing.status || '').toLowerCase();
+
+  // Retired cars always show OUT
+  if (liveStatus === 'retired' || (status !== 'running' && status !== '')) {
+    return { text: 'OUT', cls: 'out' };
+  }
+
+  const t = standing.time || 0;
+
+  if (liveStatus === 'lapped') {
+    // t is negative lap count e.g. -1, -2
+    return { text: `${Math.round(t)}L`, cls: 'lapped' };
+  }
+
+  if (t <= 0 && liveStatus === 'running') return { text: '', cls: 'leader' };
+  if (t > 0)  return { text: `-${t.toFixed(3)}`, cls: '' };
+
+  // Fallback to official standings logic
+  const lapDiff = leaderLap - (standing.lap || 0);
+  if (lapDiff >= 1) return { text: `-${lapDiff}L`, cls: 'lapped' };
+  if (t <= 0)       return { text: '', cls: 'leader' };
+  return { text: `-${t.toFixed(3)}`, cls: '' };
+}
+
+// ── Row element cache — keyed by carIdx to prevent image flashing ──────────
+const _rowCache = new Map(); // carIdx -> { el, deltaEl, posEl }
+
+function getOrCreateRow(standing, pos, leaderLap, playerCarIdx, isPracQual, pracMode, leaderBestLap) {
+  const ci       = standing.carIdx;
+  const delta    = fmtDelta(standing, leaderLap, isPracQual, pracMode, leaderBestLap);
+  const isLeader = pos === 1;
+  const isPlayer = ci === playerCarIdx;
+
+  if (_rowCache.has(ci)) {
+    const cached = _rowCache.get(ci);
+    // Always update dynamic fields
+    cached.posEl.textContent   = pos;
+    cached.deltaEl.textContent = (isLeader && !isPracQual) ? '' : delta.text;
+    cached.deltaEl.className   = `s-delta ${delta.cls}`;
+    cached.el.className        = 's-row' + (isPlayer ? ' player-row' : '');
+    cached.el.dataset.pos      = pos;
+
+    // Update number image if number changed (e.g. after deduplication kicks in)
+    const prevNum = cached.el.dataset.numStr || '';
+    const curNum  = (standing.number || '').trim();
+    if (prevNum !== curNum) {
+      const imgEl = cached.el.querySelector('.s-num-img');
+      const txtEl = cached.el.querySelector('.s-num-text');
+      const newSrc = numImgSrc(standing.number);
+      if (imgEl) {
+        imgEl.src = newSrc || '';
+        imgEl.style.display    = newSrc ? '' : 'none';
+        if (txtEl) txtEl.style.display = newSrc ? 'none' : '';
+      }
+      if (txtEl && !newSrc) txtEl.textContent = curNum;
+      cached.el.dataset.numStr = curNum;
+    }
+    return cached.el;
+  }
+
+  // First time — build the full row including the image
+  const el     = document.createElement('div');
+  el.className = 's-row' + (isPlayer ? ' player-row' : '');
+  el.dataset.caridx  = ci;
+  el.dataset.pos     = pos;
+  el.dataset.numStr  = (standing.number || '').trim();
+
+  const numSrc = numImgSrc(standing.number);
+  const name   = lastName(standing.name);
+
+  el.innerHTML = `
+    <span class="s-pos">${pos}</span>
+    <span class="s-num-wrap">
+      ${numSrc
+        ? `<img class="s-num-img" src="${numSrc}" alt="${(standing.number||'').trim()}"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+           <span class="s-num-text" style="display:none">${(standing.number||'').trim()}</span>`
+        : `<span class="s-num-text">${(standing.number||'').trim()}</span>`
+      }
+    </span>
+    <span class="s-name">${name}</span>
+    <span class="s-delta ${delta.cls}">${(isLeader && !isPracQual) ? '' : delta.text}</span>
+  `;
+
+  const posEl   = el.querySelector('.s-pos');
+  const deltaEl = el.querySelector('.s-delta');
+  _rowCache.set(ci, { el, posEl, deltaEl });
+  return el;
+}
+
+// Clear cache on track/session change
+function clearRowCache() { _rowCache.clear(); }
+
+// ── Render ────────────────────────────────────────────────────────────────
+let _lastTrack    = '';
+let _lastHash     = '';
+
+// ── Position change flash ─────────────────────────────────────────────────
+const _lastPos     = new Map();   // carIdx -> last known position
+const _flashTimers = new Map();   // carIdx -> timeout id
+
+function _checkPosChange(carIdx, newPos, rowEl) {
+  const prevPos = _lastPos.get(carIdx);
+  _lastPos.set(carIdx, newPos);
+  if (prevPos === undefined || prevPos === newPos) return;
+
+  const cls = newPos < prevPos ? 'pos-gained' : 'pos-lost';
+  if (rowEl.classList.contains(cls)) return;  // already animating same direction
+
+  if (_flashTimers.has(carIdx)) {
+    clearTimeout(_flashTimers.get(carIdx));
+    rowEl.classList.remove('pos-gained', 'pos-lost');
+    void rowEl.offsetWidth;  // force reflow
+  }
+
+  rowEl.classList.add(cls);
+  const t = setTimeout(() => {
+    rowEl.classList.remove('pos-gained', 'pos-lost');
+    _flashTimers.delete(carIdx);
+  }, 2100);
+  _flashTimers.set(carIdx, t);
+}
+
+// ── FLIP animation ────────────────────────────────────────────────────────
+// Tracks which rows are currently animating — throttles rapid re-animation
+const _animatingRows = new Map();  // carIdx -> timeout id
+
+function _flipAnimate(container) {
+  // Step 1: FIRST — record current positions of all rows
+  const rows    = Array.from(container.children);
+  const firstPos = new Map();
+  rows.forEach(row => {
+    const ci = parseInt(row.dataset.caridx);
+    if (!isNaN(ci)) {
+      firstPos.set(ci, row.getBoundingClientRect().top);
+    }
+  });
+  return firstPos;
+}
+
+function _flipPlay(container, firstPos) {
+  // Step 2: LAST + INVERT + PLAY
+  const rows = Array.from(container.children);
+  rows.forEach(row => {
+    const ci = parseInt(row.dataset.caridx);
+    if (isNaN(ci) || !firstPos.has(ci)) return;
+
+    // If already animating this row, skip — let current animation finish
+    if (_animatingRows.has(ci)) return;
+
+    const lastTop  = row.getBoundingClientRect().top;
+    const firstTop = firstPos.get(ci);
+    const delta    = firstTop - lastTop;
+
+    if (Math.abs(delta) < 2) return;  // negligible movement, skip
+
+    // INVERT: snap to old position instantly
+    row.style.transition = 'none';
+    row.style.transform  = `translateY(${delta}px)`;
+
+    // Force reflow so browser registers the transform before transitioning
+    row.getBoundingClientRect();
+
+    // PLAY: transition to natural position
+    row.style.transition = '';
+    row.style.transform  = '';
+    row.classList.add('flip-animating');
+
+    // Throttle — mark as animating, clear after animation completes
+    const t = setTimeout(() => {
+      row.classList.remove('flip-animating');
+      _animatingRows.delete(ci);
+    }, 420);  // slightly longer than 400ms CSS duration
+    _animatingRows.set(ci, t);
+  });
+}
+
+// ── Main render ────────────────────────────────────────────────────────────
+let   latestData   = null;
+let   lastCookie   = null;
+let   _battleHideTimer = null;
+
+
+function render(d) {
+  if (!d || !d.atTrack) {
+    hideBattle();
+    clearRow('aheadRow'); clearRow('behindRow');
+    return;
+  }
+
+  const session      = (d.session      || '').toLowerCase();
+  const sessionState = (d.sessionState || '').toLowerCase();
+  const flag         = (d.sessionFlag  || '').toLowerCase();
+  const p            = d.player        || {};
+
+  // Race only
+  if (session !== 'race') { hideBattle(); return; }
+
+  // Check base visibility mode first
+  if (!checkVisibility(d)) { hideBattle(); return; }
+
+  // Hide when not actively racing in car
+  // Use both inCar AND sessionState since NR2003 keeps sessionState='racing' in garage
+  const inCar = p.inCar ?? false;
+  const activeStates = ['racing', 'checkered'];
+  const isActive = inCar && activeStates.includes(sessionState);
+  if (!isActive) {
+    if (!_battleHideTimer) {
+      _battleHideTimer = setTimeout(() => { hideBattle(); _battleHideTimer = null; }, 1000);
+    }
+    return;
+  }
+  if (_battleHideTimer) { clearTimeout(_battleHideTimer); _battleHideTimer = null; }
+
+  // Hide during gridding/pacing/caution/cooldown
+  if (sessionState === 'get in car' || sessionState === 'warmup' ||
+      sessionState === 'parade laps' || sessionState === 'cool down' ||
+      flag === 'yellow') {
+    hideBattle();
+    return;
+  }
+
+  // Session reset detection
+  const cookie = d.sessionCookie || 0;
+  if (cookie !== lastCookie && lastCookie !== null) {
+    clearRow('aheadRow'); clearRow('behindRow');
+  }
+  lastCookie = cookie;
+
+  const playerIdx = d.playerCarIdx !== undefined ? d.playerCarIdx : -1;
+  const carLaps   = d.carLaps || {};
+
+  const officialMode = d.liveStandingsEnabled === false || d.isOnline || false;
+
+  // Use bridge-computed live standings — single source of truth
+  const liveStandings = d.liveStandings || d.standings || [];
+  const computed = officialMode ? (d.standings || []) : liveStandings;
+  if (!computed || computed.length === 0) { hideBattle(); return; }
+
+  // Check live mode — hide on lap 1 (skip check in official mode)
+  const leaderCi   = computed[0].carIdx;
+  const leaderLaps = carLaps[leaderCi] || 0;
+  if (!officialMode && leaderLaps < 2) { hideBattle(); return; }
+
+  // Find player
+  const playerIdx2 = computed.findIndex(s => s.carIdx === playerIdx);
+  if (playerIdx2 < 0) { hideBattle(); return; }
+
+  const playerEntry = computed[playerIdx2];
+
+  // Hide if player is lapped — battle box only works on lead lap
+  const playerLapped = officialMode
+    ? (playerEntry.lapsDown || 0) > 0
+    : playerEntry.liveStatus === 'lapped';
+  if (playerLapped) {
+    hideBattle();
+    clearRow('aheadRow'); clearRow('behindRow');
+    return;
+  }
+
+  const aheadEntry  = playerIdx2 > 0                    ? computed[playerIdx2 - 1] : null;
+  const behindEntry = playerIdx2 < computed.length - 1  ? computed[playerIdx2 + 1] : null;
+
+  if (!aheadEntry && !behindEntry) { hideBattle(); return; }
+  showBattle();
+
+  function fmtGap(entry, isAhead) {
+    if (!entry) return '--';
+    if (officialMode) {
+      // Official mode — use shim time field directly (gap to leader in seconds)
+      // Compute relative gap between the two cars using their official times
+      const gap = Math.abs((entry.time || 0) - (playerEntry.time || 0));
+      return isAhead ? `+${gap.toFixed(3)}` : `-${gap.toFixed(3)}`;
+    } else {
+      // Live mode — use trkPct-based time from liveStandings
+      const gap = Math.abs((entry.time || 0) - (playerEntry.time || 0));
+      return isAhead ? `+${gap.toFixed(3)}` : `-${gap.toFixed(3)}`;
+    }
+  }
+
+  setRow('aheadRow',  aheadEntry,  'AHEAD',  aheadEntry  ? playerIdx2     : null, fmtGap(aheadEntry,  true),  '');
+  setRow('behindRow', behindEntry, 'BEHIND', behindEntry ? playerIdx2 + 2 : null, fmtGap(behindEntry, false), '');
+}
+
+// ── Session reset ──────────────────────────────────────────────────────────
+function handleReset() {
+  latestData = null;
+  lastCookie = null;
+
+  clearRow('aheadRow');
+  clearRow('behindRow');
+  hideBattle();
+}
+
+function updateVisibility(d) {
+  if (!checkVisibility(d)) { hideBattle(); return; }
+  const inCar        = d?.player?.inCar ?? false;
+  const sessionState = (d?.sessionState || '').toLowerCase();
+  const activeStates = ['racing', 'checkered'];
+  if (!inCar || !activeStates.includes(sessionState)) hideBattle();
+}
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+let ws = null;
+const connEl = document.getElementById('connecting');
+
+function handleMessage(data) {
+  try {
+    const d = JSON.parse(data);
+    if (d.reset === true) { handleReset(); return; }
+    updateVisibility(d);
+    latestData = d;
+    render(d);
+  } catch(e) {}
+}
+
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onmessage = (evt) => handleMessage(evt.data);
+  ws.onclose = () => { setTimeout(() => { if (!ws || ws.readyState !== WebSocket.OPEN) connEl?.classList.remove('hidden'); }, 3000); setTimeout(connect, 2000); };
+  ws.onerror = () => ws.close();
+}
+
+// Accept postMessage for layout editor preview — registered once at top level
+window.addEventListener('message', e => {
+  if (typeof e.data === 'string') {
+    if (connEl) { connEl.classList.add('hidden'); connEl.style.display = 'none'; }
+    handleMessage(e.data);
+  }
+});
+
+connect();
+</script>
+</body>
+</html>

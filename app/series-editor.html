@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PSF — Series Editor</title>
+<style>
+:root {
+  --bg:       #0e1014;
+  --card:     #13161a;
+  --card2:    #181c22;
+  --border:   #1e2229;
+  --border2:  #252a33;
+  --text:     #e8e8ec;
+  --text-dim: #6a7080;
+  --text-mid: #9099a8;
+  --gold:     #c8a800;
+  --gold-dim: rgba(200,168,0,0.15);
+  --blue:     #2980b9;
+  --green:    #2ecc71;
+  --red:      #e74c3c;
+  --font:     'Barlow Condensed', 'Segoe UI', Arial, sans-serif;
+  --radius:   4px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { height:100%; background:var(--bg); color:var(--text); font-family:var(--font); font-size:13px; overflow:hidden; }
+
+/* ── Layout ──────────────────────────────────────────────────────────── */
+#app { display:flex; flex-direction:column; height:100%; }
+
+/* ── Top bar ─────────────────────────────────────────────────────────── */
+#topbar {
+  display:flex; align-items:center; gap:10px;
+  padding:10px 16px;
+  background:#0b0d10;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+#topbar h1 { font-size:15px; font-weight:700; letter-spacing:1px; color:var(--gold); text-transform:uppercase; flex:1; }
+.tb-select {
+  background:var(--card); border:1px solid var(--border2); border-radius:var(--radius);
+  color:var(--text); padding:5px 10px; font-size:13px; font-family:var(--font);
+  cursor:pointer; min-width:180px;
+}
+.tb-btn {
+  background:none; border:1px solid var(--border2); border-radius:var(--radius);
+  color:var(--text-mid); padding:5px 12px; font-size:12px; font-family:var(--font);
+  font-weight:600; letter-spacing:0.5px; cursor:pointer; white-space:nowrap;
+  transition:color 0.15s, border-color 0.15s;
+}
+.tb-btn:hover { color:var(--text); border-color:var(--text-mid); }
+.tb-btn.primary { border-color:var(--gold); color:var(--gold); }
+.tb-btn.primary:hover { background:var(--gold-dim); }
+.tb-btn.danger { border-color:#c0392b; color:#e74c3c; }
+#topbar-sep { width:1px; height:20px; background:var(--border2); }
+
+/* ── Series header ───────────────────────────────────────────────────── */
+#series-header {
+  background:var(--card); border-bottom:1px solid var(--border);
+  padding:12px 16px; display:flex; align-items:center; gap:16px; flex-shrink:0;
+}
+#logo-zone {
+  width:90px; height:60px; border:1px solid var(--border2); border-radius:var(--radius);
+  background:var(--bg); display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:3px; cursor:pointer; flex-shrink:0; position:relative;
+  overflow:hidden;
+}
+#logo-zone:hover { border-color:var(--text-dim); }
+#logo-preview { width:100%; height:100%; object-fit:contain; display:none; }
+#logo-placeholder { display:flex; flex-direction:column; align-items:center; gap:3px; }
+#logo-placeholder span { font-size:10px; color:var(--text-dim); }
+#logo-placeholder svg { opacity:0.4; }
+.header-fields { flex:1; display:flex; flex-direction:column; gap:8px; }
+.hf-row { display:flex; align-items:center; gap:10px; }
+.hf-label { font-size:11px; color:var(--text-dim); letter-spacing:0.5px; width:85px; flex-shrink:0; text-transform:uppercase; }
+.hf-input {
+  flex:1; background:var(--bg); border:1px solid var(--border2); border-radius:var(--radius);
+  color:var(--text); padding:5px 10px; font-size:13px; font-family:var(--font); max-width:320px;
+}
+.hf-input:focus { outline:none; border-color:var(--gold); }
+.hf-id { color:var(--text-dim); font-size:11px; letter-spacing:0.5px; }
+
+/* ── Filter bar ──────────────────────────────────────────────────────── */
+#filter-bar {
+  background:var(--card); border-bottom:1px solid var(--border);
+  padding:8px 16px; display:flex; align-items:center; gap:12px; flex-shrink:0;
+}
+#filter-input {
+  background:var(--bg); border:1px solid var(--border2); border-radius:var(--radius);
+  color:var(--text); padding:5px 10px; font-size:13px; font-family:var(--font); width:150px;
+}
+#filter-input:focus { outline:none; border-color:var(--text-dim); }
+.filter-toggle { display:flex; align-items:center; gap:5px; cursor:pointer; color:var(--text-mid); font-size:12px; }
+.filter-toggle input { cursor:pointer; }
+#filter-count { margin-left:auto; font-size:11px; color:var(--text-dim); letter-spacing:0.5px; }
+
+/* ── Car grid ────────────────────────────────────────────────────────── */
+#grid-area { flex:1; overflow-y:auto; padding:12px 16px; }
+#grid-area::-webkit-scrollbar { width:6px; }
+#grid-area::-webkit-scrollbar-track { background:transparent; }
+#grid-area::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
+
+.section-label {
+  font-size:10px; color:var(--text-dim); letter-spacing:2px; text-transform:uppercase;
+  margin-bottom:8px; margin-top:12px;
+}
+.section-label:first-child { margin-top:0; }
+
+.car-grid {
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(156px,1fr)); gap:6px;
+  margin-bottom:8px;
+}
+.car-card {
+  background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+  padding:8px; cursor:pointer; transition:border-color 0.1s;
+}
+.car-card:hover { border-color:var(--border2); }
+.car-card.has-data { border-color:var(--border2); }
+.car-card.expanded {
+  border-color:var(--gold); grid-column:span 2;
+  background:var(--card2);
+}
+.car-num { font-size:22px; font-weight:700; line-height:1; margin-bottom:5px; letter-spacing:0.5px; }
+.car-previews { display:flex; align-items:center; gap:5px; margin-bottom:5px; min-width:0; }
+.num-thumb {
+  width:36px; height:26px; border:1px solid var(--border2); border-radius:2px;
+  background:var(--bg); display:flex; align-items:center; justify-content:center;
+  font-size:9px; color:var(--text-dim); flex-shrink:0; overflow:hidden;
+}
+.num-thumb img { width:100%; height:100%; object-fit:contain; }
+.head-thumb {
+  width:26px; height:26px; border-radius:50%; border:1px solid var(--border2);
+  background:var(--bg); display:flex; align-items:center; justify-content:center;
+  font-size:8px; color:var(--text-dim); flex-shrink:0; overflow:hidden;
+}
+.head-thumb img { width:100%; height:100%; object-fit:cover; border-radius:50%; }
+.car-thumb {
+  flex:1 1 44px; min-width:0; height:26px; border:1px solid var(--border2); border-radius:2px;
+  background:var(--bg); display:flex; align-items:center; justify-content:center;
+  font-size:9px; color:var(--text-dim); overflow:hidden;
+}
+.car-thumb img { width:100%; height:100%; object-fit:contain; padding:1px; }
+.color-dot {
+  width:14px; height:14px; border-radius:50%; border:1px solid var(--border2); flex-shrink:0;
+}
+.car-status { font-size:10px; color:var(--text-dim); }
+.car-status.ok { color:#2ecc71; }
+
+/* ── Expanded edit panel ─────────────────────────────────────────────── */
+.exp-body {
+  margin-top:8px; padding-top:8px; border-top:1px solid var(--border);
+  display:flex; flex-direction:column; gap:7px; overflow:hidden;
+}
+.exp-row { display:flex; align-items:center; gap:8px; min-width:0; }
+.exp-label { font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; width:60px; flex-shrink:0; }
+.exp-browse {
+  background:none; border:1px solid var(--border2); border-radius:var(--radius);
+  color:var(--text-mid); padding:3px 8px; font-size:11px; font-family:var(--font);
+  font-weight:600; letter-spacing:0.5px; cursor:pointer;
+  transition:color 0.1s, border-color 0.1s;
+}
+.exp-browse:hover { color:var(--text); border-color:var(--text-dim); }
+.exp-clear {
+  background:none; border:none; color:var(--text-dim); font-size:11px;
+  cursor:pointer; padding:3px; letter-spacing:0.5px;
+}
+.exp-clear:hover { color:var(--red); }
+.exp-filename { font-size:10px; color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:90px; flex:1; }
+.color-row { display:flex; align-items:center; gap:6px; }
+.color-swatch {
+  width:20px; height:20px; border-radius:50%; border:1px solid var(--border2);
+  cursor:pointer; flex-shrink:0; transition:transform 0.1s;
+}
+.color-swatch:hover { transform:scale(1.1); }
+.color-hex { font-size:11px; color:var(--text-mid); font-family:'Courier New',monospace; letter-spacing:0.5px; }
+input[type=color] { display:none; }
+
+/* ── Manufacturers section ───────────────────────────────────────────────── */
+#manu-section {
+  background: var(--card); border-bottom: 1px solid var(--border);
+  padding: 10px 16px; flex-shrink: 0;
+}
+#manu-section h2 { font-size: 11px; color: var(--text-dim); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px; }
+.manu-grid { display: flex; gap: 10px; flex-wrap: wrap; }
+.manu-slot { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; }
+.manu-thumb {
+  width: 60px; height: 40px; border: 1px solid var(--border2); border-radius: var(--radius);
+  background: var(--bg); display: flex; align-items: center; justify-content: center;
+  overflow: hidden; cursor: pointer;
+}
+.manu-thumb:hover { border-color: var(--text-dim); }
+.manu-thumb img { max-width: 56px; max-height: 36px; object-fit: contain; }
+.manu-thumb .ph { font-size: 9px; color: var(--text-dim); text-align: center; }
+.manu-label { font-size: 10px; color: var(--text-dim); letter-spacing: 0.3px; text-align: center; }
+.manu-slot { position: relative; width: 84px; }
+.manu-name { width: 100%; background: transparent; border: 1px solid transparent; border-radius: 3px; color: var(--text-dim);
+  font-size: 10px; letter-spacing: 0.3px; text-align: center; padding: 1px 2px; font-family: var(--font); }
+.manu-name:hover { border-color: var(--border2); }
+.manu-name:focus { border-color: var(--text-dim); background: var(--bg); color: var(--text); outline: none; }
+.manu-del { position: absolute; top: -5px; right: 6px; width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--border2);
+  background: var(--card); color: var(--text-dim); font-size: 9px; line-height: 1; cursor: pointer; padding: 0; display: none; }
+.manu-slot:hover .manu-del { display: block; }
+.manu-del:hover { color: var(--red); border-color: var(--red); }
+.manu-add .manu-thumb { border-style: dashed; color: var(--text-dim); font-size: 20px; }
+.manu-add .manu-label { visibility: hidden; }
+.manu-light { width: 60px; height: 22px; margin-top: 2px; background: #e9ebee; border-color: #c4c8ce; position: relative; }
+.manu-light img { max-width: 56px; max-height: 18px; }
+.manu-light .ph { color: #666b74; }
+.manu-lclr { position: absolute; top: 0; right: 0; width: 14px; height: 14px; border: 0; border-radius: 0 0 0 4px; background: #c4c8ce; color: #333; font-size: 8px; line-height: 1; cursor: pointer; padding: 0; display: none; }
+.manu-light.has:hover .manu-lclr { display: block; }
+.rookie-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.rookie-row label { font-size: 11px; color: var(--text-mid); cursor: pointer; display: flex; align-items: center; gap: 5px; }
+.rookie-row input[type=checkbox] { cursor: pointer; }
+
+/* ── No series state ─────────────────────────────────────────────────── */
+#empty-state {
+  display:none; flex:1; align-items:center; justify-content:center;
+  flex-direction:column; gap:12px; color:var(--text-dim);
+}
+#empty-state svg { opacity:0.3; }
+#empty-state p { font-size:14px; letter-spacing:0.5px; }
+
+/* ── Toast ───────────────────────────────────────────────────────────── */
+#toast {
+  position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px);
+  background:var(--card2); border:1px solid var(--border2); border-radius:var(--radius);
+  padding:8px 18px; font-size:12px; letter-spacing:0.5px; font-weight:600;
+  transition:transform 0.25s ease, opacity 0.25s ease; opacity:0; pointer-events:none; z-index:999;
+}
+#toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
+#toast.ok { border-color:var(--green); color:var(--green); }
+#toast.err { border-color:var(--red); color:var(--red); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <h1>Series Editor</h1>
+    <select id="series-select" class="tb-select"></select>
+    <button id="new-btn" class="tb-btn">+ New Series</button>
+    <div id="topbar-sep"></div>
+    <input id="guide-title" class="tb-select" type="text" style="min-width:170px;cursor:text" placeholder="Guide title (optional)" title="Top line of the spotter guide, e.g. 2026 Daytona 500">
+    <button id="guide-btn" class="tb-btn" title="Export an image with every car that has data in this series: number, name and car">📸 Spotter Guide</button>
+    <button id="delete-btn" class="tb-btn danger">Delete</button>
+    <button id="save-btn" class="tb-btn primary">Save Series</button>
+    <button id="close-btn" class="tb-btn">Close</button>
+  </div>
+
+  <div id="series-header">
+    <div id="logo-zone" title="Click to change series logo">
+      <img id="logo-preview" alt="">
+      <div id="logo-placeholder">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+          <path d="M21 15l-5-5L5 21"/>
+        </svg>
+        <span>Series logo</span>
+      </div>
+    </div>
+    <div class="header-fields">
+      <div class="hf-row">
+        <span class="hf-label">Series Name</span>
+        <input id="series-name" class="hf-input" type="text" placeholder="e.g. NASCAR Cup 2024">
+      </div>
+      <div class="hf-row">
+        <span class="hf-label">Series ID</span>
+        <span id="series-id" class="hf-id">—</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="filter-bar">
+    <input id="filter-input" type="text" placeholder="Filter number...">
+    <label class="filter-toggle"><input type="checkbox" id="filter-all" checked> Show all</label>
+    <label class="filter-toggle"><input type="checkbox" id="filter-data"> Only with data</label>
+    <span id="filter-count"></span>
+  </div>
+
+  <!-- Manufacturers section -->
+  <div id="manu-section" style="display:none">
+    <h2>Manufacturers</h2>
+    <div class="manu-grid" id="manu-grid"></div>
+  </div>
+
+  <div id="grid-area">
+    <div id="empty-state">
+      <p>No series selected. Create a new series or select one above.</p>
+    </div>
+    <div id="grid-content"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────
+let seriesList   = [];
+let currentId    = null;
+const params     = new URLSearchParams(location.search);
+let installDir   = params.get('installdir') || '';
+let carData      = {};
+let expandedNum  = null;
+let filterText   = '';
+let filterData   = false;
+const _openSections = new Set(); // tracks which hundred-groups are expanded
+
+const ALL_NUMS = [
+  '0','00','01','02','03','04','05','06','07','08','09',
+  ...Array.from({length:99},  (_,i) => String(i+1)),
+  ...Array.from({length:900}, (_,i) => String(i+100))
+];
+
+// ── Init ──────────────────────────────────────────────────────────────
+async function init() {
+  const cfg = await window.shl.getConfig();
+  currentId  = cfg.series && cfg.series !== 'default' ? cfg.series : null;
+
+  await refreshSeriesList();
+  if (currentId && seriesList.find(s => s.id === currentId)) {
+    document.getElementById('series-select').value = currentId;
+    await loadSeries(currentId);
+  } else if (seriesList.length) {
+    await loadSeries(seriesList[0].id);
+  } else {
+    showEmpty();
+  }
+}
+
+
+// ── Spotter guide ─────────────────────────────────────────────────────
+// Draws a poster with every car that has data in this series (headshot, car
+// photo, colour, rookie flag or name): number, name and car, 4 per row.
+// Uses what is on screen, so unsaved names/colours are included.
+// Big cars: 4 per row on a 1280-wide sheet (≈300 px per car at 1x, 600 px at the 2x export)
+const GUIDE = { W: 1280, PAD: 20, COLS: 4, GAP: 8, TITLE_H: 128, HEADER_H: 42, IMG_H: 120, ROW_GAP: 12, FOOT_H: 38, SCALE: 2 };
+const GUIDE_YELLOW = '#f5c400';
+
+function guideCars() {
+  return ALL_NUMS
+    .filter(n => { const d = carData[n]; return d && (d.hasHead || d.hasCar || d.color || d.rookie || d.nameOv); })
+    .sort((a, b) => (parseInt(a, 10) - parseInt(b, 10)) || a.localeCompare(b));
+}
+
+function guideLoadImage(src) {
+  return new Promise(resolve => {
+    if (!src) return resolve(null);
+    const img = new Image();
+    img.onload  = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+function guideShade(hex, f) {            // f < 1 darkens, f > 1 lightens
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return '#4a5060';
+  const n = parseInt(m[1], 16);
+  const c = k => Math.max(0, Math.min(255, Math.round(((n >> k) & 255) * f)));
+  return `rgb(${c(16)},${c(8)},${c(0)})`;
+}
+function guideTextOn(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return '#fff';
+  const n = parseInt(m[1], 16);
+  return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) > 165 ? '#111' : '#fff';
+}
+function guideFit(ctx, text, maxW) {     // ellipsis so a long name never overflows its cell
+  if (ctx.measureText(text).width <= maxW) return text;
+  while (text.length > 1 && ctx.measureText(text + '…').width > maxW) text = text.slice(0, -1);
+  return text + '…';
+}
+function guideContain(ctx, img, x, y, w, h) {
+  const r = Math.min(w / img.width, h / img.height);
+  const dw = img.width * r, dh = img.height * r;
+  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+}
+
+async function buildSpotterGuide(title) {
+  const G = GUIDE;
+  const nums = guideCars();
+  const assets = await window.shl.getSpotterAssets(currentId, nums);
+  const seriesName = (document.getElementById('series-name').value || currentId || '').trim();
+
+  const logo = await guideLoadImage(assets.logo);
+  const imgs = {};
+  await Promise.all(nums.map(async n => {
+    imgs[n] = { car: await guideLoadImage(assets.cars[n]?.car), num: await guideLoadImage(assets.cars[n]?.num) };
+  }));
+
+  const rows  = Math.ceil(nums.length / G.COLS);
+  const rowH  = G.HEADER_H + G.IMG_H + G.ROW_GAP;
+  const H     = G.TITLE_H + rows * rowH + G.FOOT_H;
+  const cellW = Math.floor((G.W - 2 * G.PAD - (G.COLS - 1) * G.GAP) / G.COLS);
+
+  // Very long fields: keep the bitmap inside what the browser can allocate
+  const scale = Math.min(G.SCALE, 15000 / H);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(G.W * scale); canvas.height = Math.round(H * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  const chase = new Set((assets.chase && assets.chase.numbers) || []);
+  const chaseLabel = (assets.chase && assets.chase.label) || 'CHASE';
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, G.W, H);
+  ctx.textBaseline = 'alphabetic';
+
+  // Title block
+  ctx.fillStyle = '#b8860b'; ctx.font = 'bold 44px "Segoe UI", Arial, sans-serif';
+  ctx.fillText(guideFit(ctx, title, G.W - 2 * G.PAD - 220), G.PAD, 60);
+  ctx.fillStyle = '#1a2a6c'; ctx.font = 'bold 40px "Segoe UI", Arial, sans-serif';
+  ctx.fillText(guideFit(ctx, seriesName, G.W - 2 * G.PAD - 220), G.PAD, 108);
+  if (logo) {
+    const lw = 200, lh = 104;
+    guideContain(ctx, logo, G.W - G.PAD - lw, (G.TITLE_H - lh) / 2 - 2, lw, lh);
+  }
+
+  // Cars
+  nums.forEach((n, i) => {
+    const d   = carData[n] || {};
+    const col = i % G.COLS, row = Math.floor(i / G.COLS);
+    const x = G.PAD + col * (cellW + G.GAP);
+    const y = G.TITLE_H + row * rowH;
+    const base = d.color || '#555b68';
+    const inChase = chase.has(n);
+    const cellH = G.HEADER_H + G.IMG_H + 4;
+    if (inChase) { ctx.fillStyle = '#fff4b8'; ctx.fillRect(x, y, cellW, cellH); }     // yellow plate behind the car
+
+    // header bar
+    const grad = ctx.createLinearGradient(x, y, x + cellW, y);
+    grad.addColorStop(0, guideShade(base, 1)); grad.addColorStop(1, guideShade(base, 0.62));
+    ctx.fillStyle = grad; ctx.fillRect(x, y, cellW, G.HEADER_H);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(x, y + G.HEADER_H - 3, cellW, 3);
+    const ink = guideTextOn(base);
+
+    // number: the series' own number graphic when there is one, otherwise text
+    const numBoxW = 64;
+    if (imgs[n].num) {
+      guideContain(ctx, imgs[n].num, x + 6, y + 4, numBoxW - 8, G.HEADER_H - 12);
+    } else {
+      ctx.font = 'italic 900 30px "Segoe UI", Arial, sans-serif';
+      ctx.lineJoin = 'round'; ctx.miterLimit = 2;          // round joins: no spikes on 4, 7, 1…
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.strokeText(n, x + 9, y + 30);
+      ctx.fillStyle = '#fff'; ctx.fillText(n, x + 9, y + 30);
+    }
+
+    // name (Series name → name typed in Championship → nothing)
+    const nameOv = d.nameOv ? `${d.nameOv.first || ''} ${d.nameOv.last || ''}`.trim() : '';
+    const name   = nameOv || assets.names[n] || '';
+    ctx.font = 'bold 11px "Segoe UI", Arial, sans-serif';
+    const badge = d.rookie ? ctx.measureText('ROOKIE').width + 20 : 0;   // room reserved so the tag never covers the name
+    ctx.font = 'bold 18px "Segoe UI", Arial, sans-serif';
+    ctx.fillStyle = ink;
+    ctx.fillText(guideFit(ctx, name, cellW - numBoxW - 8 - badge), x + numBoxW + 4, y + 26);
+    if (d.rookie) {
+      ctx.font = 'bold 11px "Segoe UI", Arial, sans-serif';
+      const tx = x + cellW - 8, tw = ctx.measureText('ROOKIE').width;
+      ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fillRect(tx - tw - 6, y + 11, tw + 8, 16);
+      ctx.fillStyle = '#111'; ctx.fillText('ROOKIE', tx - tw - 2, y + 23);
+    }
+
+    // car
+    const cy = y + G.HEADER_H + 2;
+    if (imgs[n].car) {
+      guideContain(ctx, imgs[n].car, x + 2, cy, cellW - 4, G.IMG_H);
+    } else {
+      ctx.setLineDash([4, 3]); ctx.strokeStyle = '#c9ccd3'; ctx.lineWidth = 1;
+      ctx.strokeRect(x + 16.5, cy + 10.5, cellW - 33, G.IMG_H - 24);
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#b3b7c0'; ctx.font = '13px "Segoe UI", Arial, sans-serif';
+      const t = 'no car photo', tw = ctx.measureText(t).width;
+      ctx.fillText(t, x + (cellW - tw) / 2, cy + G.IMG_H / 2 + 4);
+    }
+
+    // Chase / Playoff: gold frame + tag
+    if (inChase) {
+      ctx.strokeStyle = GUIDE_YELLOW; ctx.lineWidth = 4; ctx.setLineDash([]);
+      ctx.strokeRect(x + 2, y + 2, cellW - 4, cellH - 4);
+      ctx.font = 'bold 12px "Segoe UI", Arial, sans-serif';
+      const tw = ctx.measureText(chaseLabel).width;
+      ctx.fillStyle = GUIDE_YELLOW; ctx.fillRect(x + cellW - tw - 20, y + cellH - 21, tw + 16, 17);
+      ctx.fillStyle = '#111'; ctx.fillText(chaseLabel, x + cellW - tw - 12, y + cellH - 8);
+    }
+  });
+
+  // Footer
+  const fy = H - G.FOOT_H;
+  ctx.fillStyle = '#6b6f78'; ctx.fillRect(0, fy, G.W, G.FOOT_H);
+  ctx.fillStyle = '#fff'; ctx.font = '14px "Segoe UI", Arial, sans-serif';
+  let lx = G.PAD;
+  const left = `${nums.length} cars  ·  ${new Date().toLocaleDateString()}`;
+  ctx.fillText(left, lx, fy + 25); lx += ctx.measureText(left).width + 28;
+  const inCount = nums.filter(n => chase.has(n)).length;
+  if (inCount) {                                   // legend for the gold frame
+    ctx.fillStyle = GUIDE_YELLOW; ctx.fillRect(lx, fy + 11, 16, 16);
+    ctx.fillStyle = '#fff'; ctx.fillText(`In the ${chaseLabel === 'PLAYOFF' ? 'Playoff' : 'Chase'} (${inCount})`, lx + 24, fy + 25);
+  }
+  const credit = 'All In One NR2003', cw = ctx.measureText(credit).width;
+  ctx.fillText(credit, G.W - G.PAD - cw, fy + 25);
+
+  return { canvas, count: nums.length, chaseCount: nums.filter(n => chase.has(n)).length, chaseInfo: assets.chase };
+}
+
+async function exportSpotterGuide() {
+  if (!currentId) { toast('Select a series first', 'err'); return; }
+  if (!guideCars().length) { toast('No cars with data in this series yet', 'err'); return; }
+  const btn = document.getElementById('guide-btn');
+  btn.disabled = true; btn.textContent = 'Building…';
+  try {
+    const title = document.getElementById('guide-title').value.trim() || 'Spotter Guide';
+    const { canvas, count, chaseCount, chaseInfo } = await buildSpotterGuide(title);
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    if (!blob) throw new Error('could not create the image');
+    const buf  = await blob.arrayBuffer();
+    const file = await window.shl.saveSpotterImage(buf, `${currentId}_spotter_guide`);
+    if (file) {
+      let msg = `Spotter guide saved (${count} cars${chaseCount ? `, ${chaseCount} marked` : ''})`;
+      // They ticked drivers but the feature is off → say why nobody is marked
+      if (chaseInfo && !chaseInfo.enabled && chaseInfo.flagged) msg += ' — turn on Chase / Playoff in Championship to mark them';
+      toast(msg, 'ok');
+    }
+  } catch (err) {
+    console.error('spotter guide failed:', err);
+    toast('Could not build the guide: ' + (err.message || err), 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = '📸 Spotter Guide';
+  }
+}
+document.getElementById('guide-btn').addEventListener('click', exportSpotterGuide);
+
+// Build a file:/// URL for a series asset — synchronous, no IPC needed
+function assetUrl(id, ...parts) {
+  if (!installDir) return '';
+  const base = installDir.replace(/\\/g, '/').replace(/\/$/, '');
+  const joined = parts.join('/');
+  return `file:///${base}/series/${id}/${joined}`;
+}
+
+function manuUrl(id, slot) {
+  return assetUrl(id, 'manufacturers', `manu${slot}.png`);
+}
+function manuLightUrl(id, slot) {
+  return assetUrl(id, 'manufacturers', `manu${slot}_light.png`);
+}
+function carManuUrl(id, num) {
+  return assetUrl(id, 'manufacturers', `${num}.png`);
+}
+
+async function refreshSeriesList() {
+  seriesList = await window.shl.getSeriesList();
+  const sel = document.getElementById('series-select');
+  sel.innerHTML = '';
+  seriesList.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id; opt.textContent = s.id;  // folder name, not series display name
+    sel.appendChild(opt);
+  });
+  if (currentId) sel.value = currentId;
+}
+
+// ── Load series ───────────────────────────────────────────────────────
+async function loadSeries(id) {
+  currentId = id;
+  document.getElementById('series-select').value = id;
+
+  const info = await window.shl.getSeriesInfo(id);
+  document.getElementById('series-name').value   = info.name || '';
+  document.getElementById('series-id').textContent = id;
+
+  // Logo
+  const logoPath = assetUrl(id, 'serieslogo.png');
+  const logoImg = document.getElementById('logo-preview');
+  const logoPh  = document.getElementById('logo-placeholder');
+  // Try loading — onerror hides it
+  logoImg.onerror = () => { logoImg.style.display = 'none'; logoPh.style.display = 'flex'; };
+  logoImg.onload  = () => { logoImg.style.display = 'block'; logoPh.style.display = 'none'; };
+  logoImg.src = logoPath + '?t=' + Date.now();
+
+  // Car assets
+  carData = await window.shl.getSeriesCarData(id);
+  expandedNum = null;
+
+  // Manufacturers section
+  document.getElementById('manu-section').style.display = '';
+  manuData = await window.shl.getSeriesManufacturersV2(id);
+  renderManufacturers();
+
+  renderGrid();
+}
+
+function showEmpty() {
+  document.getElementById('empty-state').style.display  = 'flex';
+  document.getElementById('grid-content').style.display = 'none';
+  document.getElementById('manu-section').style.display = 'none';
+  document.getElementById('series-header').style.opacity = '0.4';
+  document.getElementById('series-header').style.pointerEvents = 'none';
+  document.getElementById('filter-bar').style.opacity = '0.4';
+  document.getElementById('filter-bar').style.pointerEvents = 'none';
+}
+
+function showGrid() {
+  document.getElementById('empty-state').style.display  = 'none';
+  document.getElementById('grid-content').style.display = '';
+  document.getElementById('series-header').style.opacity = '';
+  document.getElementById('series-header').style.pointerEvents = '';
+  document.getElementById('filter-bar').style.opacity = '';
+  document.getElementById('filter-bar').style.pointerEvents = '';
+}
+
+// ── Render grid ───────────────────────────────────────────────────────
+function renderGrid() {
+  if (!currentId) { showEmpty(); return; }
+  showGrid();
+
+  const nums = ALL_NUMS.filter(n => {
+    if (filterText && !n.includes(filterText)) return false;
+    if (filterData && !carData[n]?.hasNum && !carData[n]?.hasHead && !carData[n]?.color) return false;
+    return true;
+  });
+
+  const hasData = nums.filter(n => carData[n]?.hasNum || carData[n]?.hasHead || carData[n]?.color);
+  document.getElementById('filter-count').textContent =
+    `${hasData.length} of ${ALL_NUMS.length} have data`;
+
+  const prefix = nums.filter(n => n === '0' || n.startsWith('0'));
+  const rest   = nums.filter(n => n !== '0' && !n.startsWith('0'));
+
+  const gc = document.getElementById('grid-content');
+  gc.innerHTML = '';
+
+  if (prefix.length) {
+    gc.insertAdjacentHTML('beforeend', '<div class="section-label">0 – 09</div>');
+    const g = document.createElement('div'); g.className = 'car-grid';
+    prefix.forEach(n => g.appendChild(buildCard(n)));
+    gc.appendChild(g);
+  }
+  const single = rest.filter(n => parseInt(n) < 100);
+  const hundreds = rest.filter(n => parseInt(n) >= 100);
+  if (single.length) {
+    gc.insertAdjacentHTML('beforeend', '<div class="section-label">1 – 99</div>');
+    const g = document.createElement('div'); g.className = 'car-grid';
+    single.forEach(n => g.appendChild(buildCard(n)));
+    gc.appendChild(g);
+  }
+  // Group 100-999 by hundreds, collapsible
+  for (let h = 1; h <= 9; h++) {
+    const group = hundreds.filter(n => Math.floor(parseInt(n)/100) === h);
+    if (!group.length) continue;
+    const label = `${h*100}–${h*100+99}`;
+    const sectionId = `section-${h}00`;
+    const hasData = group.some(n => carData[n]?.hasNum || carData[n]?.hasHead || carData[n]?.hasManu || carData[n]?.color || carData[n]?.rookie || carData[n]?.nameOv);
+    const isOpen = _openSections.has(sectionId) || hasData;
+    if (isOpen) _openSections.add(sectionId);
+    const header = document.createElement('div');
+    header.className = 'section-label section-collapsible';
+    header.style.cssText = 'cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none;';
+    header.innerHTML = `<span>${label}</span><span style="font-size:10px;color:var(--text-dim)">${isOpen ? '▲' : '▼'}</span>`;
+    header.addEventListener('click', () => {
+      if (_openSections.has(sectionId)) _openSections.delete(sectionId);
+      else _openSections.add(sectionId);
+      renderGrid();
+    });
+    gc.appendChild(header);
+    if (isOpen) {
+      const g = document.createElement('div'); g.className = 'car-grid';
+      group.forEach(n => g.appendChild(buildCard(n)));
+      gc.appendChild(g);
+    }
+  }
+}
+
+function buildCard(num) {
+  const d    = carData[num] || {};
+  const hasAny = d.hasNum || d.hasHead || d.hasManu || d.color || d.rookie || d.nameOv;
+  const isExp  = expandedNum === num;
+
+  const card = document.createElement('div');
+  card.className = `car-card${hasAny ? ' has-data' : ''}${isExp ? ' expanded' : ''}`;
+  card.dataset.num = num;
+
+  const color = d.color || null;
+
+  let statusParts = [];
+  if (d.hasNum)  statusParts.push('num');
+  if (d.hasHead) statusParts.push('hs');
+  if (d.hasCar)  statusParts.push('car');
+  if (d.hasManu) statusParts.push('mfr');
+  if (d.color)   statusParts.push('color');
+  if (d.nameOv)  statusParts.push('name');
+  if (d.rookie)  statusParts.push('- R');
+
+  const statusText = statusParts.length ? statusParts.join(' · ') : 'no data';
+  const statusCls  = statusParts.length ? 'car-status ok' : 'car-status';
+
+  card.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div class="car-num">${num}</div>
+      ${isExp ? '<span style="font-size:11px;color:var(--text-dim)">▲</span>' : ''}
+    </div>
+    <div class="car-previews">
+      <div class="num-thumb" id="nt-${num}">
+        ${d.hasNum ? `<img src="${assetUrl(currentId,'numbers',num+'.png')}?t=${Date.now()}" onerror="this.parentNode.innerHTML='#'">` : '#'}
+      </div>
+      <div class="head-thumb" id="ht-${num}">
+        ${d.hasHead ? `<img src="${assetUrl(currentId,'headshots',num+'.png')}?t=${Date.now()}" onerror="this.parentNode.innerHTML='👤'">` : '👤'}
+      </div>
+      <div class="car-thumb" id="ct-${num}" title="Car photo">
+        ${d.hasCar ? `<img src="${assetUrl(currentId,'cars',num+'.png')}?t=${Date.now()}" onerror="this.parentNode.innerHTML='car'">` : 'car'}
+      </div>
+      <div class="color-dot" style="${color ? `background:${color};border-color:${color}` : `background:repeating-conic-gradient(#555 0% 25%, #222 0% 50%) 0 0/8px 8px;border-color:var(--border2)`}"></div>
+    </div>
+    <div class="${statusCls}">${statusText}</div>
+    ${isExp ? buildExpanded(num, d) : ''}
+  `;
+
+  card.addEventListener('click', e => {
+    // Only toggle if clicking another card's number area, not inside the expanded body
+    if (e.target.closest('.exp-body')) return;
+    if (e.target.closest('button') || e.target.closest('input')) return;
+    expandedNum = isExp ? null : num;
+    renderGrid();
+    if (!isExp) {
+      setTimeout(() => card.scrollIntoView({ block:'nearest', behavior:'smooth' }), 50);
+    }
+  });
+
+  if (isExp) wireExpanded(card, num);
+  return card;
+}
+
+function buildExpanded(num, d) {
+  const color    = d.color || null;
+  const colorDisp = color || 'transparent';
+  return `
+    <div class="exp-body">
+      <div class="exp-row">
+        <span class="exp-label">Number</span>
+        <button class="exp-browse" data-action="browse-num">Browse</button>
+        ${d.hasNum ? `<button class="exp-clear" data-action="clear-num" title="Remove">✕</button>` : ''}
+        <span class="exp-filename">${d.hasNum ? num+'.png' : '—'}</span>
+      </div>
+      <div class="exp-row">
+        <span class="exp-label">Headshot</span>
+        <button class="exp-browse" data-action="browse-head">Browse</button>
+        ${d.hasHead ? `<button class="exp-clear" data-action="clear-head" title="Remove">✕</button>` : ''}
+        <span class="exp-filename">${d.hasHead ? num+'.png' : '—'}</span>
+      </div>
+      <div class="exp-row">
+        <span class="exp-label">Car photo</span>
+        <button class="exp-browse" data-action="browse-car" title="PNG or JPG — a side view of the car works best (transparent PNG ideal)">Browse</button>
+        ${d.hasCar ? `<button class="exp-clear" data-action="clear-car" title="Remove">✕</button>` : ''}
+        <span class="exp-filename">${d.hasCar ? num+'.png' : '—'}</span>
+      </div>
+      <div class="exp-row">
+        <span class="exp-label">Mfr</span>
+        <select data-action="manu-select" title="Manufacturer logo for this car" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);padding:3px 6px;font-size:12px;font-family:var(--font);width:0">${manuOptionsHtml(num, d)}</select>
+      </div>
+      <div class="rookie-row">
+        <label>
+          <input type="checkbox" data-action="rookie-check" ${d.rookie ? 'checked' : ''}> Rookie
+        </label>
+      </div>
+      <div class="exp-row">
+        <span class="exp-label">First Name</span>
+        <input type="text" data-action="name-first" value="${d.nameOv?.first || ''}" placeholder="e.g. Andres"
+          style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius);
+          color:var(--text);padding:3px 8px;font-size:12px;font-family:var(--font);width:0">
+      </div>
+      <div class="exp-row">
+        <span class="exp-label">Last Name</span>
+        <input type="text" data-action="name-last" value="${d.nameOv?.last || ''}" placeholder="e.g. Perez De Lara"
+          style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius);
+          color:var(--text);padding:3px 8px;font-size:12px;font-family:var(--font);width:0">
+      </div>
+      <div class="exp-row">
+        <span class="exp-label">Color</span>
+        <div class="color-row">
+          <div class="color-swatch" style="${color ? `background:${color}` : `background:repeating-conic-gradient(#555 0% 25%, #222 0% 50%) 0 0/8px 8px`}" data-action="pick-color" title="Click to type hex — double-click for color picker"></div>
+          <input type="color" value="${color || '#888888'}" data-action="color-input">
+          <input type="text" value="${color || ''}" placeholder="#rrggbb" data-action="color-hex-input" maxlength="7"
+            style="width:72px;background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius);
+            color:var(--text-mid);padding:3px 6px;font-size:11px;font-family:'Courier New',monospace;letter-spacing:0.5px">
+          <button class="exp-clear" data-action="clear-color" title="Reset to transparent" style="opacity:${d.color ? '1' : '0.3'}">✕</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function wireExpanded(card, num) {
+  card.querySelector('[data-action="browse-num"]')?.addEventListener('click', async e => {
+    e.stopPropagation();
+    const ok = await window.shl.browseSeriesAsset(currentId, 'numbers', num);
+    if (ok) { carData[num] = carData[num] || {}; carData[num].hasNum = true; renderGrid(); toast('Number PNG saved', 'ok'); }
+  });
+
+  card.querySelector('[data-action="clear-num"]')?.addEventListener('click', async e => {
+    e.stopPropagation();
+    await window.shl.clearSeriesAsset(currentId, 'numbers', num);
+    carData[num].hasNum = false; renderGrid(); toast('Number PNG removed');
+  });
+
+  card.querySelector('[data-action="browse-head"]')?.addEventListener('click', async e => {
+    e.stopPropagation();
+    const ok = await window.shl.browseSeriesAsset(currentId, 'headshots', num);
+    if (ok) { carData[num] = carData[num] || {}; carData[num].hasHead = true; renderGrid(); toast('Headshot saved', 'ok'); }
+  });
+
+  card.querySelector('[data-action="clear-head"]')?.addEventListener('click', async e => {
+    e.stopPropagation();
+    await window.shl.clearSeriesAsset(currentId, 'headshots', num);
+    carData[num].hasHead = false; renderGrid(); toast('Headshot removed');
+  });
+
+  card.querySelector('[data-action="browse-car"]')?.addEventListener('click', async e => {
+    e.stopPropagation();
+    const ok = await window.shl.browseCarPhoto(currentId, num);
+    if (ok) { carData[num] = carData[num] || {}; carData[num].hasCar = true; renderGrid(); toast('Car photo saved', 'ok'); }
+    else toast('No image imported');
+  });
+
+  card.querySelector('[data-action="clear-car"]')?.addEventListener('click', async e => {
+    e.stopPropagation();
+    await window.shl.clearSeriesAsset(currentId, 'cars', num);
+    if (carData[num]) carData[num].hasCar = false; renderGrid(); toast('Car photo removed');
+  });
+
+  const manuSel = card.querySelector('[data-action="manu-select"]');
+  manuSel?.addEventListener('click', e => e.stopPropagation());
+  manuSel?.addEventListener('change', async e => {
+    e.stopPropagation();
+    const v = e.target.value;
+    if (v === 'custom') return;
+    const r = await window.shl.assignSeriesManufacturer(currentId, num, v === '' ? null : parseInt(v, 10));
+    if (!r || !r.ok) {
+      toast(r && r.error === 'no-image' ? 'That manufacturer has no image yet — click its logo above to add one' : 'Could not set the manufacturer', 'err');
+      renderGrid(); return;
+    }
+    carData[num] = carData[num] || {};
+    carData[num].hasManu = v !== '';
+    if (v === '') delete manuData.assign[num]; else manuData.assign[num] = parseInt(v, 10);
+    renderGrid(); toast(v === '' ? 'Manufacturer: automatic' : 'Manufacturer set', 'ok');
+  });
+
+  card.querySelector('[data-action="rookie-check"]')?.addEventListener('change', e => {
+    e.stopPropagation();
+    carData[num] = carData[num] || {};
+    carData[num].rookie = e.target.checked;
+  });
+
+  // Name override inputs — update in memory, save on blur
+  const nameFirst = card.querySelector('[data-action="name-first"]');
+  const nameLast  = card.querySelector('[data-action="name-last"]');
+  const updateNameOv = () => {
+    const first = (nameFirst?.value || '').trim();
+    const last  = (nameLast?.value  || '').trim();
+    carData[num] = carData[num] || {};
+    if (first || last) {
+      carData[num].nameOv = { first, last };
+    } else {
+      delete carData[num].nameOv;
+    }
+  };
+  nameFirst?.addEventListener('input', e => { e.stopPropagation(); updateNameOv(); });
+  nameFirst?.addEventListener('click', e => e.stopPropagation());
+  nameFirst?.addEventListener('keydown', e => e.stopPropagation());
+  nameLast?.addEventListener('input', e => { e.stopPropagation(); updateNameOv(); });
+  nameLast?.addEventListener('click', e => e.stopPropagation());
+  nameLast?.addEventListener('keydown', e => e.stopPropagation());
+
+  const swatch = card.querySelector('[data-action="pick-color"]');
+  const colorInput = card.querySelector('[data-action="color-input"]');
+  const hexInput   = card.querySelector('[data-action="color-hex-input"]');
+
+  function applyColor(c) {
+    if (swatch)     swatch.style.background = c;
+    if (colorInput) colorInput.value = c;
+    if (hexInput)   hexInput.value = c;
+    const dot = card.querySelector('.color-dot');
+    if (dot) { dot.style.background = c; dot.style.borderColor = c; }
+    carData[num] = carData[num] || {}; carData[num].color = c;
+    const clrBtn = card.querySelector('[data-action="clear-color"]');
+    if (clrBtn) clrBtn.style.opacity = '1';
+  }
+
+  swatch?.addEventListener('click', e => {
+    e.stopPropagation();
+    // Focus hex input first — most users prefer typing hex
+    if (hexInput) { hexInput.focus(); hexInput.select(); }
+  });
+  // Native color picker available via double-click on swatch
+  swatch?.addEventListener('dblclick', e => { e.stopPropagation(); colorInput?.click(); });
+  colorInput?.addEventListener('input', e => { e.stopPropagation(); applyColor(e.target.value); });
+  colorInput?.addEventListener('change', e => e.stopPropagation());
+  hexInput?.addEventListener('input', e => {
+    e.stopPropagation();
+    const val = e.target.value;
+    if (/^#[0-9a-fA-F]{6}$/.test(val)) applyColor(val);
+  });
+  hexInput?.addEventListener('keydown', e => e.stopPropagation());
+  hexInput?.addEventListener('click', e => e.stopPropagation());
+
+  card.querySelector('[data-action="eyedrop"]')?.addEventListener('click', async e => {
+    e.stopPropagation();
+    const color = await window.shl.pickScreenColor();
+    if (color) applyColor(color);
+  });
+
+  card.querySelector('[data-action="clear-color"]')?.addEventListener('click', async e => {
+    e.stopPropagation();
+    if (carData[num]) delete carData[num].color;
+    // Update visuals in place
+    const swatch2 = card.querySelector('[data-action="pick-color"]');
+    const hex2    = card.querySelector('[data-action="color-hex-input"]');
+    const ci2     = card.querySelector('[data-action="color-input"]');
+    const dot2    = card.querySelector('.color-dot');
+    const checker = `repeating-conic-gradient(#555 0% 25%, #222 0% 50%) 0 0/8px 8px`;
+    if (swatch2) swatch2.style.background = checker;
+    if (hex2)    hex2.value = '';
+    if (ci2)     ci2.value = '#888888';
+    if (dot2)    { dot2.style.background = checker; dot2.style.borderColor = 'var(--border2)'; }
+    e.currentTarget.style.opacity = '0.3';
+    toast('Color reset');
+  });
+}
+
+// ── Save ──────────────────────────────────────────────────────────────
+async function saveSeries() {
+  if (!currentId) return;
+  const name = document.getElementById('series-name').value.trim();
+  if (!name) { toast('Series name required', 'err'); return; }
+
+  const colors  = {};
+  const rookies = {};
+  const names   = {};
+  ALL_NUMS.forEach(n => {
+    if (carData[n]?.color)  colors[n]  = carData[n].color;
+    if (carData[n]?.rookie) rookies[n] = true;
+    if (carData[n]?.nameOv?.first || carData[n]?.nameOv?.last) {
+      names[n] = { first: carData[n].nameOv.first || '', last: carData[n].nameOv.last || '' };
+    }
+  });
+
+  await window.shl.saveSeriesInfo(currentId, { name, colors, rookies, names });
+  toast('Series saved', 'ok');
+}
+
+// ── Series management ─────────────────────────────────────────────────
+async function newSeries() {
+  const name = await window.shl.showInputDialog({ title:'New Series', label:'Series name', placeholder:'NASCAR Cup 2024' });
+  if (!name) return;
+  const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  if (!id) { toast('Invalid name', 'err'); return; }
+  await window.shl.createSeries(id, name);
+  await refreshSeriesList();
+  await loadSeries(id);
+  toast('Series created', 'ok');
+}
+
+async function deleteSeries() {
+  if (!currentId) return;
+  const confirmed = await window.shl.showInputDialog({
+    title: 'Delete Series',
+    label: `Type the series ID to confirm: ${currentId}`,
+    placeholder: currentId,
+    confirmLabel: 'Delete'
+  });
+  if (confirmed !== currentId) { toast('Cancelled'); return; }
+  await window.shl.deleteSeries(currentId);
+  await refreshSeriesList();
+  if (seriesList.length) { await loadSeries(seriesList[0].id); }
+  else { currentId = null; showEmpty(); }
+  toast('Series deleted');
+}
+
+// ── Logo ──────────────────────────────────────────────────────────────
+document.getElementById('logo-zone').addEventListener('click', async () => {
+  if (!currentId) return;
+  const ok = await window.shl.browseSeriesLogo(currentId);
+  if (ok) {
+    const logoImg = document.getElementById('logo-preview');
+    const logoPh  = document.getElementById('logo-placeholder');
+    logoImg.onload  = () => { logoImg.style.display = 'block'; logoPh.style.display = 'none'; };
+    logoImg.onerror = () => { logoImg.style.display = 'none'; logoPh.style.display = 'flex'; };
+    logoImg.src = assetUrl(currentId, 'serieslogo.png') + '?t=' + Date.now();
+    toast('Logo saved', 'ok');
+  }
+});
+
+// ── Manufacturers (named list; 1-4 = game car-make slots, 5+ = extra) ────
+let manuData = { list: [], assign: {} };
+const escH = t => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+
+function manuOptionsHtml(num, d) {
+  const cur = manuData.assign[num];
+  const custom = d.hasManu && !cur;
+  return `<option value="">Auto (from car file)</option>` +
+    (custom ? `<option value="custom" selected>Custom PNG (existing)</option>` : '') +
+    manuData.list.map(m => `<option value="${m.id}"${cur === m.id ? ' selected' : ''}>${escH(m.name)}${m.has ? '' : ' (no image)'}</option>`).join('');
+}
+
+function renderManufacturers() {
+  const grid = document.getElementById('manu-grid');
+  grid.innerHTML = '';
+  manuData.list.forEach(m => {
+    const slot = document.createElement('div');
+    slot.className = 'manu-slot';
+    slot.innerHTML = `<div class="manu-thumb" title="Click to browse a PNG"><img style="display:none" alt=""><span class="ph">Manu ${m.id}</span></div>` +
+      `<div class="manu-thumb manu-light" title="Light-background version (optional): the colour logo used on white / light backgrounds. Click to browse a PNG."><img style="display:none" alt=""><span class="ph">Light</span><button class="manu-lclr" title="Remove the light version">✕</button></div>` +
+      `<input class="manu-name" maxlength="30" value="${escH(m.name)}" title="Click to rename" spellcheck="false">` +
+      (m.id > 4 ? `<button class="manu-del" title="Remove this manufacturer">✕</button>` : '');
+    const img = slot.querySelector('img'), ph = slot.querySelector('.ph');
+    img.onerror = () => { img.style.display = 'none'; ph.style.display = ''; };
+    img.onload  = () => { img.style.display = 'block'; ph.style.display = 'none'; };
+    img.src = manuUrl(currentId, m.id) + '?t=' + Date.now();
+
+    slot.querySelector('.manu-thumb').addEventListener('click', async () => {
+      if (!currentId) return;
+      if (await window.shl.browseSeriesManufacturer(currentId, m.id)) {
+        m.has = true;
+        img.src = manuUrl(currentId, m.id) + '?t=' + Date.now();
+        renderGrid(); toast(`${m.name} saved`, 'ok');
+      }
+    });
+    const lightEl = slot.querySelector('.manu-light'), limg = lightEl.querySelector('img'), lph = lightEl.querySelector('.ph');
+    limg.onerror = () => { limg.style.display = 'none'; lph.style.display = ''; lightEl.classList.remove('has'); };
+    limg.onload  = () => { limg.style.display = 'block'; lph.style.display = 'none'; lightEl.classList.add('has'); };
+    limg.src = manuLightUrl(currentId, m.id) + '?t=' + Date.now();
+    lightEl.addEventListener('click', async e => {
+      if (e.target.closest('.manu-lclr') || !currentId) return;
+      if (await window.shl.browseSeriesManufacturer(currentId, m.id, true)) {
+        limg.src = manuLightUrl(currentId, m.id) + '?t=' + Date.now();
+        toast(`${m.name} (light version) saved`, 'ok');
+      }
+    });
+    lightEl.querySelector('.manu-lclr').addEventListener('click', async e => {
+      e.stopPropagation();
+      if (!currentId) return;
+      if (await window.shl.clearSeriesManufacturerLight(currentId, m.id)) {
+        limg.removeAttribute('src'); limg.style.display = 'none'; lph.style.display = ''; lightEl.classList.remove('has');
+        toast(`${m.name}: light version removed`);
+      }
+    });
+    const nameEl = slot.querySelector('.manu-name');
+    nameEl.addEventListener('keydown', e => { if (e.key === 'Enter') nameEl.blur(); });
+    nameEl.addEventListener('change', async () => {
+      const nm = await window.shl.renameSeriesManufacturer(currentId, m.id, nameEl.value);
+      if (nm) { m.name = nm; nameEl.value = nm; renderGrid(); toast('Name saved', 'ok'); }
+    });
+    slot.querySelector('.manu-del')?.addEventListener('click', async () => {
+      if (!confirm(`Remove "${m.name}"? Cars using it go back to automatic.`)) return;
+      if (await window.shl.removeSeriesManufacturer(currentId, m.id)) {
+        Object.keys(manuData.assign).forEach(n => { if (manuData.assign[n] === m.id) { delete manuData.assign[n]; if (carData[n]) carData[n].hasManu = false; } });
+        manuData.list = manuData.list.filter(x => x.id !== m.id);
+        renderManufacturers(); renderGrid(); toast('Manufacturer removed');
+      }
+    });
+    grid.appendChild(slot);
+  });
+  const add = document.createElement('div');
+  add.className = 'manu-slot manu-add';
+  add.innerHTML = `<div class="manu-thumb" title="Add a manufacturer">+</div><span class="manu-label">Add</span>`;
+  add.querySelector('.manu-thumb').addEventListener('click', async () => {
+    if (!currentId) return;
+    if (await window.shl.addSeriesManufacturer(currentId)) {
+      manuData = await window.shl.getSeriesManufacturersV2(currentId);
+      renderManufacturers(); renderGrid(); toast('Manufacturer added — click its box to pick a PNG', 'ok');
+    }
+  });
+  grid.appendChild(add);
+}
+
+// ── Filter ────────────────────────────────────────────────────────────
+document.getElementById('filter-input').addEventListener('input', e => {
+  filterText = e.target.value.trim(); renderGrid();
+});
+document.getElementById('filter-all').addEventListener('change', e => {
+  if (e.target.checked) document.getElementById('filter-data').checked = false;
+  filterData = false; renderGrid();
+});
+document.getElementById('filter-data').addEventListener('change', e => {
+  filterData = e.target.checked;
+  if (filterData) document.getElementById('filter-all').checked = false;
+  renderGrid();
+});
+
+// ── Buttons ───────────────────────────────────────────────────────────
+document.getElementById('series-select').addEventListener('change', e => loadSeries(e.target.value));
+document.getElementById('new-btn').addEventListener('click', newSeries);
+document.getElementById('delete-btn').addEventListener('click', deleteSeries);
+document.getElementById('save-btn').addEventListener('click', saveSeries);
+document.getElementById('close-btn').addEventListener('click', () => window.close());
+
+// ── Series name → keep ID display ─────────────────────────────────────
+document.getElementById('series-name').addEventListener('input', () => {});
+
+// ── Toast ─────────────────────────────────────────────────────────────
+let _toastTimer = null;
+function toast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast show ${type}`;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.className = 'toast'; }, 2000);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────
+init().catch(err => {
+  console.error('Series editor init error:', err);
+  document.getElementById('grid-content').innerHTML =
+    `<div style="padding:20px;color:#e74c3c;font-size:13px">
+      Init error: ${err.message}<br>
+      <small style="color:#6a7080">${err.stack || ''}</small>
+    </div>`;
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('grid-content').style.display = '';
+});
+</script>
+</body>
+</html>

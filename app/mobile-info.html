@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1014">
+<title>PSF — Mobile</title>
+<style>
+:root { --bg:#0e1014; --card:#13161a; --border:#252a33; --text:#e8e8ec; --dim:#6a7080; --mid:#9099a8; --gold:#c8a800; --green:#2ecc71; --red:#e74c3c; --f:'NBC2016','Bahnschrift SemiBold Condensed','Bahnschrift Condensed','Arial Narrow','Roboto Condensed','Helvetica Neue',Arial,sans-serif; }
+* { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+html, body { overflow-x:hidden; background:var(--bg); color:var(--text); font-family:'Segoe UI', system-ui, Arial, sans-serif; font-size:16px; }
+body { padding:0 14px calc(24px + env(safe-area-inset-bottom)); max-width:560px; margin:0 auto; }
+header { display:flex; align-items:center; gap:10px; padding:calc(14px + env(safe-area-inset-top)) 0 12px; }
+header h1 { flex:1; font-size:17px; letter-spacing:1px; text-transform:uppercase; color:var(--gold); }
+#dot { width:10px; height:10px; border-radius:50%; background:var(--dim); }
+#dot.ok { background:var(--green); } #dot.bad { background:var(--red); }
+#status { font-size:13px; color:var(--dim); min-width:70px; text-align:right; }
+#status.ok { color:var(--green); }
+.card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:14px; display:flex; flex-direction:column; gap:10px; }
+label { font-size:12px; letter-spacing:.8px; text-transform:uppercase; color:var(--mid); }
+select, input { width:100%; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:13px 12px; font-size:16px; font-family:inherit; }
+select:focus, input:focus { outline:none; border-color:var(--gold); }
+select:disabled, input:disabled { opacity:.45; }
+.pick { display:flex; gap:8px; }
+.pick select { flex:1; min-width:0; }
+.pick button { flex:none; width:52px; font-size:20px; }
+button { background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:13px 14px; font-size:15px; font-weight:600; font-family:inherit; }
+button:active { background:#1b2028; }
+button:disabled { opacity:.4; }
+.row2 { display:flex; gap:8px; }
+.row2 button { flex:1; }
+.danger { color:#ff8a7a; }
+.hide { display:none; }
+#msg { text-align:center; color:var(--dim); font-size:14px; padding:30px 10px; }
+
+/* --- banner styles: copied from driver-info.html so the phone preview matches the app (NBC / Fox / ESPN / Prime) --- */
+#pv-fit.sk-nbc #di-wrap { position: absolute; left: 4px; top: 130px; width: 700px; transform-origin: 0 0; z-index: 40; pointer-events: none; display: none; opacity: 0; transition: opacity .6s ease; }
+#pv-fit.sk-nbc #di-tab { position: absolute; right: 8px; top: -26px; height: 26px; padding: 0 16px; display: none; align-items: center; border-radius: 5px 5px 0 0;
+          background: linear-gradient(180deg, #1c2330 0%, #0b0f16 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 0 0 1px rgba(150,158,168,.6);
+          font-size: 19px; font-weight: 700; color: #fff; letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; }
+#pv-fit.sk-nbc #di-box { position: relative; height: 80px; display: flex; overflow: hidden; border-radius: 5px; background: var(--di-bg, linear-gradient(180deg, #2b4b8f 0%, #16357a 36%, #08194a 70%, #040c2b 100%)); color: var(--di-fg, #fff);
+          box-shadow: 0 0 0 2px #8f979f, 0 0 0 3px rgba(0,0,0,.6), 0 4px 10px rgba(0,0,0,.55); }
+#pv-fit.sk-nbc #di-box::after { content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none;
+                 background: linear-gradient(180deg, rgba(255,255,255,.30) 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,.30) 100%); }
+#pv-fit.sk-nbc #di-box > div { position: relative; z-index: 1; display: flex; align-items: center; height: 100%; }
+#pv-fit.sk-nbc #di-box > div + div { box-shadow: inset 1px 0 0 rgba(0,0,0,.4), inset 2px 0 0 rgba(255,255,255,.18); }
+#pv-fit.sk-nbc #di-num { width: 170px; flex: none; justify-content: center; }
+#pv-fit.sk-nbc #di-num .np { width: 140px; height: 66px; background: none; }
+#pv-fit.sk-nbc #di-num .np-c { display: none; }
+#pv-fit.sk-nbc #di-num .np img { inset: auto; left: 0; top: 0; width: 100%; height: 100%; object-fit: contain; }
+#pv-fit.sk-nbc #di-num .np .np-t { left: 0; right: 0; font-size: 56px; font-style: italic; }
+#pv-fit.sk-nbc #di-manu { width: 110px; flex: none; justify-content: center; }
+#pv-fit.sk-nbc #di-manu img { max-width: 86px; max-height: 60px; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,.45)); }
+#pv-fit.sk-nbc #di-name { flex: 1; min-width: 0; flex-direction: column; align-items: flex-start !important; justify-content: center; padding: 0 22px; line-height: 1; text-transform: uppercase; white-space: nowrap; }
+#pv-fit.sk-nbc #di-name .f { font-size: 26px; font-weight: 600; opacity: .95; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+#pv-fit.sk-nbc #di-name .l { font-size: 38px; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,.4); margin-top: 2px; }
+#pv-fit.sk-nbc #di-r { flex: none; width: 232px; overflow: hidden; flex-direction: column; align-items: flex-start !important; justify-content: center; padding: 0 18px; line-height: 1.15; white-space: nowrap; }
+#pv-fit.sk-nbc #di-r .a { font-size: 28px; font-weight: 600; }
+#pv-fit.sk-nbc #di-r .b { font-size: 21px; font-weight: 700; color: var(--di-accent, #ffd21f); text-transform: uppercase; display: flex; align-items: center; gap: 7px; }
+#pv-fit.sk-nbc #di-r .b .ar { flex: none; }
+#pv-fit.sk-nbc #di-num .np .np-t { color: var(--di-fg, #fff) !important; }
+
+.np { position: relative; width: 38px; height: 27px; overflow: hidden; background: #3b3f47; flex: none; }
+.np-c { position: absolute; inset: 0; }
+.np img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.np .np-t { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 21px; font-style: italic; font-weight: 800; letter-spacing: -.5px; }
+/* Driver Info preview in the style of the active ticker: Fox 2010 banner */
+#pv-fit.sk-fox #di-wrap { position: absolute; left: 4px; top: 190px; width: 1060px; transform-origin: 0 0; z-index: 40; pointer-events: none; display: none; opacity: 0;
+           transition: opacity .6s ease; font-family: 'D-DIN Condensed Bold', 'Arial Narrow', Impact, sans-serif; color: #fff; filter: drop-shadow(0 4px 8px rgba(0,0,0,.55)); }
+#pv-fit.sk-fox #di-top { position: relative; height: 58px; display: flex; align-items: center; gap: 8px; padding-right: 9px; border-radius: 9px 9px 0 0;
+          background: linear-gradient(180deg, #3a3c41 0%, #1b1c1f 48%, #0c0d0f 100%);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.6), inset 0 0 0 1px rgba(170,176,186,.55); }
+#pv-fit.sk-fox #di-hatch { flex: 0 0 222px; height: 30px; margin-left: 3px; border-radius: 4px 0 0 4px; border: 1px solid #70757c; border-right: 0;
+            background: repeating-linear-gradient(135deg, rgba(255,255,255,.55) 0 3px, rgba(255,255,255,0) 3px 7px), linear-gradient(#dfe1e4, #a9adb3);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 -2px 3px rgba(0,0,0,.25); }
+#pv-fit.sk-fox #di-num { position: relative; flex: 0 0 126px; height: 44px; border-radius: 7px; border: 2px solid var(--di-acc, #1e90d8); overflow: hidden;
+          display: flex; align-items: center; justify-content: center; background: var(--di-nbg, #3b3f47);
+          box-shadow: inset 0 0 0 1px rgba(0,0,0,.65), 0 0 0 1px rgba(0,0,0,.55); }
+#pv-fit.sk-fox #di-num::after { content: ''; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+                 background: linear-gradient(180deg, rgba(255,255,255,.30) 0%, rgba(255,255,255,0) 52%, rgba(0,0,0,.28) 100%); }
+#pv-fit.sk-fox #di-num img { position: relative; z-index: 1; height: calc(100% - 4px); max-width: calc(100% - 8px); object-fit: contain; display: block; }
+#pv-fit.sk-fox #di-num .nf { position: relative; z-index: 1; font-size: 38px; line-height: 1; font-style: italic; transform: skewX(-8deg); letter-spacing: .01em; }
+#pv-fit.sk-fox #di-name { flex: 1; min-width: 0; height: 44px; border-radius: 7px; border: 2px solid var(--di-acc, #1e90d8); display: flex; align-items: center; padding: 0 16px; overflow: hidden;
+           background: linear-gradient(180deg, #25272b 0%, #0f1012 55%, #050506 100%); box-shadow: inset 0 0 0 1px rgba(0,0,0,.65), 0 0 0 1px rgba(0,0,0,.55); }
+#pv-fit.sk-fox #di-nm { font-size: 38px; line-height: 1; text-transform: uppercase; white-space: nowrap; letter-spacing: .02em; color: #fff; text-shadow: 0 2px 2px rgba(0,0,0,.6); }
+#pv-fit.sk-fox #di-logo { flex: 0 0 130px; height: 38px; display: none; align-items: center; justify-content: center; border-radius: 4px; border: 1px solid #8a9098; overflow: hidden;
+           background: linear-gradient(180deg, #2c2e33, #0b0c0e); box-shadow: inset 0 0 0 1px rgba(0,0,0,.6); }
+#pv-fit.sk-fox #di-logo img { max-width: 118px; max-height: 30px; object-fit: contain; display: block; }
+#pv-fit.sk-fox #di-sep { height: 7px; background: linear-gradient(180deg, #f4f5f7 0%, #bcc0c6 50%, #7d828a 100%); box-shadow: 0 1px 0 rgba(0,0,0,.55); }
+#pv-fit.sk-fox #di-low { position: relative; height: 64px; display: flex; align-items: center; padding-left: 388px; overflow: hidden;
+          background: repeating-linear-gradient(135deg, rgba(255,255,255,.07) 0 2px, rgba(255,255,255,0) 2px 6px), linear-gradient(180deg, #303236 0%, #1c1d20 55%, #101113 100%); }
+#pv-fit.sk-fox #di-low::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 372px; clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+                  background: repeating-linear-gradient(135deg, rgba(255,255,255,.2) 0 3px, rgba(255,255,255,0) 3px 7px), linear-gradient(180deg, #5d6065 0%, #3a3c40 100%); }
+#pv-fit.sk-fox #di-r { position: relative; z-index: 1; flex: 1; min-width: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; padding-right: 18px; line-height: 1.04; white-space: nowrap; }
+#pv-fit.sk-fox #di-r .a, #pv-fit.sk-fox #di-r .b { font-size: 28px; text-transform: uppercase; letter-spacing: .02em; color: #fff; text-shadow: 0 2px 2px rgba(0,0,0,.55); }
+#pv-fit.sk-fox #di-r .b { display: flex; align-items: center; gap: 9px; }
+#pv-fit.sk-fox #di-r .b .ar { flex: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
+#pv-fit.sk-fox #di-base { position: relative; height: 15px; background: linear-gradient(180deg, #f4f5f7 0 2px, #b3b7bd 2px 6px, rgba(0,0,0,0) 6px); border-radius: 0 0 6px 6px; }
+#pv-fit.sk-fox #di-base i { position: absolute; left: 356px; width: 612px; top: 4px; height: 11px; background: linear-gradient(180deg, var(--di-acc-hi, #46b4f2) 0%, var(--di-acc-mid, #1f8fd8) 55%, var(--di-acc-lo, #0c5fa0) 100%);
+             clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 100%, 10px 100%); }
+#pv-fit.sk-fox { width: 1060px; font-weight: normal; }
+#pv-fit.sk-nbc #di-wrap, #pv-fit.sk-fox #di-wrap { position: relative; left: 0; top: 0; display: block; opacity: 1; transition: none; }
+/* ── Driver Info preview: ESPN 2017 look — [NAME | CURRENTLY: pos] tab over [number | oval headshot | Info 1 / Info 2] ── */
+#pv-fit.sk-espn #di-wrap { position: absolute; left: 0; top: 150px; width: max-content; transform-origin: 0 0; z-index: 40; pointer-events: none; display: none; opacity: 0;
+           transition: opacity .6s ease; font-family: 'Helvetica Neue', 'Univers', Arial, sans-serif; font-weight: 700; color: #262626; filter: drop-shadow(0 4px 10px rgba(0,0,0,.45)); }
+#pv-fit.sk-espn #di-tab { display: flex; align-items: stretch; height: 46px; margin-left: 20px; width: max-content; }
+#pv-fit.sk-espn #di-name { display: flex; align-items: center; max-width: 640px; padding: 0 20px; overflow: hidden; background: linear-gradient(180deg, #f3f3f3 0%, #dcdcdc 100%); color: #2a2a2a; }
+#pv-fit.sk-espn #di-nm { font-size: 36px; line-height: 1; text-transform: uppercase; white-space: nowrap; letter-spacing: .01em; }
+#pv-fit.sk-espn #di-cur { display: none; align-items: center; padding: 0 22px; background: rgba(40,40,40,.95); color: #fff; font-size: 36px; line-height: 1; white-space: nowrap; letter-spacing: .01em; }
+#pv-fit.sk-espn #di-box { position: relative; display: flex; height: 132px; padding: 5px; background: #e2e2e2; border: 3px solid #f6f6f6;
+          box-shadow: 0 0 0 1px rgba(0,0,0,.4), inset 0 0 0 1px rgba(0,0,0,.2); }
+#pv-fit.sk-espn #di-num { position: relative; flex: 0 0 172px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--di-nbg, #3b3f47); }
+#pv-fit.sk-espn #di-num::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(255,255,255,.22) 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,.18) 100%); }
+#pv-fit.sk-espn #di-num img { position: relative; z-index: 1; height: 84%; max-width: 92%; object-fit: contain; display: block; }
+#pv-fit.sk-espn #di-num .nf { position: relative; z-index: 1; font-size: 84px; line-height: 1; font-style: italic; font-weight: 900; letter-spacing: -.02em; }
+/* oval headshot in its own cell next to the number: it never covers the number */
+#pv-fit.sk-espn #di-photo { position: relative; flex: 0 0 122px; display: none; align-items: center; justify-content: center; background: var(--di-nbg, #3b3f47); }
+#pv-fit.sk-espn #di-photo.on { display: flex; }
+#pv-fit.sk-espn #di-photo::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(255,255,255,.22) 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,.18) 100%); }
+#pv-fit.sk-espn #di-photo img { position: relative; z-index: 1; width: 92px; height: 112px; border-radius: 50%; object-fit: cover; object-position: 50% 22%; background: #cfcfcf;
+                box-shadow: 0 0 0 3px rgba(255,255,255,.92), 0 2px 6px rgba(0,0,0,.45); }
+#pv-fit.sk-espn #di-r { flex: 0 1 auto; min-width: 560px; max-width: 700px; overflow: hidden; display: grid; grid-template-columns: max-content max-content; justify-content: start; align-content: center;
+        column-gap: 34px; padding: 0 26px 0 22px; font-size: 44px; line-height: 1.12; white-space: nowrap; color: #2b2b2b; background: linear-gradient(180deg, #f7f7f7 0%, #e4e4e4 100%);
+        box-shadow: inset 0 0 0 1px #b9b9b9; }
+#pv-fit.sk-espn #di-r .w { grid-column: 1 / -1; }
+/* no Info lines: the car picture (series/<id>/cars/<n>.png) fills the rest of the box; with no picture either the box shrinks to its content */
+#pv-fit.sk-espn #di-car { flex: 1 1 auto; min-width: 380px; display: none; align-items: center; justify-content: center; overflow: hidden;
+          background: linear-gradient(180deg, #f7f7f7 0%, #e4e4e4 100%); box-shadow: inset 0 0 0 1px #b9b9b9; }
+#pv-fit.sk-espn #di-car.on { display: flex; }
+#pv-fit.sk-espn #di-car img { max-height: 118px; max-width: 94%; object-fit: contain; filter: drop-shadow(0 3px 4px rgba(0,0,0,.45)); }
+#pv-fit.sk-espn #di-box.tight { width: max-content; }
+#pv-fit.sk-espn { width: 790px; font-weight: 700; }
+#pv-fit.sk-espn #di-wrap { position: relative; left: 0; top: 0; display: block; opacity: 1; transition: none; filter: none; }
+/* ── Driver Info preview: Prime look — [oval headshot | number + make | NAME | Info 1 / Info 2] ── */
+#pv-fit.sk-prime #di-wrap {position: absolute; left: 0; top: 0; width: max-content; transform-origin: 0 0; z-index: 60; pointer-events: none;
+           display: none; opacity: 0; transition: opacity .6s ease; color: #fff;
+           font-family: 'HalyardTextMedium', 'Segoe UI', Arial, sans-serif; filter: drop-shadow(0 4px 10px rgba(0,0,0,.5)); }
+#pv-fit.sk-prime #di-tab {position: absolute; right: 10px; top: -30px; height: 30px; padding: 0 24px; display: none; align-items: center; border-radius: 5px 5px 0 0;
+          background: linear-gradient(180deg, #2b57d8 0%, #1a3cae 100%); box-shadow: inset 0 0 0 2px rgba(255,255,255,.88);
+          font-size: 19px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; color: #fff; }
+#pv-fit.sk-prime #di-box {position: relative; display: flex; align-items: stretch; width: 860px; height: 102px; overflow: hidden; border-radius: 8px;
+          background: var(--di-bg, linear-gradient(90deg, #1d44b8 0%, #1a3aa4 38%, #142f8c 100%)); }
+#pv-fit.sk-prime #di-box::before {content: ''; position: absolute; inset: 0; pointer-events: none;
+          background: linear-gradient(112deg, rgba(255,255,255,.17) 0 20%, rgba(255,255,255,0) 20% 100%), linear-gradient(180deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 45%, rgba(0,0,0,.2) 100%); }
+#pv-fit.sk-prime #di-box::after {content: ''; position: absolute; right: 0; bottom: 0; width: 30px; height: 30px; pointer-events: none; background: linear-gradient(135deg, rgba(0,0,0,0) 50%, #e4202f 50%); }
+#pv-fit.sk-prime #di-box > div {position: relative; z-index: 1; }
+#pv-fit.sk-prime #di-box.tight {width: max-content; min-width: 520px; }
+#pv-fit.sk-prime #di-photo {flex: 0 0 112px; display: none; align-items: center; justify-content: center; }
+#pv-fit.sk-prime #di-photo.on {display: flex; }
+#pv-fit.sk-prime #di-photo img {width: 82px; height: 94px; border-radius: 50%; object-fit: cover; object-position: 50% 20%; background: rgba(255,255,255,.2);
+                box-shadow: 0 0 0 3px rgba(255,255,255,.92), 0 2px 8px rgba(0,0,0,.5); }
+#pv-fit.sk-prime #di-num {flex: 0 0 auto; align-self: center; width: 78px; height: 84px; margin: 0 8px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; overflow: hidden;
+          background: var(--di-nbg, #0a0a0e); box-shadow: inset 0 0 0 1px rgba(255,255,255,.14); }
+#pv-fit.sk-prime #di-num::after {content: ''; position: absolute; right: 0; bottom: 0; width: 15px; height: 15px; background: linear-gradient(135deg, rgba(0,0,0,0) 50%, #e4202f 50%); }
+#pv-fit.sk-prime #di-num .nn {display: flex; align-items: center; justify-content: center; height: 48px; max-width: 70px; }
+#pv-fit.sk-prime #di-num .nn img {max-height: 48px; max-width: 70px; object-fit: contain; display: block; }
+#pv-fit.sk-prime #di-num .nn span {font-family: 'RacerItalic', 'HalyardTextMedium', Impact, sans-serif; font-style: italic; font-size: 50px; line-height: 1; color: var(--di-nfg, #fff); }
+#pv-fit.sk-prime #di-manu {display: flex; align-items: center; justify-content: center; height: 24px; }
+#pv-fit.sk-prime #di-manu img {max-height: 24px; max-width: 56px; object-fit: contain; display: block; }
+#pv-fit.sk-prime #di-name {flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 0 16px 0 10px;
+           line-height: 1; text-transform: uppercase; white-space: nowrap; font-family: 'RacerItalic', 'HalyardTextMedium', Impact, sans-serif; font-style: italic; overflow: hidden; }
+#pv-fit.sk-prime #di-name .f {font-size: 28px; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.45); }
+#pv-fit.sk-prime #di-name .l {font-size: 36px; margin-top: 3px; color: #ff2d3b; text-shadow: 0 1px 3px rgba(0,0,0,.5); }
+#pv-fit.sk-prime #di-r {flex: 0 0 410px; margin: 0 16px 0 0; display: flex; flex-direction: column; justify-content: center; gap: 7px; min-width: 0; }
+#pv-fit.sk-prime #di-r .a {height: 56px; display: flex; align-items: center; justify-content: center; padding: 0 16px; border-radius: 7px; white-space: nowrap; overflow: hidden;
+           font-size: 32px; font-weight: 600; background: rgba(6,10,44,.88); box-shadow: inset 0 0 0 2px rgba(255,255,255,.14); }
+#pv-fit.sk-prime #di-r .b {display: flex; align-items: center; justify-content: center; gap: 9px; white-space: nowrap; overflow: hidden; font-size: 22px; font-weight: 600; }
+#pv-fit.sk-prime #di-r .b .ic {flex: none; width: 17px; height: 17px; border-radius: 50%; background: #e4202f; display: flex; align-items: center; justify-content: center; }
+#pv-fit.sk-prime #di-r .b .ic::after {content: ''; margin-left: 2px; border-left: 6px solid #fff; border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
+#pv-fit.sk-prime #di-box.tight #di-name {flex: 0 0 auto; padding-right: 44px; }
+#pv-fit.sk-prime #di-wrap { position: relative; left: 0; top: 0; display: block; opacity: 1; transition: none; transform: none; }
+#pv-fit.sk-prime { width: 860px; padding-top: 34px; }
+#pv-fit.sk-prime #di-tab { top: -30px; }
+#pv-warn { display:none; padding:8px 12px; border-radius:6px; border:1px solid #b8860b; background:rgba(200,168,0,.12); color:#f0c64a; font-size:13px; line-height:1.4; }
+
+
+#pvCard { min-width:0; overflow:hidden; }
+#pv-stage { width:100%; min-width:0; max-width:100%; overflow:hidden; background:#181c22; border-radius:8px; position:relative; }
+#pv-fit { width:700px; flex:none; font-family:'NBC2016','Bahnschrift SemiBold Condensed','Bahnschrift Condensed','Arial Narrow','Roboto Condensed','Helvetica Neue',Arial,sans-serif; font-weight:700; color:#fff; transform-origin:0 0; padding:40px 4px 14px 4px; box-sizing:content-box; }
+
+/* --- tabs: Driver Info / Race Stats --- */
+#tabs { display:flex; gap:8px; margin-bottom:12px; }
+#tabs button { flex:1; min-width:0; padding:11px 4px; font-size:13px; letter-spacing:.3px; text-transform:uppercase; color:var(--mid); }
+#tabs button.on { color:var(--gold); border-color:var(--gold); }
+#tab-rs iframe { width:100%; height:calc(100vh - 150px); height:calc(100dvh - 150px); min-height:360px; border:1px solid var(--border); border-radius:12px; background:#0d0d0d; display:block; }
+#rs-msg { text-align:center; color:var(--dim); font-size:14px; padding:30px 10px; }
+
+/* --- Championship tab: drivers + value of the "As they run" panel --- */
+#tab-ch .hint { font-size:13px; line-height:1.45; color:var(--dim); }
+.seg { display:flex; flex-direction:column; gap:8px; }
+.seg button { display:flex; align-items:center; justify-content:space-between; gap:10px; text-align:left; padding:12px 14px; }
+.seg button .ex { font-family:var(--f); font-size:17px; color:var(--dim); letter-spacing:.5px; }
+.seg button.on { border-color:var(--gold); color:var(--gold); }
+.seg button.on .ex { color:var(--gold); }
+.chhead { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.chhead button { padding:8px 12px; font-size:13px; }
+#chcount { font-size:13px; color:var(--mid); letter-spacing:.4px; }
+#chcount.full { color:var(--gold); }
+#chlist { display:flex; flex-direction:column; gap:6px; }
+.chrow { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:10px 12px; font-weight:500; }
+.chrow .p { width:26px; text-align:right; color:var(--dim); font-variant-numeric:tabular-nums; font-size:14px; }
+.chrow .n { width:42px; font-weight:700; color:var(--mid); font-variant-numeric:tabular-nums; }
+.chrow .nm { flex:1; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.chrow .pt { color:var(--dim); font-size:13px; font-variant-numeric:tabular-nums; }
+.chrow .ck { flex:none; width:22px; height:22px; border-radius:6px; border:2px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:15px; color:#111; }
+.chrow.on { border-color:var(--gold); }
+.chrow.on .ck { background:var(--gold); border-color:var(--gold); }
+.chrow.dis { opacity:.38; }
+#chmsg { text-align:center; color:var(--dim); font-size:14px; padding:24px 10px; }
+
+/* ── PC version (wide screen + mouse): TV Director layout. Phones keep the layout above untouched. ── */
+#pc-brand, #pc-desc { display:none; }
+@media (min-width:900px) and (hover:hover) and (pointer:fine) {
+  body { max-width:1240px; padding:0 32px 40px; }
+  #pc-brand { display:flex; align-items:center; gap:18px; padding:26px 0 10px; border-bottom:1px solid var(--border); margin-bottom:6px; }
+  #pc-brand img { height:54px; width:auto; display:block; }
+  #pc-brand .pc-t { display:flex; flex-direction:column; gap:3px; }
+  #pc-brand .pc-n { font-size:30px; font-weight:800; letter-spacing:4px; text-transform:uppercase; color:var(--text); line-height:1.1; }
+  #pc-brand .pc-s { font-size:13px; letter-spacing:1.2px; text-transform:uppercase; color:var(--dim); }
+  header { padding-top:12px; }
+  #tabs button { padding:15px 8px; font-size:14px; letter-spacing:.8px; cursor:pointer; }
+  #tabs button:hover:not(.on) { border-color:#3a4150; color:var(--text); }
+  #pc-desc { display:block; margin-bottom:16px; }
+  #pc-desc > .hide { display:none !important; }
+  #pc-desc ul { list-style:none; background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 18px; display:flex; flex-direction:column; gap:7px; }
+  #pc-desc li { position:relative; padding-left:16px; font-size:14px; line-height:1.5; color:var(--mid); }
+  #pc-desc li::before { content:''; position:absolute; left:0; top:.6em; width:6px; height:6px; border-radius:50%; background:var(--gold); }
+  #pc-desc li b { color:var(--text); font-weight:600; }
+  #app:not(.hide) { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); gap:14px; align-items:start; }
+  #app > .card, #app > .row2 { margin-bottom:0; }
+  #app > .card:nth-child(1) { grid-column:1; grid-row:1 / span 3; }
+  #app > .card:nth-child(2) { grid-column:2; grid-row:1; }
+  #app > .card:nth-child(3) { grid-column:2; grid-row:2; }
+  #app > .row2 { grid-column:2; grid-row:3; }
+  #chapp:not(.hide) { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; align-items:start; }
+  #chapp > .card { margin-bottom:0; }
+  #tab-rs iframe { height:calc(100vh - 360px); height:calc(100dvh - 360px); min-height:520px; }
+}
+</style>
+</head>
+<body>
+<div id="pc-brand"><img id="pc-logo" alt="PSF" src="" onerror="this.style.display='none'"><div class="pc-t"><div class="pc-n">TV Director</div><div class="pc-s">All In One NR2003 — broadcast control</div></div></div>
+<header><h1 id="ttl">Driver Info</h1><span id="status"></span><span id="dot"></span></header>
+<div id="tabs"><button id="tb-di" type="button" class="on">Driver Info</button><button id="tb-ch" type="button">As They Run Panel</button><button id="tb-rs" type="button">Race Stats</button></div>
+<div id="pc-desc">
+<div data-t="di"><ul>
+<li><b>Driver banner.</b> Edit Info 1 and Info 2, the two lines shown in the driver banner, for every driver.</li>
+<li><b>Live preview.</b> The preview shows the banner as it looks on air. Pick a driver or tick Follow camera to track the car on screen.</li>
+<li><b>Instant.</b> Changes go live in the broadcast at once. Clear one driver or all of them with the buttons below.</li>
+</ul></div>
+<div data-t="ch" class="hide"><ul>
+<li><b>Value shown.</b> Choose what appears beside each driver: gap to the leader, points, championship position, race position, gap to the cutoff line (points), or the current race position of the drivers closest to the cutoff line, kept in championship order (position).</li>
+<li><b>Drivers.</b> Tick up to 7. With none ticked the panel chooses for you: the top 5, or with a Cutoff Line option the 3 above and the 3 below the line.</li>
+<li><b>Cutoff Line (points)</b> and <b>Cutoff Line (position)</b> only appear while the cutoff line is on in the Championship screen of the app.</li>
+</ul></div>
+<div data-t="rs" class="hide"><ul>
+<li><b>Live race table.</b> Position, start position, interval, last and best lap, pits and laps led for every car.</li>
+<li><b>Driver card.</b> Click a driver to open his card with his season stats.</li>
+</ul></div>
+</div>
+<div id="tab-di">
+<div id="msg" class="hide"></div>
+<div id="app" class="hide">
+  <div class="card" id="pvCard">
+    <label>Preview</label>
+    <div id="pv-warn"></div>
+    <div id="pv-stage">
+      <div id="pv-fit" class="sk-nbc"></div>
+    </div>
+  </div>
+  <div class="card">
+    <label for="sel">Driver</label>
+    <div class="pick"><button id="prev" type="button">&#9664;</button><select id="sel"></select><button id="next" type="button">&#9654;</button></div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:14px"><input id="follow" type="checkbox" checked style="width:auto;margin:0"> Follow camera</label>
+  </div>
+  <div class="card">
+    <label for="k1">Info 1</label>
+    <select id="k1"></select>
+    <input id="c1" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Custom text" class="hide">
+    <input id="n1" type="number" inputmode="numeric" min="1" max="99" placeholder="Last Y races" class="hide">
+    <label for="k2" style="margin-top:6px">Info 2</label>
+    <select id="k2"></select>
+    <input id="c2" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Custom text" class="hide">
+    <input id="n2" type="number" inputmode="numeric" min="1" max="99" placeholder="Last Y races" class="hide">
+  </div>
+  <div class="row2"><button id="clear" type="button">Clear this driver</button><button id="clearAll" class="danger" type="button">Clear all drivers</button></div>
+</div>
+</div>
+<div id="tab-ch" class="hide">
+  <div id="chmsg">Loading…</div>
+  <div id="chapp" class="hide">
+    <div class="card">
+      <label>Show in the &laquo;As They Run&raquo; panel</label>
+      <div class="seg" id="chmetric"></div>
+    </div>
+    <div class="card">
+      <div class="chhead"><label>Drivers</label><span id="chcount"></span><button id="chauto" type="button">Automatic</button></div>
+      <div class="hint" id="chhint"></div>
+      <div id="chlist"></div>
+    </div>
+  </div>
+</div>
+<div id="tab-rs" class="hide"><div id="rs-msg">Loading…</div></div>
+<script>
+const $ = id => document.getElementById(id);
+const TOKEN = new URLSearchParams(location.search).get('t') || '';
+const KINDS = [
+  ['', '— None —', ''], ['ledToday', 'Laps Led Today', 'Has led X of Y laps'], ['ledSeason', 'Laps Led All Season', 'Has led X laps all season'], ['champPos', 'Championship position', 'Is Xth in standings'],
+  ['champPts', 'Points in championship', 'Has scored X points'], ['winsSeason', 'Wins this season', 'Has won X races this season'], ['top5Season', 'Top 5 this season', 'Has finished X times in the top 5 this season'], ['top10Season', 'Top 10 this season', 'Has finished X times in the top 10 this season'], ['wins', 'Wins in the last races', 'Has won X of the last Y races'], ['dnfSeason', 'DNF this season', 'Has not finished in X races this season'],
+  ['dnfLast', 'DNF in the last races', 'Has not finished in X of the last Y races'], ['startPos', 'Start position', 'Started Xth today'], ['curPos', 'Current position', 'Current position: Xth'],
+  ['lastLap', 'Last lap time', 'Last Lap: 00.000s'], ['bestLap', 'Best lap time', 'Best Lap: 00.000s'], ['fastestLap', 'Fastest lap of the race', 'Fastest Lap: 00.000s (Surname)'], ['liveChampPos', 'Live Championship Position', 'Is Xth in championship as it stands'], ['cutoffPts', 'Points to the Cutoff Line', 'Is X points above the cutoff line'], ['lastPit', 'Last pit stop', 'Last pitted on lap X'], ['pitCount', 'Pit stop count', 'Has pitted X times'], ['custom', 'Custom', ''],
+];
+const KIND_SET = new Set(KINDS.map(k => k[0]));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const clampN = v => { const n = parseInt(v, 10); return (Number.isFinite(n) && n >= 1) ? Math.min(99, n) : 5; };
+const sel = $('sel');
+const F = [null, { k: $('k1'), c: $('c1'), n: $('n1') }, { k: $('k2'), c: $('c2'), n: $('n2') }];
+F[1].k.innerHTML = F[2].k.innerHTML = KINDS.map(k => `<option value="${k[0]}">${esc(k[1])}</option>`).join('');
+let list = [], info = {}, cur = null, dirty = false, saveT = null, busy = false, lastSave = 0;
+
+// ── Preview (same banner as the desktop window) ──
+const TOKEN_Q = '?t=' + encodeURIComponent(TOKEN);
+let SERIES_NAME = '';
+(function () {
+  const ff = (fam, file, fmt, extra) => "@font-face { font-family:'" + fam + "'; src:url('/asset/" + file + TOKEN_Q + "') format('" + fmt + "'); " + extra + " font-display:swap; }";
+  const el = document.createElement('style');
+  el.textContent = [
+    ff('NBC2016', 'font.ttf', 'truetype', 'font-weight:700;'),
+    ff('D-DIN Condensed Bold', 'font-din.ttf', 'truetype', 'font-weight:bold; font-style:normal;'),
+    ff('HalyardTextMedium', 'font-halyard.otf', 'opentype', 'font-weight:500; font-style:normal;'),
+    ff('RacerItalic', 'font-racer.otf', 'opentype', 'font-weight:400; font-style:italic;'),
+  ].join('\n');
+  document.head.appendChild(el);
+})();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { try { render(); } catch (e) {} });
+if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => { try { render(); } catch (e) {} });
+const SUFFIX = /^(JR\.?|SR\.?|II|III|IV)$/;
+const NAME_PARTICLES = new Set(['VAN','VON','DE','DER','DEN','DI','DA','DEL','DELLA','LA','LE','ST.','ST']);
+function lastNameOf(full) {
+  const t = String(full || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+  if (t.length <= 1) return t[0] || '';
+  const suffix = [];
+  while (t.length > 1 && SUFFIX.test(t[t.length - 1])) suffix.unshift(t.pop());
+  let i = t.length - 1;
+  while (i > 0 && NAME_PARTICLES.has(t[i - 1])) i--;
+  return t.slice(i).concat(suffix).join(' ');
+}
+
+const FB_DEFAULT_BG = '#3b3f47';
+const _ccCtx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+const _lumCache = {};
+function bgLuma(c) {
+  if (!c || c === 'transparent') return -1;
+  if (_lumCache[c] !== undefined) return _lumCache[c];
+  let v = -1;
+  try {
+    _ccCtx.clearRect(0, 0, 1, 1); _ccCtx.fillStyle = '#000'; _ccCtx.fillStyle = c; _ccCtx.fillRect(0, 0, 1, 1);
+    const d = _ccCtx.getImageData(0, 0, 1, 1).data;
+    if (d[3] >= 32) v = (0.299 * d[0] + 0.587 * d[1] + 0.114 * d[2]) / 255;
+  } catch (_) {}
+  return (_lumCache[c] = v);
+}
+function sampleCorners(img) {
+  try {
+    const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+    const w = c.width, h = c.height, i = 3;
+    const px = [g.getImageData(i, i, 1, 1).data, g.getImageData(w - i - 1, i, 1, 1).data,
+                g.getImageData(i, h - i - 1, 1, 1).data, g.getImageData(w - i - 1, h - i - 1, 1, 1).data];
+    const op = px.filter(p => p[3] >= 32);
+    if (op.length < 3) return null;
+    const a = op.reduce((t, p) => [t[0] + p[0], t[1] + p[1], t[2] + p[2]], [0, 0, 0]).map(v => Math.round(v / op.length));
+    return `rgb(${a[0]},${a[1]},${a[2]})`;
+  } catch (_) { return null; }
+}
+// crop the empty margin of the number PNG so the digits fill the plate
+function trimNumber(img, bgCss) {
+  try {
+    const w = img.naturalWidth, h = img.naturalHeight; if (!w || !h) return null;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+    const data = g.getImageData(0, 0, w, h).data;
+    let bg = null;
+    if (bgCss) { const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(bgCss); if (m) bg = [+m[1], +m[2], +m[3]]; }
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (data[i + 3] < 40) continue;
+      if (bg && Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1]) + Math.abs(data[i + 2] - bg[2]) < 60) continue;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+    if (x1 < x0 || y1 < y0) return null;
+    const tw = x1 - x0 + 1, th = y1 - y0 + 1;
+    if (tw >= w - 1 && th >= h - 1) return null;
+    const o = document.createElement('canvas'); o.width = tw; o.height = th;
+    o.getContext('2d').drawImage(c, x0, y0, tw, th, 0, 0, tw, th);
+    return o.toDataURL('image/png');
+  } catch (_) { return null; }
+}
+
+function previewText(kind, custom, n) {
+  if (kind === 'custom') return custom;
+  const k = KINDS.find(x => x[0] === kind);
+  if (!k || !k[2]) return '';
+  return (kind === 'wins' || kind === 'dnfLast') ? k[2].replace('Y', String(clampN(n))) : k[2];
+}
+
+function diRightHTML(l1, l2) {
+  return (l1 ? '<div class="a">' + esc(l1) + '</div>' : '') +
+         (l2 ? '<div class="b"><svg class="ar" viewBox="0 0 24 16" width="22" height="15" aria-hidden="true"><path fill="currentColor" d="M0 8L9 0V5H24V11H9V16Z"/></svg><span>' + esc(l2) + '</span></div>' : '');
+}
+
+function diFitNbc() {
+  const nm = $('di-name'), max = nm.clientWidth - 44;
+  const els = Array.from(nm.querySelectorAll('.f, .l'));
+  // one pass: set base sizes, measure all, then shrink proportionally (no layout thrash inside a loop)
+  const base = els.map(el => { const sz = el.classList.contains('l') ? 38 : 26; el.style.fontSize = sz + 'px'; return sz; });
+  const widths = els.map(el => el.scrollWidth);
+  els.forEach((el, i) => { if (widths[i] > max) el.style.fontSize = Math.max(14, Math.floor(base[i] * max / widths[i])) + 'px'; });
+  els.forEach((el, i) => { let sz = parseInt(el.style.fontSize, 10); while (el.scrollWidth > max && sz > 14) { sz -= 1; el.style.fontSize = sz + 'px'; } });
+  const rr = $('di-r');
+  if (rr && rr.style.display !== 'none') {
+    const mx = rr.clientWidth - 36;
+    rr.querySelectorAll('.a, .b').forEach(el => {
+      const base = el.classList.contains('a') ? 28 : 21; let sz = base; el.style.fontSize = sz + 'px';
+      while (el.scrollWidth > mx && sz > 7) { sz -= 1; el.style.fontSize = sz + 'px'; }
+    });
+  }
+}
+
+
+
+// ---- Preview in the style of the active ticker ----------------------------------------------------------------
+// NBC 2016 and NBC 2017 share the same banner; Fox (2010) has its own. Any other ticker has no driver banner:
+// the preview falls back to NBC 2017 and a warning is shown.
+const DI_SKIN_STYLE = { nbc2017shart: 'nbc', nbc2016: 'nbc', fox2010: 'fox', espn2017: 'espn', prime: 'prime' };
+const TICKER_LABELS = { ticker: 'Scrolling Ticker', cw_overlay: 'CW Overlay', floracing: 'FloRacing', espn2010: 'ESPN 2010', espn2011: 'ESPN 2011', espn2017: 'ESPN 2017',
+  nbc2014: 'NBC 2014', nbc2016: 'NBC 2016', nbc2017shart: 'NBC 2017', fox2010: 'Fox (2010)', fox2016: 'Fox 2016', fox2004: 'Fox (2004)', prime: 'Prime' };
+const NBC_HTML = "<div id=\"di-wrap\"> <div id=\"di-tab\"></div> <div id=\"di-box\"> <div id=\"di-num\"></div> <div id=\"di-manu\"></div> <div id=\"di-name\"></div> <div id=\"di-r\" style=\"display:none\"></div> </div> </div>";
+const FOX_HTML = "<div id=\"di-wrap\"> <svg width=\"0\" height=\"0\" style=\"position:absolute\" aria-hidden=\"true\"><defs><linearGradient id=\"di-yel\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffe680\"/><stop offset=\".5\" stop-color=\"#ffbf1f\"/><stop offset=\"1\" stop-color=\"#d48a00\"/></linearGradient></defs></svg> <div id=\"di-top\"> <div id=\"di-hatch\"></div> <div id=\"di-num\"></div> <div id=\"di-name\"></div> <div id=\"di-logo\"><img id=\"di-logo-img\" alt=\"\"></div> </div> <div id=\"di-sep\"></div> <div id=\"di-low\"><div id=\"di-r\"></div></div> <div id=\"di-base\"><i></i></div> </div>";
+const ESPN_HTML = "<div id=\"di-wrap\"> <div id=\"di-tab\"><div id=\"di-name\"><span id=\"di-nm\"></span></div><div id=\"di-cur\"></div></div> <div id=\"di-box\"> <div id=\"di-num\"></div> <div id=\"di-photo\"></div> <div id=\"di-car\"></div> <div id=\"di-r\"></div> </div> </div>";
+const PRIME_HTML = "<div id=\"di-wrap\"> <div id=\"di-tab\"></div> <div id=\"di-box\"> <div id=\"di-photo\"></div> <div id=\"di-num\"></div> <div id=\"di-name\"></div> <div id=\"di-r\" style=\"display:none\"></div> </div> </div>";
+const FOX_ARROW = '<svg class="ar" viewBox="0 0 34 24" width="33" height="23" aria-hidden="true"><path fill="url(#di-yel)" d="M0 0H8L20 12L8 24H0L12 12Z"/><path fill="url(#di-yel)" d="M13 0H21L33 12L21 24H13L25 12Z"/></svg>';
+let pvStyle = '';
+function setPreviewStyle(style) {
+  if (pvStyle === style) return false;
+  pvStyle = style;
+  const f = $('pv-fit'); f.className = 'sk-' + style;
+  f.innerHTML = style === 'fox' ? FOX_HTML : (style === 'espn' ? ESPN_HTML : (style === 'prime' ? PRIME_HTML : NBC_HTML));
+  if (style === 'fox') {   // logo plate on the right: the series logo, else the default logo; hidden if neither exists
+    const im = $('di-logo-img'), box = $('di-logo');
+    const cands = ['/asset/serieslogo.png' + TOKEN_Q, '/asset/logo.svg' + TOKEN_Q]; let k = 0;
+    im.onload = () => { box.style.display = 'flex'; };
+    im.onerror = () => { if (++k < cands.length) im.src = cands[k]; else box.style.display = 'none'; };
+    im.src = cands[0];
+  }
+  return true;
+}
+const _acCtx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+function accentShades(c) {   // light / mid / dark shades of the driver colour for the blue parts of the Fox banner; null = keep the default blue
+  if (!c || c === 'transparent') return null;
+  try {
+    _acCtx.clearRect(0, 0, 1, 1); _acCtx.fillStyle = '#000'; _acCtx.fillStyle = c; _acCtx.fillRect(0, 0, 1, 1);
+    const p = _acCtx.getImageData(0, 0, 1, 1).data; if (p[3] < 32) return null;
+    const mix = (t, k) => 'rgb(' + [0, 1, 2].map(i => Math.round(p[i] + (t - p[i]) * k)).join(',') + ')';
+    return { hi: mix(255, .35), mid: 'rgb(' + p[0] + ',' + p[1] + ',' + p[2] + ')', lo: mix(0, .4) };
+  } catch (_) { return null; }
+}
+function foxRightHTML(l1, l2) {
+  return (l1 ? '<div class="a">' + esc(l1) + '</div>' : '') + (l2 ? '<div class="b">' + FOX_ARROW + '<span>' + esc(l2) + '</span></div>' : '');
+}
+function foxNumHTML(n, bg) {
+  loadNum(n);
+  const o = _num[n];
+  if (o && o.state === 'ok') return '<img src="' + o.src + '" alt="' + esc(n) + '">';
+  const hide = (o && o.state === 'fail') ? '' : 'visibility:hidden;';
+  return '<span class="nf" style="' + hide + 'color:' + (bgLuma(bg) > 0.6 ? '#111' : '#fff') + '">' + esc(n) + '</span>';
+}
+function diFitFox() {
+  const nm = $('di-nm');
+  if (nm) {
+    const max = $('di-name').clientWidth - 36; let sz = 38; nm.style.fontSize = sz + 'px';
+    while (nm.scrollWidth > max && sz > 14) { sz -= 1; nm.style.fontSize = sz + 'px'; }
+  }
+  if ($('di-low').style.display !== 'none') {
+    $('di-r').querySelectorAll('.a, .b').forEach(el => {
+      let sz = 28; el.style.fontSize = sz + 'px';
+      while (el.scrollWidth > el.clientWidth + 1 && sz > 10) { sz -= 1; el.style.fontSize = sz + 'px'; }
+    });
+  }
+}
+function diFitEspn() {
+  const name = $('di-name'), nm = $('di-nm');
+  if (name && nm) { let sz = 36; nm.style.fontSize = sz + 'px'; while (name.scrollWidth > name.clientWidth + 1 && sz > 14) { sz -= 1; nm.style.fontSize = sz + 'px'; } }
+  const r = $('di-r');
+  if (r && r.style.display !== 'none') { let sz = 44; r.style.fontSize = sz + 'px'; while (r.scrollWidth > r.clientWidth + 1 && sz > 12) { sz -= 1; r.style.fontSize = sz + 'px'; } }
+}
+function espnRightHTML(l1, l2) {   // same split as the overlay: "Label: value" in two aligned columns, anything else across the full width
+  return [l1, l2].filter(Boolean).map(t => {
+    const m = /^([^:]{1,30}:)\s*(.+)$/.exec(t);
+    return m ? '<span class="l">' + esc(m[1]) + '</span><span class="v">' + esc(m[2]) + '</span>' : '<span class="w">' + esc(t) + '</span>';
+  }).join('');
+}
+function primeNumHTML(n) {
+  loadNum(n);
+  const o = _num[n];
+  if (o && o.state === 'ok') return '<div class="nn"><img src="' + o.src + '" alt="' + esc(n) + '"></div>';
+  const hide = (o && o.state === 'fail') ? '' : 'visibility:hidden;';
+  return '<div class="nn"><span style="' + hide + '">' + esc(n) + '</span></div>';
+}
+function primeRightHTML(l1, l2) {
+  return (l1 ? '<div class="a"><span>' + esc(l1) + '</span></div>' : '') + (l2 ? '<div class="b"><span class="ic"></span><span>' + esc(l2) + '</span></div>' : '');
+}
+function diFitPrime() {
+  const nm = $('di-name'), max = nm.clientWidth - 26;
+  const els = Array.from(nm.querySelectorAll('.f, .l'));
+  const base = els.map(el => { const sz = el.classList.contains('l') ? 36 : 28; el.style.fontSize = sz + 'px'; return sz; });
+  const widths = els.map(el => el.scrollWidth);
+  els.forEach((el, i) => { if (widths[i] > max && max > 0) el.style.fontSize = Math.max(14, Math.floor(base[i] * max / widths[i])) + 'px'; });
+  els.forEach(el => { let sz = parseInt(el.style.fontSize, 10); while (el.scrollWidth > max && max > 0 && sz > 14) { sz -= 1; el.style.fontSize = sz + 'px'; } });
+  const rr = $('di-r');
+  if (rr && rr.style.display !== 'none') {
+    rr.querySelectorAll('.a, .b').forEach(el => {
+      const t = el.querySelector('span:last-child'); if (!t) return;
+      const isA = el.classList.contains('a'), avail = el.clientWidth - (isA ? 36 : 62);
+      let sz = isA ? 32 : 22; el.style.fontSize = sz + 'px';
+      while (t.offsetWidth > avail && avail > 0 && sz > 9) { sz -= 1; el.style.fontSize = sz + 'px'; }
+    });
+  }
+}
+function diFit() { if (pvStyle === 'fox') diFitFox(); else if (pvStyle === 'espn') diFitEspn(); else if (pvStyle === 'prime') diFitPrime(); else diFitNbc(); }
+
+function lineText(i) { const f = F[i]; return previewText(f.k.value, f.c.value.trim(), f.n.value); }
+const _num = {};
+function loadNum(n) {
+  if (_num[n]) return;
+  const src = '/asset/number/' + encodeURIComponent(n) + '.png' + TOKEN_Q;
+  const o = _num[n] = { state: 'loading', src };
+  const img = new Image();
+  img.onload = () => { o.color = sampleCorners(img); const t = trimNumber(img, o.color); if (t) o.src = t; o.state = 'ok'; render(); };
+  img.onerror = () => { o.state = 'fail'; render(); };
+  img.src = src;
+}
+function numHTML(n) {
+  loadNum(n);
+  const o = _num[n];
+  if (o && o.state === 'ok') return `<div class="np"><span class="np-c"></span><img src="${o.src}" alt="${esc(n)}"></div>`;
+  const hide = (o && o.state === 'fail') ? '' : 'visibility:hidden;';
+  return `<div class="np"><span class="np-c"></span><span class="np-t" style="${hide}color:#fff">${esc(n)}</span></div>`;
+}
+function manuHTML(n) {
+  const u = '/asset/manu/' + encodeURIComponent(n) + '.png' + TOKEN_Q;
+  return '<img src="' + esc(u) + '" alt="" onerror="var p=this.parentNode;this.remove();if(p)p.style.display=\'none\'">';
+}
+function fitPreview() {
+  const st = $('pv-stage'), fit = $('pv-fit');
+  const w = st.clientWidth; if (!w) return;
+  const wrap = $('di-wrap');   // each style has its own natural width (NBC 700 / Fox 1060 / ESPN 790+ / Prime 860); ESPN grows past 790 when the headshot is shown, so measure the banner itself
+  const nat = Math.max(fit.offsetWidth || 708, wrap ? wrap.offsetWidth + 8 : 0);
+  const s = Math.min(1, w / nat);
+  fit.style.marginLeft = '0';
+  fit.style.transform = 'scale(' + s + ')';
+  st.style.height = Math.ceil(fit.offsetHeight * s) + 'px';
+}
+
+// headshot / car pictures show up after render() (their onload only toggles a class): re-fit when the banner changes
+let _fpRaf = 0;
+new MutationObserver(() => {
+  if (_fpRaf) return;
+  _fpRaf = requestAnimationFrame(() => { _fpRaf = 0; fitPreview(); try { diFit(); } catch (e) {} });
+}).observe($('pv-fit'), { attributes: true, attributeFilter: ['class'], subtree: true, childList: true });
+
+// the banner follows the ticker that is active on the PC (reported by /api/state)
+let SKIN = null;
+function applySkin(skin) {
+  const warn = $('pv-warn');
+  const style = DI_SKIN_STYLE[skin] || 'nbc';
+  if (skin && !DI_SKIN_STYLE[skin]) {
+    warn.textContent = 'The active ticker (' + (TICKER_LABELS[skin] || skin) + ') is not compatible with Driver Info. The preview shows NBC 2017 instead.';
+    warn.style.display = 'block';
+  } else warn.style.display = 'none';
+  if (setPreviewStyle(style) && cur) render();
+}
+
+function render() {
+  const has = !!cur;
+  $('pvCard').classList.toggle('hide', !has);
+  if (!has) return;
+  const num = String(cur.number);
+  const full = (String(cur.first || '') + ' ' + String(cur.last || '')).trim().toUpperCase() || num;
+  if (!pvStyle) setPreviewStyle('nbc');
+  if (pvStyle === 'fox') {
+    const bg = cur.color || (_num[num] && _num[num].color) || '#3b3f47', wrap = $('di-wrap');
+    const acc = accentShades(cur.color);      // colour assigned in the Series Editor; none = the default blue
+    ['--di-acc', '--di-acc-hi', '--di-acc-mid', '--di-acc-lo'].forEach(v => wrap.style.removeProperty(v));
+    if (acc) { wrap.style.setProperty('--di-acc', acc.mid); wrap.style.setProperty('--di-acc-hi', acc.hi); wrap.style.setProperty('--di-acc-mid', acc.mid); wrap.style.setProperty('--di-acc-lo', acc.lo); }
+    const numEl = $('di-num'); numEl.style.setProperty('--di-nbg', bg); numEl.innerHTML = foxNumHTML(num, bg);
+    $('di-name').innerHTML = '<span id="di-nm">' + esc(full) + '</span>';
+    const low = $('di-low'), html = foxRightHTML(lineText(1), lineText(2));
+    if (html) { $('di-r').innerHTML = html; low.style.display = ''; } else { $('di-r').innerHTML = ''; low.style.display = 'none'; }
+    fitPreview(); diFit();
+    return;
+  }
+  if (pvStyle === 'espn') {
+    const bg = cur.color || (_num[num] && _num[num].color) || '#3b3f47', wrap = $('di-wrap');
+    wrap.style.setProperty('--di-nbg', (bg && bg !== 'transparent') ? bg : '#3b3f47');
+    $('di-num').innerHTML = foxNumHTML(num, bg);
+    $('di-nm').textContent = full;
+    const c = $('di-cur'); c.textContent = 'CURRENTLY: 2nd'; c.style.display = 'flex';
+    const ph = $('di-photo');
+    if (ph.dataset.num !== num) {
+      ph.dataset.num = num; ph.classList.remove('on');
+      ph.innerHTML = '<img alt="" src="' + esc('/asset/headshot/' + encodeURIComponent(num) + '.png' + TOKEN_Q) + '" onload="this.parentNode.classList.add(\'on\')" onerror="this.parentNode.classList.remove(\'on\');this.remove()">';
+    }
+    const r = $('di-r'), box = $('di-box'), car = $('di-car'), html = espnRightHTML(lineText(1), lineText(2));
+    if (html) { r.innerHTML = html; r.style.display = ''; car.classList.remove('on'); car.innerHTML = ''; car.dataset.num = ''; box.classList.remove('tight'); }
+    else {                                           // no Info lines: the car picture fills the box (as in the overlay)
+      r.innerHTML = ''; r.style.display = 'none';
+      if (car.dataset.num !== num) {
+        car.dataset.num = num; car.classList.remove('on'); box.classList.add('tight');
+        car.innerHTML = '<img alt="" src="' + esc('/asset/car/' + encodeURIComponent(num) + '.png' + TOKEN_Q) + '" onload="this.parentNode.classList.add(\'on\');document.getElementById(\'di-box\').classList.remove(\'tight\')" onerror="this.remove()">';
+      }
+    }
+    fitPreview(); diFit();
+    return;
+  }
+  if (pvStyle === 'prime') {
+    const lastP = lastNameOf(full), firstP = (lastP && full.endsWith(lastP)) ? full.slice(0, full.length - lastP.length).trim() : '';
+    const pbox = $('di-box'), col = cur.color || '';
+    if (col) pbox.style.setProperty('--di-bg', 'linear-gradient(90deg, ' + col + ' 0%, ' + col + ' 100%)'); else pbox.style.removeProperty('--di-bg');
+    $('di-num').innerHTML = primeNumHTML(num) + '<div id="di-manu">' + manuHTML(num) + '</div>';
+    $('di-name').innerHTML = (firstP ? '<div class="f">' + esc(firstP) + '</div>' : '') + '<div class="l">' + esc(lastP || full) + '</div>';
+    const ph = $('di-photo');
+    if (ph.dataset.num !== num) {          // oval headshot (series headshot, else the default one)
+      ph.dataset.num = num; ph.classList.remove('on');
+      ph.innerHTML = '<img alt="" src="' + esc('/asset/headshot/' + encodeURIComponent(num) + '.png' + TOKEN_Q) + '" data-d="' + esc('/asset/defaultheadshot.png' + TOKEN_Q) + '" onload="this.parentNode.classList.add(\'on\')" onerror="var d=this.dataset.d;if(d){this.dataset.d=\'\';this.src=d}else{this.parentNode.classList.remove(\'on\');this.remove()}">';
+    }
+    const ptab = $('di-tab'); ptab.textContent = SERIES_NAME; ptab.style.display = SERIES_NAME ? 'flex' : 'none';
+    const pr = $('di-r'), phtml = primeRightHTML(lineText(1), lineText(2));
+    if (phtml) { pr.innerHTML = phtml; pr.style.display = ''; pbox.classList.remove('tight'); } else { pr.innerHTML = ''; pr.style.display = 'none'; pbox.classList.add('tight'); }
+    fitPreview(); diFit();
+    return;
+  }
+  const last = lastNameOf(full), first = (last && full.endsWith(last)) ? full.slice(0, full.length - last.length).trim() : '';
+  $('di-num').innerHTML  = numHTML(num);
+  $('di-manu').innerHTML = manuHTML(num);
+  $('di-manu').style.display = '';
+  $('di-name').innerHTML = (first ? '<div class="f">' + esc(first) + '</div>' : '') + '<div class="l">' + esc(last || full) + '</div>';
+  const col = cur.color || '', box = $('di-box');   // colour assigned in the Series Editor: banner background
+  if (col) { box.style.setProperty('--di-bg', col); box.style.setProperty('--di-fg', bgLuma(col) > 0.6 ? '#111' : '#fff'); box.style.setProperty('--di-accent', bgLuma(col) > 0.45 ? '#111' : '#ffd21f'); }
+  else { box.style.removeProperty('--di-bg'); box.style.removeProperty('--di-fg'); box.style.removeProperty('--di-accent'); }
+  const tabEl = $('di-tab'); tabEl.textContent = SERIES_NAME; tabEl.style.display = SERIES_NAME ? 'flex' : 'none';
+  const r = $('di-r'), html = diRightHTML(lineText(1), lineText(2));
+  if (html) { r.innerHTML = html; r.style.display = ''; } else { r.innerHTML = ''; r.style.display = 'none'; }
+  fitPreview();
+  diFit();
+}
+
+window.addEventListener('resize', fitPreview);
+
+function setStatus(t, ok) { $('status').textContent = t || ''; $('status').className = ok ? 'ok' : ''; }
+function setConn(ok) { $('dot').className = ok ? 'ok' : 'bad'; if (!ok) setStatus('Offline'); }
+async function api(path, body) {
+  const r = await fetch(path + (path.includes('?') ? '&' : '?') + 't=' + encodeURIComponent(TOKEN), body === undefined ? { cache: 'no-store' } :
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+// "Points to the Cutoff Line" is only offered while the cutoff line is on in the Championship screen (a driver that already has it saved keeps seeing it)
+let CUT_ON = false;
+function applyCut() {
+  [1, 2].forEach(i => {
+    const o = Array.from(F[i].k.options).find(x => x.value === 'cutoffPts');
+    if (o) o.hidden = o.disabled = !(CUT_ON || F[i].k.value === 'cutoffPts');
+  });
+}
+function syncExtra(i) { const f = F[i], k = f.k.value; f.c.classList.toggle('hide', k !== 'custom'); f.n.classList.toggle('hide', k !== 'wins' && k !== 'dnfLast'); }
+function fill() {
+  const v = (cur && info[cur.number]) || {};
+  [1, 2].forEach(i => {
+    const f = F[i]; let kind = v['k' + i] || '';
+    if (!KIND_SET.has(kind)) kind = '';
+    if (!kind && v['line' + i]) kind = 'custom';
+    f.k.value = kind; f.c.value = v['line' + i] || ''; f.n.value = v['n' + i] || 5; syncExtra(i);
+    f.k.disabled = f.c.disabled = f.n.disabled = !cur;
+  });
+  applyCut();
+  $('clear').disabled = !cur;
+  render();
+}
+function buildList(keep) {
+  sel.innerHTML = list.map(d => { const nm = (String(d.first || '') + ' ' + String(d.last || '')).trim(); return `<option value="${esc(d.number)}">#${esc(d.number)} — ${esc(nm)}</option>`; }).join('');
+  const want = list.some(d => String(d.number) === String(keep)) ? keep : (list[0] && list[0].number);
+  if (want !== undefined) sel.value = want;
+  cur = list.find(d => String(d.number) === String(want)) || null;
+  fill();
+}
+async function flush() {
+  clearTimeout(saveT); saveT = null;
+  if (!dirty || !cur) return;
+  dirty = false; busy = true;
+  const data = { k1: F[1].k.value, k2: F[2].k.value, line1: F[1].c.value.trim(), line2: F[2].c.value.trim(), n1: clampN(F[1].n.value), n2: clampN(F[2].n.value) };
+  try {
+    await api('/api/save', { number: cur.number, data });
+    info[cur.number] = data; lastSave = Date.now(); setConn(true); setStatus('Saved', true);
+    setTimeout(() => { if ($('status').textContent === 'Saved') setStatus(''); }, 1500);
+  } catch (e) { dirty = true; setConn(false); }
+  busy = false;
+}
+function onEdit() { dirty = true; setStatus('Editing…'); render(); clearTimeout(saveT); saveT = setTimeout(flush, 300); }
+let _camNum = '', _camNew = false;
+try { $('follow').checked = localStorage.getItem('psf_di_follow') !== '0'; } catch (e) {}
+$('follow').addEventListener('change', () => { try { localStorage.setItem('psf_di_follow', $('follow').checked ? '1' : '0'); } catch (e) {} if ($('follow').checked) _camNew = true; });
+async function refresh(first) {
+  try {
+    const s = await api('/api/state');
+    setConn(true);
+    if (!s || !Array.isArray(s.list)) throw new Error('bad');
+    const same = JSON.stringify(s.list) === JSON.stringify(list);
+    list = s.list; info = s.info || {};
+    if ((s.cutoff === true) !== CUT_ON) { CUT_ON = s.cutoff === true; applyCut(); }
+    if (s.httpPort) { RS_PORT = s.httpPort; RS_SERIES = s.series || ''; if (!$('tab-rs').classList.contains('hide')) rsLoad(); }
+    const camNum = (typeof s.cam === 'string') ? s.cam : '';
+    if (typeof s.skin === 'string' && s.skin !== SKIN) { SKIN = s.skin; applySkin(SKIN); }
+    if (typeof s.seriesName === 'string' && s.seriesName !== SERIES_NAME) { SERIES_NAME = s.seriesName; if (cur) render(); }
+    if (first || !same) buildList(cur && cur.number);
+    else if (!dirty && !busy && Date.now() - lastSave > 1500 && !/^(INPUT|SELECT)$/.test((document.activeElement || {}).tagName || '')) fill();
+    if (camNum !== _camNum) { _camNum = camNum; _camNew = true; }
+    if (_camNew && $('follow').checked && _camNum && !dirty && !busy && list.some(d => String(d.number) === _camNum)) { _camNew = false; if (!cur || String(cur.number) !== _camNum) await pickDriver(_camNum); }
+    $('msg').classList.toggle('hide', list.length > 0); $('app').classList.toggle('hide', !list.length);
+    if (!list.length) $('msg').textContent = 'No drivers with a name and number yet. Add them in the Series Editor.';
+  } catch (e) { setConn(false); if (first) { $('msg').classList.remove('hide'); $('msg').textContent = 'Could not load. Check the link or scan the QR again.'; } }
+}
+async function pickDriver(number) { await flush(); cur = list.find(d => String(d.number) === String(number)) || null; sel.value = cur ? cur.number : ''; fill(); }
+const unfollow = () => { const f = $('follow'); if (f && f.checked) { f.checked = false; try { localStorage.setItem('psf_di_follow', '0'); } catch (e) {} } };
+sel.addEventListener('change', () => { unfollow(); pickDriver(sel.value); });
+const step = d => { if (!list.length) return; const i = Math.max(0, list.findIndex(x => cur && String(x.number) === String(cur.number))); pickDriver(list[(i + d + list.length) % list.length].number); };
+$('prev').addEventListener('click', () => { unfollow(); step(-1); });
+$('next').addEventListener('click', () => { unfollow(); step(1); });
+[1, 2].forEach(i => {
+  F[i].k.addEventListener('change', () => { syncExtra(i); onEdit(); });
+  F[i].c.addEventListener('input', onEdit);
+  F[i].n.addEventListener('input', onEdit);
+});
+$('clear').addEventListener('click', () => { [1, 2].forEach(i => { F[i].k.value = ''; F[i].c.value = ''; F[i].n.value = 5; syncExtra(i); }); dirty = true; flush(); });
+$('clearAll').addEventListener('click', async () => {
+  if (!confirm('Clear Info 1 and Info 2 of ALL drivers?')) return;
+  clearTimeout(saveT); dirty = false;
+  try { await api('/api/clear-all', {}); info = {}; lastSave = Date.now(); fill(); setConn(true); setStatus('All cleared', true); setTimeout(() => setStatus(''), 1800); }
+  catch (e) { setConn(false); }
+});
+// ── Championship tab: pick the drivers (max 7) and the value shown by the tickers' "As They Run" panel ──
+const CH_MAX = 7;
+const CH_METRICS = [['', 'Gap to leader', '-12'], ['points', 'Points', '1234'], ['champPos', 'Championship position', 'P3'], ['racePos', 'Race position', 'P5'], ['racePosChamp', 'Driver position (Championship ordered)', 'P5'], ['gapCutoff', 'Cutoff Line (points)', '+12'], ['posCutoff', 'Cutoff Line (position)', 'P16']];
+const CH = { cut: false, view: { drivers: [], metric: '' }, drivers: [], loaded: false, dirty: false, busy: false, saveT: null, lastSave: 0 };
+function chRender() {
+  $('chmsg').classList.toggle('hide', CH.loaded && CH.drivers.length > 0);
+  $('chapp').classList.toggle('hide', !(CH.loaded && CH.drivers.length > 0));
+  if (CH.loaded && !CH.drivers.length) $('chmsg').textContent = 'No championship drivers yet. Add them in the Championship screen of the app.';
+  $('chmetric').innerHTML = CH_METRICS.filter(m => m[0] !== 'gapCutoff' && m[0] !== 'posCutoff' || CH.cut).map(m => '<button type="button" data-m="' + m[0] + '" class="' + (CH.view.metric === m[0] ? 'on' : '') + '"><span>' + esc(m[1]) + '</span><span class="ex">' + esc(m[2]) + '</span></button>').join('');
+  const sel = new Set(CH.view.drivers), full = sel.size >= CH_MAX;
+  $('chcount').textContent = sel.size ? sel.size + ' / ' + CH_MAX : '';
+  $('chcount').className = full ? 'full' : '';
+  $('chauto').disabled = !sel.size;
+  $('chhint').textContent = sel.size ? 'The panel shows only the drivers ticked below.' : ((CH.view.metric === 'gapCutoff' || CH.view.metric === 'posCutoff') && CH.cut ? 'Nothing ticked: the panel shows the 3 drivers above and the 3 below the cutoff line, with their race position. Tick up to ' + CH_MAX + ' drivers to choose them yourself.' : 'Nothing ticked: the panel shows the top 5 of the championship automatically. Tick up to ' + CH_MAX + ' drivers to choose them yourself.');
+  $('chlist').innerHTML = CH.drivers.map(d => {
+    const on = sel.has(d.number);
+    return '<button type="button" class="chrow' + (on ? ' on' : '') + (!on && full ? ' dis' : '') + '" data-n="' + esc(d.number) + '"><span class="p">' + esc(d.pos) + '</span><span class="n">#' + esc(d.number) + '</span><span class="nm">' + esc(d.name || '') + '</span><span class="pt">' + esc(d.points) + '</span><span class="ck">' + (on ? '✓' : '') + '</span></button>';
+  }).join('');
+}
+async function chLoad() {
+  if (CH.dirty || CH.busy || Date.now() - CH.lastSave < 1500) return;
+  try {
+    const s = await api('/api/pview');
+    if (CH.dirty || CH.busy) return;
+    setConn(true);
+    CH.drivers = Array.isArray(s.drivers) ? s.drivers : [];
+    const v = s.view || {};
+    CH.cut = !!(v.cut && v.cut.enabled);   // the Cutoff Line options are only offered while the cutoff line is on in the Championship screen
+    CH.view = { drivers: (Array.isArray(v.drivers) ? v.drivers : []).map(String), metric: CH_METRICS.some(m => m[0] === v.metric) ? v.metric : '' };
+    CH.loaded = true;
+    chRender();
+  } catch (e) { setConn(false); if (!CH.loaded) { $('chmsg').classList.remove('hide'); $('chmsg').textContent = 'Could not load. Check the link or scan the QR again.'; } }
+}
+async function chFlush() {
+  clearTimeout(CH.saveT); CH.saveT = null;
+  if (!CH.dirty) return;
+  CH.dirty = false; CH.busy = true;
+  try {
+    const r = await api('/api/pview', { drivers: CH.view.drivers, metric: CH.view.metric });
+    if (!r || r.ok === false) throw new Error('save');
+    CH.lastSave = Date.now(); setConn(true); setStatus('Saved', true);
+    setTimeout(() => { if ($('status').textContent === 'Saved') setStatus(''); }, 1500);
+  } catch (e) { CH.dirty = true; setConn(false); }
+  CH.busy = false;
+}
+function chEdit() { CH.dirty = true; setStatus('Editing…'); chRender(); clearTimeout(CH.saveT); CH.saveT = setTimeout(chFlush, 300); }
+$('chmetric').addEventListener('click', e => {
+  const b = e.target.closest('button[data-m]'); if (!b) return;
+  CH.view.metric = b.dataset.m; chEdit();
+});
+$('chlist').addEventListener('click', e => {
+  const b = e.target.closest('button[data-n]'); if (!b) return;
+  const n = b.dataset.n, sel = CH.view.drivers.filter(x => x !== n);
+  if (sel.length === CH.view.drivers.length) { if (sel.length >= CH_MAX) return; sel.push(n); }   // ticked now (not when it was already ticked)
+  const order = new Map(CH.drivers.map((d, i) => [d.number, i]));
+  sel.sort((a, b2) => (order.has(a) ? order.get(a) : 999) - (order.has(b2) ? order.get(b2) : 999));
+  CH.view.drivers = sel; chEdit();
+});
+$('chauto').addEventListener('click', () => { CH.view.drivers = []; chEdit(); });
+// ── tabs ──
+let RS_PORT = 0, RS_SERIES = '', _rsSrc = '';
+function rsLoad() {
+  const host = $('tab-rs');
+  if (!RS_PORT) return;
+  const src = location.protocol + '//' + location.hostname + ':' + RS_PORT + '/racestats?series=' + encodeURIComponent(RS_SERIES || 'default') + '&mport=' + encodeURIComponent(location.port || '') + '&t=' + encodeURIComponent(TOKEN);
+  if (_rsSrc === src) return;
+  _rsSrc = src;
+  host.innerHTML = '<iframe id="rs-frame" src="' + src.replace(/"/g, '&quot;') + '" title="Race Stats"></iframe>';
+}
+let CUR_TAB = 'di';
+// PC only: the Race Stats frame grows to its content so every driver is visible (no inner scroll); phones keep the fixed-height frame
+window.addEventListener('message', ev => {
+  try {
+    const f = $('rs-frame');
+    if (!f || ev.source !== f.contentWindow || !ev.data || !(ev.data.psfRsH > 0)) return;
+    if (!window.matchMedia('(min-width:900px) and (hover:hover) and (pointer:fine)').matches) return;
+    f.style.height = (Math.min(ev.data.psfRsH, 20000) + 2) + 'px';
+    f.setAttribute('scrolling', 'no');
+  } catch (e) {}
+});
+// PC only: logo + window title (the phone layout does not show them)
+try { if (window.matchMedia('(min-width:900px) and (hover:hover) and (pointer:fine)').matches) { document.title = 'PSF — TV Director'; $('pc-logo').src = '/asset/psf-logo.png' + TOKEN_Q; } } catch (e) {}
+const TAB_TITLE = { di: 'Driver Info', ch: 'As They Run Panel', rs: 'Race Stats' };
+function setTab(t) {
+  if (!TAB_TITLE[t]) t = 'di';
+  CUR_TAB = t;
+  ['di', 'ch', 'rs'].forEach(k => { $('tab-' + k).classList.toggle('hide', k !== t); $('tb-' + k).classList.toggle('on', k === t); });
+  $('ttl').textContent = TAB_TITLE[t];
+  document.querySelectorAll('#pc-desc > div').forEach(e => e.classList.toggle('hide', e.dataset.t !== t));
+  if (t === 'rs') rsLoad();
+  if (t === 'ch') chLoad();
+  try { localStorage.setItem('psf_mob_tab', t); } catch (e) {}
+}
+$('tb-di').addEventListener('click', () => setTab('di'));
+$('tb-ch').addEventListener('click', () => setTab('ch'));
+$('tb-rs').addEventListener('click', () => setTab('rs'));
+try { const st = localStorage.getItem('psf_mob_tab'); if (st === 'rs' || st === 'ch') setTab(st); } catch (e) {}
+{ const h = (location.hash || '').replace('#', ''); if (h === 'di' || h === 'ch' || h === 'rs') setTab(h); }   // tab asked by the link (desktop TV Director card)
+refresh(true);
+setInterval(() => refresh(false), 2500);
+setInterval(() => { if (CUR_TAB === 'ch') chLoad(); }, 5000);
+</script>
+</body>
+</html>

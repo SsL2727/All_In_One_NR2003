@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>Dynamic Rubber</title>
+<link rel="stylesheet" href="ui.css">
+<style>
+  .hide { display: none !important; }
+  .kvrow { display: grid; grid-template-columns: 200px 1fr; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); align-items: center; }
+  .kvrow:last-child { border-bottom: 0; }
+  ul.plain { margin: 6px 0 0 18px; padding: 0; } ul.plain li { margin: 2px 0; }
+  .bk { border: 1px solid var(--line-2); border-radius: 6px; padding: 6px 10px; margin: 0 0 6px; font-size: 12px; }
+</style>
+</head>
+<body>
+<header class="app-header">
+  <h1>🎨 Dynamic Rubber</h1>
+  <span class="chip" id="chip-state">—</span>
+  <span class="grow"></span>
+  <span class="chip" id="chip-game">—</span>
+</header>
+<main class="page narrow">
+  <div class="card hero">
+    <div class="muted">Tire rubber builds up on every car's body paint as a race goes on: the front bumper, the leading edge of the hood and the lower sides.
+      It is a ReShade add-on that follows the race through NR2003's replay telemetry. It works with standard car paints (Cup, GNS, CTS) and finds new carsets when NR2003 starts.
+      Saved replays don't rebuild the rubber from an earlier race.</div>
+  </div>
+
+  <div class="card">
+    <div class="switch-row"><label class="switch"><input type="checkbox" id="on"><span class="knob"></span></label><b>Dynamic Rubber on</b>
+      <span class="muted" id="on-note"></span></div>
+    <div class="callout err hide" id="err"></div>
+    <div class="callout warn hide" id="msg"></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Your game</h3>
+    <div class="kvrow"><span>NR2003 folder</span><span class="mono" id="root">—</span></div>
+    <div class="kvrow"><span>Direct3D 8 → 9 (d3d8.dll)</span><span id="d3d8">—</span></div>
+    <div class="kvrow"><span>d3d9.dll</span><span id="d3d9">—</span></div>
+    <div class="kvrow"><span>Replay telemetry (core.ini)</span><span id="telem">—</span></div>
+    <div class="kvrow"><span>Add-on</span><span id="addon">—</span></div>
+  </div>
+
+  <div class="card" id="plan-card">
+    <h3 style="margin-top:0">Install</h3>
+    <div id="plan"></div>
+    <div class="callout warn hide" id="confirm"></div>
+    <div class="row" style="margin-top:8px"><button class="btn primary" id="install">Install</button><span class="muted" id="install-note"></span></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Undo an install</h3>
+    <div class="muted" style="margin-bottom:6px">Each install keeps the files it replaced in <span class="mono">NR2003 Dynamic Rubber Backups</span>. Undo removes the files it added and puts the old ones back; in core.ini only the two replay telemetry values go back, so game settings you changed since are kept.</div>
+    <div id="backups"></div>
+  </div>
+
+  <div class="card">
+    <div class="muted" style="font-size:12px">NR2003 Dynamic Rubber: a community-made add-on. It uses ReShade and d3d8to9 by crosire (Patrick Mours), downloaded from their official pages when needed and checked against known hashes, and Mark Adler's blast decompressor. Their notices are in <span class="mono">beta\dynamic-rubber\Third-party notices.txt</span>.</div>
+  </div>
+</main>
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id), RB = window.shl.rubber;
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+let S = null, working = false;
+const show = (el, text) => { el.textContent = text || ''; el.classList.toggle('hide', !text); };
+
+function paint(s) {
+  S = s;
+  show($('err'), s.ok ? '' : s.error);
+  const chip = $('chip-state');
+  chip.textContent = !s.ok ? 'Not set up' : !s.installed ? 'Not installed' : s.enabled ? 'On' : 'Off';
+  chip.className = 'chip ' + (!s.ok ? 'bad' : !s.installed ? 'plain' : s.enabled ? 'ok' : 'warn');
+  $('chip-game').textContent = s.running ? 'NR2003 is running' : 'NR2003 closed';
+  $('chip-game').className = 'chip ' + (s.running ? 'warn' : 'plain');
+  $('root').textContent = s.root || '—';
+  $('d3d8').textContent = s.d3d8 === 'missing' ? 'none (d3d8to9 1.16.0 will be downloaded)' : s.d3d8 || '—';
+  $('d3d9').textContent = s.d3d9 ? s.d3d9 + (s.proxy ? ' (ReShade loads your DXVK as its proxy)' : '') : '—';
+  $('telem').textContent = s.telemetry ? (s.telemetry.ok ? 'on' : 'off (record_telem=' + s.telemetry.record_telem + ', record_telem_state_a=' + s.telemetry.state_a + ')') : '—';
+  $('addon').textContent = !s.installed ? 'not installed' : (s.enabled ? 'on' : 'off (renamed to .disabled)') + (s.current ? '' : ' - a different version than this app ships (Install updates it)') + (s.addonPath ? ' · ' + s.addonPath : '');
+  const on = $('on');
+  on.checked = !!(s.installed && s.enabled); on.disabled = working || !s.ok || !s.installed || s.running;
+  $('on-note').textContent = !s.installed ? 'Install it first (below).' : s.running ? 'Close NR2003 to switch it.' : '';
+  // the plan
+  const p = s.plan || {};
+  let h = '';
+  if (p.blocker) h += `<div class="callout err">${esc(p.blocker)}</div>`;
+  else if (!p.changes.length) h += `<div class="muted">${s.installed ? 'Everything is in place.' : 'Nothing to change.'}</div>`;
+  else {
+    h += '<div>Install will change these files in the NR2003 folder (the old copies are backed up first):</div><ul class="plain">' + p.changes.map(c => `<li class="mono">${esc(c)}</li>`).join('') + '</ul>';
+    if (p.downloads.length) h += '<div style="margin-top:6px">Downloads, from their official pages: ' + p.downloads.map(esc).join(', ') + '.</div>';
+  }
+  $('plan').innerHTML = h;
+  show($('confirm'), !p.blocker && p.changes.length ? p.confirm : '');
+  $('install').disabled = working || !s.ok || !!p.blocker || !p.changes.length || s.running;
+  $('install').textContent = s.installed ? 'Update' : 'Install';
+  $('install-note').textContent = s.running ? 'Close NR2003 first.' : working ? (s.message || 'Working...') : '';
+  // backups
+  $('backups').innerHTML = (s.backups || []).length ? s.backups.map((b, i) => `<div class="bk"><b>${esc(b.name)}</b>${i === 0 ? ' <span class="muted">(newest)</span>' : ''}<div class="muted">added: ${esc(b.added.join(', ') || '—')} · updated: ${esc(b.updated.join(', ') || '—')}</div>` +
+    `<div class="row tight" style="margin-top:4px"><button class="btn ghost" data-undo="${esc(b.name)}" ${s.running || working ? 'disabled' : ''}>Undo this install</button></div></div>`).join('') : '<div class="muted">No installs yet.</div>';
+  for (const b of document.querySelectorAll('[data-undo]')) b.onclick = async () => {
+    if (!confirm('Undo the install of ' + b.dataset.undo + '?\nThe files it added are removed and the old ones put back.')) return;
+    const r = await RB.restore(b.dataset.undo); show($('msg'), r.message); refresh();
+  };
+}
+
+async function refresh() { try { paint(await RB.state()); } catch (e) { show($('err'), String(e && e.message || e)); } }
+
+$('install').onclick = async () => {
+  if (!S || !S.plan) return;
+  let ok = true;
+  if (S.plan.confirm) ok = confirm(S.plan.confirm + '\n\nInstall?');
+  if (!ok) return;
+  working = true; paint(S);
+  const poll = setInterval(refresh, 700);
+  try { const r = await RB.install(true); show($('msg'), r.message); }
+  finally { clearInterval(poll); working = false; refresh(); }
+};
+$('on').onchange = async (e) => { const r = await RB.enable(e.target.checked); show($('msg'), r.message); refresh(); };
+
+refresh();
+setInterval(() => { if (!working) refresh(); }, 4000);
+</script>
+</body>
+</html>

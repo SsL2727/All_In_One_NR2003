@@ -1,0 +1,1366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="perf-shim.js"></script>
+<meta charset="UTF-8">
+<title>NR2003 NBC 2019</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  background: transparent;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  font-family: 'D-DIN Condensed Bold', 'Roboto Condensed', 'Arial Narrow', Impact, sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* Canvas 336 x 963 = native size of the template.png board (header + column bar + 20 rows) */
+#app, #scale-root { position: relative; width: 336px; height: 963px; }
+#scale-root { transform-origin: top left; }
+
+#board {
+  position: absolute; inset: 0;
+}
+#board::before { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: url('data:image/png;base64,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') no-repeat 0 0 / 336px 963px;
+}
+/* Before the race (gridding / pacing): only the header (LCD + series logo) is shown, no black standings box */
+#board.pre::before { clip-path: inset(0 0 846px 0); }   /* template header ends at y=116 */
+#board.pre #colhead, #board.pre #rows { visibility: hidden; }
+
+#head { position: absolute; left: 0; top: 0; width: 336px; height: 113px; }
+
+/* ── Flag banners (CAUTION / GREEN FLAG): slide over the LCD from the right ── */
+.flagbn { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform: translateX(100%); overflow: hidden;
+  display: flex; align-items: center; justify-content: center; border-radius: 5px 5px 0 0; will-change: transform; }
+.flagbn::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 48%; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .34), rgba(255, 255, 255, .04)); }
+.flagbn .ft { position: relative; z-index: 1; display: block; width: 100%; text-align: center; white-space: nowrap; overflow: hidden;
+  font-size: 36px; line-height: 53px; font-style: italic; letter-spacing: .15em; padding-left: .15em; }
+#flag-y { background: linear-gradient(180deg, #ffd23c 0%, #f3b412 46%, #d99600 54%, #c98a00 100%); color: #1b1407;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .5), inset 0 -3px 6px rgba(120, 70, 0, .35); }
+#flag-y .ft { text-shadow: 0 1px 0 rgba(255, 236, 160, .6); }
+#flag-g { background: linear-gradient(180deg, #58c244 0%, #36932a 46%, #2a8420 54%, #1c6613 100%); color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .5), inset 0 -3px 6px rgba(0, 50, 0, .35); }
+#flag-g .ft { text-shadow: 0 2px 2px rgba(0, 40, 0, .55); }
+
+/* ── Header: teal glass LCD over the green slot, white plate over the blue slot ── */
+#lcdwrap { position: absolute; left: 11px; top: 3px; width: 315px; height: 53px; border-radius: 5px 5px 0 0; overflow: hidden; }
+#lcd {
+  position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+  border-radius: 5px 5px 0 0;
+  background: linear-gradient(180deg, #0f7380 0%, #0a5560 48%, #06333b 100%);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .55), inset 0 0 14px rgba(110, 230, 245, .22);
+  text-align: center; color: #8ff0fa;
+  text-shadow: 0 0 5px rgba(120, 230, 245, .85), 0 0 12px rgba(70, 200, 220, .4);
+  overflow: hidden;
+}
+#lcd.caution { background: linear-gradient(180deg, #5c4208 0%, #3b2a05 48%, #201603 100%); color: #ffd23c;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .55), inset 0 0 14px rgba(255, 190, 40, .22);
+  text-shadow: 0 0 5px rgba(255, 205, 70, .8), 0 0 12px rgba(255, 170, 0, .4); }
+#lcd::after {   /* glass highlight on the upper half */
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 46%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, .02));
+  pointer-events: none;
+}
+#title { position: absolute; left: 6px; right: 6px; top: 2px;  height: 24px; line-height: 25px; font-size: 22px; white-space: nowrap; overflow: hidden; letter-spacing: .3px; }
+#lap   { position: absolute; left: 6px; right: 6px; top: 24px; height: 29px; line-height: 30px; font-size: 28px; white-space: nowrap; overflow: hidden; letter-spacing: .4px; }
+#lap small { font-size: .72em; }
+#logo {
+  position: absolute; left: 11px; top: 60px; width: 315px; height: 52px;
+  border-radius: 0 0 5px 5px;
+  background: linear-gradient(180deg, #ffffff 0%, #eef2f4 62%, #d4dbdf 100%);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .45);
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+#logo img { max-height: 40px; max-width: 290px; object-fit: contain; display: block; }
+#logo span { color: #11242b; font-size: 24px; letter-spacing: .5px; }
+
+/* ── Column header (black bar comes from the template, only text here) ── */
+#colhead { position: absolute; left: 0; top: 117px; width: 336px; height: 22px; color: #fff; font-size: 19px; line-height: 23px; letter-spacing: .3px; }
+#ch-l { position: absolute; left: 47px; white-space: nowrap; }
+#ch-r { position: absolute; right: 55px; white-space: nowrap; }
+
+/* ── Rows: positioned on the template's 20 slots ── */
+#rows { position: absolute; left: 0; top: 0; width: 336px; height: 963px; }
+.row { position: absolute; left: 5px; width: 327px; color: #fff; font-size: 23px; line-height: var(--h); }
+.row.me { background: linear-gradient(180deg, rgba(90, 150, 220, .38), rgba(40, 80, 130, .38)); }
+.row { overflow: hidden; }
+.row.dim .cont, .row.dim .pos { opacity: .36; }
+.row > *, .cont > * { position: absolute; top: 0; height: var(--h); text-shadow: 0 1px 1px rgba(0, 0, 0, .7); }
+.cont { left: 0; width: 100%; will-change: transform; }
+.pos { will-change: transform; }
+.pos  { left: 3px; width: 35px; text-align: right; font-size: 22px; overflow: hidden; white-space: nowrap; }
+.chip {
+  left: 41px; top: 50%; margin-top: -11px; width: 28px; height: 22px; border-radius: 3px;
+  background: #3b3f47; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .28), inset 0 -6px 8px rgba(0, 0, 0, .25), inset 0 5px 6px rgba(255, 255, 255, .14);
+  font-size: 17px; line-height: 22px; text-align: center; letter-spacing: -.3px; overflow: hidden;
+}
+.chip img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.chip.img { background: transparent; box-shadow: none; }
+.name { left: 99px; width: 137px; font-size: 22px; white-space: nowrap; overflow: hidden; text-overflow: clip; letter-spacing: .5px; }
+.name.chase { color: #ffd23c; }
+.gap  { left: 238px; width: 68px; text-align: right; white-space: nowrap; overflow: hidden; letter-spacing: .2px; }
+.gap.lead { font-size: 22px; }
+
+/* ── Driver Info banner (ported from NBC 2016) ── */
+.np { position: relative; width: 38px; height: 27px; overflow: hidden; background: #3b3f47; flex: none; }
+.np-c { position: absolute; inset: 0; }
+.np img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.np .np-t { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+            font-size: 21px; font-style: italic; font-weight: 800; letter-spacing: -.5px; }
+/* ── Driver Info Banner (hotkey): [number | manufacturer | name | optional text] on the driver's colour, fades in / out ── */
+#di-wrap { position: absolute; left: 4px; top: 130px; width: 700px; transform-origin: 0 0; z-index: 40; pointer-events: none; display: none; opacity: 0; transition: opacity .6s ease; }
+#di-tab { position: absolute; right: 8px; top: -26px; height: 26px; padding: 0 16px; display: none; align-items: center; border-radius: 5px 5px 0 0;
+          background: linear-gradient(180deg, #1c2330 0%, #0b0f16 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 0 0 1px rgba(150,158,168,.6);
+          font-size: 19px; font-weight: 700; color: #fff; letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; }
+#di-box { position: relative; height: 80px; display: flex; overflow: hidden; border-radius: 5px; background: var(--di-bg, linear-gradient(180deg, #2b4b8f 0%, #16357a 36%, #08194a 70%, #040c2b 100%)); color: var(--di-fg, #fff);
+          box-shadow: 0 0 0 2px #8f979f, 0 0 0 3px rgba(0,0,0,.6), 0 4px 10px rgba(0,0,0,.55); }
+#di-box::after { content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none;
+                 background: linear-gradient(180deg, rgba(255,255,255,.30) 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,.30) 100%); }
+#di-box > div { position: relative; z-index: 1; display: flex; align-items: center; height: 100%; }
+#di-box > div + div { box-shadow: inset 1px 0 0 rgba(0,0,0,.4), inset 2px 0 0 rgba(255,255,255,.18); }
+#di-num { width: 170px; flex: none; justify-content: center; }
+#di-num .np { width: 140px; height: 66px; background: none; }
+#di-num .np-c { display: none; }
+#di-num .np img { inset: auto; left: 0; top: 0; width: 100%; height: 100%; object-fit: contain; }
+#di-num .np .np-t { left: 0; right: 0; font-size: 56px; font-style: italic; }
+#di-manu { width: 110px; flex: none; justify-content: center; }
+#di-manu img { max-width: 86px; max-height: 60px; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,.45)); }
+#di-name { flex: 1; min-width: 0; flex-direction: column; align-items: flex-start !important; justify-content: center; padding: 0 22px; line-height: 1; text-transform: uppercase; white-space: nowrap; }
+#di-name .f { font-size: 26px; font-weight: 600; opacity: .95; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+#di-name .l { font-size: 38px; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,.4); margin-top: 2px; }
+#di-r { flex: none; width: 232px; overflow: hidden; flex-direction: column; align-items: flex-start !important; justify-content: center; padding: 0 18px; line-height: 1.15; white-space: nowrap; }
+#di-r .a { font-size: 28px; font-weight: 600; }
+#di-r .b { font-size: 21px; font-weight: 700; color: var(--di-accent, #ffd21f); text-transform: uppercase; display: flex; align-items: center; gap: 7px; }
+#di-r .b .ar { flex: none; }
+#di-num .np .np-t { color: var(--di-fg, #fff) !important; }
+/* di-css-end */
+#di-r .a { text-transform: none; }
+#di-wrap, #di-wrap * { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="app" style="display:none">
+  <div id="scale-root">
+    <div id="board">
+      <div id="head">
+        <div id="lcdwrap">
+          <div id="lcd">
+            <div id="title"></div>
+            <div id="lap"></div>
+          </div>
+          <div id="flag-y" class="flagbn"><span class="ft">CAUTION</span></div>
+          <div id="flag-g" class="flagbn"><span class="ft">GREEN FLAG</span></div>
+        </div>
+        <div id="logo"><img id="logo-img" alt=""><span id="logo-txt" style="display:none"></span></div>
+      </div>
+      <div id="colhead"><span id="ch-l">BEHIND LEADER</span><span id="ch-r">SEC</span></div>
+      <div id="rows"></div>
+    </div>
+    <div id="di-wrap">
+      <div id="di-tab"></div>
+      <div id="di-box">
+        <div id="di-num"></div>
+        <div id="di-manu"></div>
+        <div id="di-name"></div>
+        <div id="di-r" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Chase highlight (drivers in the championship chase get a gold name) ─────
+let _CHASE = new Set();
+const chaseKey = n => String(n == null ? '' : n).trim().replace(/"/g, '');
+function _setChase(list) { _CHASE = new Set((Array.isArray(list) ? list : []).map(chaseKey)); _lastRowsKey = ''; if (_latestData) renderAll(_latestData); }
+if (window.shl && window.shl.onChaseSet) {
+  window.shl.onChaseSet(_setChase);
+  if (window.shl.getChaseSet) window.shl.getChaseSet().then(_setChase).catch(() => {});
+}
+
+// ── PSF bootstrap ─────────────────────────────────────────────────────────
+const psf         = window.__PSF || {};
+const params      = new URLSearchParams(location.search);
+const INSTALL_DIR = psf.installDir || params.get('installdir') || '';
+let SERIES_ID     = psf.series || params.get('series') || 'default';
+let SERIES_NAME   = params.get('seriesname') || SERIES_ID;
+const WS_URL      = psf.wsUrl || `ws://${location.hostname || 'localhost'}:8765`;
+
+const SCALE   = Math.max(0.1, Math.min(4.0, parseFloat(psf.scale   || params.get('scale')   || '1.0')));
+const OPACITY = Math.max(0.0, Math.min(1.0, parseFloat(psf.opacity || params.get('opacity') || '1.0')));
+let VISIBILITY_MODE = psf.visibilitymode || params.get('visibilitymode') || 'at_track';
+let customName      = psf.customname ? decodeURIComponent(psf.customname) : (params.get('customname') ? decodeURIComponent(params.get('customname')) : '');
+
+(function applyScaleOpacity() {
+  document.getElementById('scale-root').style.transform = `scale(${SCALE})`;
+  document.getElementById('board').style.opacity = OPACITY;
+})();
+
+function encodeRelPath(rel) { return rel.split('/').map(encodeURIComponent).join('/'); }
+function assetPath(rel) {
+  if (psf.assetBase) return psf.assetBase + '/' + encodeRelPath(rel);
+  if (INSTALL_DIR) {
+    const enc = INSTALL_DIR.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+    return 'file:///' + enc + '/' + encodeRelPath(rel);
+  }
+  return encodeRelPath(rel);
+}
+(function injectFont() {
+  const el = document.createElement('style');
+  el.textContent = "@font-face { font-family:'D-DIN Condensed Bold'; src:url('" + assetPath('images/ticker/DIN Condensed Bold.ttf') + "') format('truetype'); font-weight:bold; font-style:normal; font-display:swap; }";
+  document.head.appendChild(el);
+})();
+
+// ── Series logo (series/<id>/serieslogo.png, else the default logo, else the series name) ──
+function loadSeriesLogo() {
+  const im = document.getElementById('logo-img'), tx = document.getElementById('logo-txt');
+  const isDefault = !SERIES_ID || SERIES_ID === 'default';
+  const cands = [];
+  if (!isDefault) cands.push(assetPath(`series/${SERIES_ID}/serieslogo.png`));
+  cands.push(assetPath('images/nr2003_logo.svg'));
+  let k = 0;
+  tx.style.display = 'none'; im.style.display = '';
+  im.onerror = () => {
+    if (++k < cands.length) im.src = cands[k];
+    else { im.style.display = 'none'; tx.textContent = isDefault ? 'NR2003' : SERIES_NAME; tx.style.display = ''; }
+  };
+  im.src = cands[0];
+}
+loadSeriesLogo();
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+let _driverColors = {};
+
+function numImgSrc(num) {
+  const n = String(num || '').trim();
+  if (!n || n === '??') return '';
+  if (!SERIES_ID || SERIES_ID === 'default') return '';
+  return assetPath(`series/${SERIES_ID}/numbers/${n}.png`);
+}
+// The bridge appends a rookie marker to entry.name ("Alonso R", "Alonso (R)", "Alonso *"): split it off and show it as " (R)"
+const ROOKIE_TAIL = /(?:\s*[\(\[]\s*R\s*[\)\]]|\s+[-\u2013*]?\s*R\*?|\s*\*)\s*$/i;
+function splitRookie(raw) {
+  let s = String(raw == null ? '' : raw).trim(), rookie = false;
+  for (let k = 0; k < 2; k++) {
+    const m = s.match(ROOKIE_TAIL);
+    if (!m || m.index === 0) break;
+    s = s.slice(0, m.index).trim(); rookie = true;
+  }
+  return { name: s, rookie };
+}
+function lastName(entry) {          // "J. Johnson" -> "JOHNSON", "Jimmie Johnson" -> "JOHNSON", rookies get " (R)"
+  const sp = splitRookie(entry.name || entry.fullName || '?');
+  const n = sp.name;
+  let out;
+  const m = n.match(/^[A-Za-z]\.\s*(.+)$/);
+  if (m) out = m[1];
+  else { const parts = n.split(/\s+/); out = parts.length > 1 ? parts.slice(1).join(' ') : n; }
+  return out + ((sp.rookie || entry.rookie === true || entry.isRookie === true) ? ' (R)' : '');
+}
+function bgLuma(c) {
+  try {
+    const cv = bgLuma._c || (bgLuma._c = document.createElement('canvas').getContext('2d', { willReadFrequently: true }));
+    cv.clearRect(0, 0, 1, 1); cv.fillStyle = '#000'; cv.fillStyle = c; cv.fillRect(0, 0, 1, 1);
+    const p = cv.getImageData(0, 0, 1, 1).data;
+    return (0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2]) / 255;
+  } catch (_) { return 0; }
+}
+function fmtGap(entry, isLeader, isPQ, ahead) {    // race: interval to the car in front (not to the leader)
+  const status = String(entry.status || '').trim().toLowerCase();
+  if (status && status !== 'running' && status !== 'pitting') return status.toUpperCase().slice(0, 9);
+  if (isPQ) { const bl = entry.bestLap || entry.lastLap || entry.time || 0; return bl > 0 ? Number(bl).toFixed(3) : ''; }
+  if (isLeader) return 'Leader';
+  const down = entry.lapsDown || 0, aheadDown = ahead ? (ahead.lapsDown || 0) : 0;
+  const t = entry.time || 0, ta = ahead ? (ahead.time || 0) : 0;
+  const lapsTxt = `\u2212${down} LAP${down > 1 ? 'S' : ''}`;
+  if (down > aheadDown) return lapsTxt;                              // a lap (or more) behind the car in front
+  if (down > 0) return (t > 0 && ta > 0 && t > ta) ? `\u2212${(t - ta).toFixed(3)}` : lapsTxt;   // both lapped: seconds if the data has them
+  if (!ahead) return t > 0 ? `\u2212${t.toFixed(3)}` : '';
+  const iv = t - ta;                                                 // both on the lead lap: gap to leader minus the car ahead's gap
+  return (t > 0 && iv >= 0) ? `\u2212${iv.toFixed(3)}` : '';
+}
+function getStandings(d) {
+  const isPQ  = ['practice', 'qualifying', 'testing'].includes((d.session || '').toLowerCase());
+  const state = (d.sessionState || '').toLowerCase();
+  const liveEnabled = d.liveStandingsEnabled !== false;
+  if (isPQ) return d.standings || [];
+  if (state === 'cool down' || state === 'get in car' || state === 'warmup' || state === 'parade laps') return d.standings || [];
+  if (state === 'checkered' && liveEnabled && Array.isArray(d.computedStandings) && d.computedStandings.length) return d.computedStandings;
+  const live = d.liveStandings || d.standings || [];
+  return (liveEnabled && live.length) ? live : (d.standings || []);
+}
+function fit(el, maxPx, minPx) {
+  let sz = maxPx; el.style.fontSize = sz + 'px';
+  while (el.scrollWidth > el.clientWidth + 1 && sz > minPx) { sz -= 1; el.style.fontSize = sz + 'px'; }
+}
+
+const TO_GO_FROM = 3 / 4;   // lap counter switches from "LAP X OF Y" to "N LAPS TO GO" after this fraction of the race
+// ── Header (race name is editable: Layout > Race Name) ───────────────────
+function lapLine(d) {
+  const session = (d.session || '').toLowerCase();
+  if (['practice', 'qualifying', 'testing'].includes(session)) {
+    const label = session === 'qualifying' ? 'QUALIFYING' : session === 'testing' ? 'TESTING' : 'PRACTICE';
+    const tr = (d.timeRemaining !== undefined) ? d.timeRemaining : -1;
+    return tr >= 0 ? `${label} - ${Math.floor(tr / 60)}:${String(Math.floor(tr % 60)).padStart(2, '0')}` : label;
+  }
+  const state = (d.sessionState || '').toLowerCase();
+  if (state === 'get in car') return 'GRIDDING';
+  if (state === 'warmup' || state === 'parade laps') return 'PACING';
+  if (state === 'checkered') return 'CHECKERED FLAG';
+  if (state === 'cool down') return 'RESULTS';
+  const lapsComplete = d.lapsComplete || 0;
+  const total = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : 0;
+  let lap = lapsComplete + 1; if (total) lap = Math.min(lap, total);
+  if (total && lap >= total) return 'FINAL LAP';
+  if (total && lapsComplete >= total * TO_GO_FROM) { const left = total - lapsComplete; return `${left} ${left === 1 ? 'LAP' : 'LAPS'} TO GO`; }
+  return total ? `LAP ${lap} OF ${total}` : `LAP ${lap}`;
+}
+function updateHeader(d) {
+  const t = document.getElementById('title'), l = document.getElementById('lap');
+  t.textContent = String(customName || d.trackNameShort || d.track || 'TRACK').toUpperCase();
+  l.innerHTML = esc(lapLine(d)).replace(/^(LAP \d+) OF (\d+)$/, '$1 <small>OF</small> $2');
+  fit(t, 22, 8); fit(l, 28, 10);
+  const isPQ = ['practice', 'qualifying', 'testing'].includes((d.session || '').toLowerCase());
+  document.getElementById('ch-l').textContent = isPQ ? 'BEST LAP' : 'BEHIND LEADER';
+  document.getElementById('ch-r').textContent = 'SEC';
+}
+
+// ── Rows: top 15 + the last 5 of the field (dimmed) ──────────────────────
+let _lastRowsKey = '';
+// top / bottom (px) of the 20 slots drawn in template.png
+const ROW_T = [143,175,217,258,299,341,382,424,465,506,547,588,629,671,712,753,793,834,875,917];
+const ROW_B = [172,214,255,296,338,379,420,461,502,543,584,625,667,708,749,790,831,872,913,955];
+function chipHTML(num) {
+  const n = String(num || '').trim();
+  const col = _driverColors[n] || '';
+  const bg  = col ? `background:${col};` : '';
+  const fg  = col && bgLuma(col) > 0.6 ? '#111' : '#fff';
+  const src = numImgSrc(n);
+  const img = src ? `<img src="${src}" alt="" onload="this.parentNode.classList.add('img');this.previousSibling.style.visibility='hidden'" onerror="this.remove()">` : '';
+  return `<div class="chip" style="${bg}"><span style="color:${fg}">${esc(n)}</span>${img}</div>`;
+}
+// Row transitions: when the car shown in a slot changes (overtake, or the last-five block shifting) the old content scrolls UP
+// out of the row, the slot stays empty for a moment (only the position number remains), and the new content scrolls up into place.
+const ROTATE_MS = 6000;      // how long each block of five (16-20, 21-25, ...) stays up
+const ROW_OUT_MS = 230, ROW_GAP_MS = 50, ROW_IN_MS = 300, ROW_DIM_STAGGER = 40;
+let _rowEls = [];
+function rowParts(r) {                       // r: { e, pos, dim, isPQ, me, num, nameTxt, chase, gapTxt }
+  return {
+    cls: 'row' + (r.dim ? ' dim' : '') + (r.me ? ' me' : ''),
+    pos: r.pos + '.',
+    cont: chipHTML(r.num) + `<div class="name${r.chase ? ' chase' : ''}">${esc(r.nameTxt)}</div><div class="gap${r.pos === 1 && !r.isPQ ? ' lead' : ''}">${esc(r.gapTxt)}</div>`
+  };
+}
+function fitRow(el) {
+  const nm = el.querySelector('.name'), gp = el.querySelector('.gap'), ps = el.querySelector('.pos');
+  if (nm) fit(nm, 22, 11);                   // long surnames shrink instead of being cut off
+  if (gp) fit(gp, gp.classList.contains('lead') ? 22 : 23, 11);
+  if (ps) fit(ps, 22, 12);
+}
+function paintRow(el, w) {
+  el.className = w.parts.cls;
+  el.querySelector('.pos').textContent = w.parts.pos;
+  el.querySelector('.cont').innerHTML = w.parts.cont;
+  fitRow(el);
+}
+function scrollRow(el, w, delay) {           // old content up and out, then new content up from below
+  const tok = el._tok = (el._tok || 0) + 1;
+  const parts = [el.querySelector('.cont')];
+  const posChanged = el.querySelector('.pos').textContent !== w.parts.pos;
+  if (posChanged) parts.push(el.querySelector('.pos'));
+  el._busy = true;
+  const run = (kf, ms, ease, dl) => parts.map(x => x.animate ? x.animate(kf, { duration: ms, easing: ease, delay: dl || 0, fill: 'both' }) : null);
+  run([{ transform: 'translateY(0)' }, { transform: 'translateY(-100%)' }], ROW_OUT_MS, 'cubic-bezier(.55,0,.85,.45)', delay);
+  setTimeout(() => {
+    if (el._tok !== tok) return;
+    parts.forEach(x => x.getAnimations().forEach(a => a.cancel()));
+    parts.forEach(x => { x.style.transform = 'translateY(100%)'; });          // hidden below while the slot is empty
+    paintRow(el, el._want);
+    setTimeout(() => {
+      if (el._tok !== tok) return;
+      parts.forEach(x => { x.style.transform = ''; });
+      parts.forEach(x => x.animate && x.animate([{ transform: 'translateY(100%)' }, { transform: 'translateY(0)' }],
+        { duration: ROW_IN_MS, easing: 'cubic-bezier(.15,.7,.25,1)' }));
+      setTimeout(() => { if (el._tok === tok) el._busy = false; }, ROW_IN_MS + 20);
+    }, ROW_GAP_MS);
+  }, delay + ROW_OUT_MS);
+}
+function renderRows(d) {
+  const standings = getStandings(d);
+  const isPQ = ['practice', 'qualifying', 'testing'].includes((d.session || '').toLowerCase());
+  const n = standings.length, playerCarIdx = d.playerCarIdx ?? -1;
+  const picks = [];
+  const top = Math.min(15, n);
+  for (let i = 0; i < top; i++) picks.push({ e: standings[i], pos: i + 1, dim: false });
+  // Rows 16+ rotate in blocks of five (16-20, 21-25, 26-30, ...) every ROTATE_MS; a last block with fewer than five cars shows the final five
+  if (n > 15) {
+    const groups = Math.ceil((n - 15) / 5);
+    const g = Math.floor(Date.now() / ROTATE_MS) % groups;
+    let start = 15 + g * 5;
+    if (start + 5 > n) start = Math.max(15, n - 5);
+    for (let i = start; i < Math.min(n, start + 5); i++) picks.push({ e: standings[i], pos: i + 1, dim: true });
+  }
+  const host = document.getElementById('rows');
+  const rebuild = (_lastRowsKey === '') || _rowEls.length !== picks.length;     // first paint / forced refresh / row count changed: no animation
+  if (rebuild) {
+    _lastRowsKey = 'x'; host.innerHTML = ''; _rowEls = [];
+    picks.forEach((_, i) => {
+      const el = document.createElement('div');
+      el.style.cssText = `top:${ROW_T[i]}px;height:${ROW_B[i] - ROW_T[i] + 1}px;--h:${ROW_B[i] - ROW_T[i] + 1}px`;
+      el.innerHTML = '<div class="pos"></div><div class="cont"></div>';
+      host.appendChild(el); _rowEls.push(el);
+    });
+  }
+  picks.forEach(({ e, pos, dim }, i) => {
+    const el = _rowEls[i];
+    const num = String(e.number || '').trim();
+    const r = { e, pos, dim, isPQ, num, me: e.carIdx === playerCarIdx, nameTxt: lastName(e),
+                chase: !!(_CHASE.size && _CHASE.has(chaseKey(num))), gapTxt: fmtGap(e, pos === 1, isPQ, standings[pos - 2]) };
+    const w = { sig: [pos, num, r.nameTxt, dim ? 1 : 0, r.chase ? 1 : 0, isPQ ? 1 : 0].join('|'), parts: rowParts(r), gapTxt: r.gapTxt, me: r.me };
+    el._want = w;
+    if (rebuild || el._sig === undefined) { el._sig = w.sig; paintRow(el, w); return; }
+    if (w.sig !== el._sig) {                                    // a different car (or position) in this slot: scroll it
+      el._sig = w.sig;
+      if (!el._busy) scrollRow(el, w, dim ? Math.max(0, i - 15) * ROW_DIM_STAGGER : 0);
+      return;
+    }
+    if (el._busy) return;                                       // the scroll will paint the latest values
+    el.classList.toggle('me', w.me);
+    const gp = el.querySelector('.gap');
+    if (gp && gp.textContent !== w.gapTxt) { gp.textContent = w.gapTxt; fit(gp, gp.classList.contains('lead') ? 22 : 23, 11); }
+  });
+  host.style.display = picks.length ? '' : 'none';
+}
+
+// ══ Driver Info banner (ported from the NBC 2016 ticker) ═══════════════════════════════════════════
+const TICKER_W = 336, NBC_H = 963;
+const $ = id => document.getElementById(id);
+let _diLast = null, _diCookie = null;
+const _numInfo = {};
+const FB_DEFAULT_BG = '#3b3f47';
+function sampleCorners(img) {
+  try {
+    const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+    const w = c.width, h = c.height, i = 3;
+    const px = [g.getImageData(i, i, 1, 1).data, g.getImageData(w - i - 1, i, 1, 1).data,
+                g.getImageData(i, h - i - 1, 1, 1).data, g.getImageData(w - i - 1, h - i - 1, 1, 1).data];
+    const op = px.filter(p => p[3] >= 32);
+    if (op.length < 3) return null;
+    const a = op.reduce((t, p) => [t[0] + p[0], t[1] + p[1], t[2] + p[2]], [0, 0, 0]).map(v => Math.round(v / op.length));
+    return `rgb(${a[0]},${a[1]},${a[2]})`;
+  } catch (_) { return null; }
+}
+// crop the empty margin of the number PNG so the digits fill the plate
+function trimNumber(img, bgCss) {
+  try {
+    const w = img.naturalWidth, h = img.naturalHeight; if (!w || !h) return null;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+    const data = g.getImageData(0, 0, w, h).data;
+    let bg = null;
+    if (bgCss) { const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(bgCss); if (m) bg = [+m[1], +m[2], +m[3]]; }
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (data[i + 3] < 40) continue;
+      if (bg && Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1]) + Math.abs(data[i + 2] - bg[2]) < 60) continue;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+    if (x1 < x0 || y1 < y0) return null;
+    const tw = x1 - x0 + 1, th = y1 - y0 + 1;
+    if (tw >= w - 1 && th >= h - 1) return null;
+    const o = document.createElement('canvas'); o.width = tw; o.height = th;
+    o.getContext('2d').drawImage(c, x0, y0, tw, th, 0, 0, tw, th);
+    return o.toDataURL('image/png');
+  } catch (_) { return null; }
+}
+function numColor(num) { const i = _numInfo[num]; return _driverColors[num] || (i && i.color) || FB_DEFAULT_BG; }
+function loadNumber(num) {
+  if (_numInfo[num]) return;
+  const src = (SERIES_ID && SERIES_ID !== 'default') ? assetPath(`series/${SERIES_ID}/numbers/${num}.png`) : '';
+  if (!src) { _numInfo[num] = { state: 'fail' }; return; }
+  const n = _numInfo[num] = { state: 'loading', src };
+  const img = new Image();
+  img.onload = () => {
+    n.color = sampleCorners(img);
+    const t = trimNumber(img, n.color); if (t) n.src = t;
+    n.state = 'ok'; patchNumber(num);
+  };
+  img.onerror = () => { n.state = 'fail'; patchNumber(num); };
+  img.src = src;
+}
+function numInnerHTML(num) {
+  const i = _numInfo[num], bg = numColor(num);
+  const layer = `<span class="np-c" style="background:${esc(bg)}"></span>`;
+  if (i && i.state === 'ok') return layer + `<img src="${i.src}" alt="${esc(num)}">`;
+  const fg = bgLuma(bg) > 0.6 ? '#111' : '#fff';
+  const hide = (i && i.state === 'fail') ? '' : 'visibility:hidden;';
+  return layer + `<span class="np-t" style="${hide}color:${fg}">${esc(num)}</span>`;
+}
+function numberHTML(num) { loadNumber(num); return `<div class="np" data-num="${esc(num)}">${numInnerHTML(num)}</div>`; }
+function patchNumber(num) { document.querySelectorAll('.np').forEach(w => { if (w.dataset.num === num) w.innerHTML = numInnerHTML(num); }); }
+function resetNumberCache() { Object.keys(_numInfo).forEach(k => { if (_numInfo[k].state !== 'ok') delete _numInfo[k]; }); }
+
+// ── Names (full name of the shown driver) ──
+const SUFFIX = /^(JR\.?|SR\.?|II|III|IV)$/;
+const NAME_PARTICLES = new Set(['VAN','VON','DE','DER','DEN','DI','DA','DEL','DELLA','LA','LE','ST.','ST']);
+const isMarkerOnly = t => !t || /^[\(\[]?[-\u2013]?\s*R\*?[\)\]]?$/i.test(t) || /^\d+\s*[-\u2013]?\s*R?$/i.test(t);
+function lastNameOf(full) {
+  const t = String(full || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+  if (t.length <= 1) return t[0] || '';
+  const suffix = [];
+  while (t.length > 1 && SUFFIX.test(t[t.length - 1])) suffix.unshift(t.pop());
+  let i = t.length - 1;
+  while (i > 0 && NAME_PARTICLES.has(t[i - 1])) i--;
+  return t.slice(i).concat(suffix).join(' ');
+}
+function baseName(s, num) {
+  const r = splitRookie(s.name);
+  let base = r.name;
+  if (isMarkerOnly(base) && s.fullName) { const f = splitRookie(s.fullName); if (f.name && !isMarkerOnly(f.name)) base = f.name; }
+  if (isMarkerOnly(base)) base = '';
+  return base;
+}
+// Full names by carIdx. fullName is not present in every list the bridge sends (liveStandings /
+// computedStandings often only carry the short name), so remember the most complete one seen in any of them.
+// Used for the WINNER cell only; everywhere else keeps showing the last name.
+let _fullNames = {};
+const _words = t => String(t || '').split(/\s+/).filter(Boolean).length;
+function learnName(carIdx, raw) {
+  if (carIdx === undefined || carIdx === null || !raw) return;
+  const n = splitRookie(raw).name;
+  if (!n || isMarkerOnly(n)) return;
+  const cur = _fullNames[carIdx];
+  if (!cur || _words(n) >= _words(cur)) _fullNames[carIdx] = n;
+}
+function learnNames(d) {
+  ['standings', 'liveStandings', 'computedStandings'].forEach(k => {
+    if (Array.isArray(d[k])) d[k].forEach(s => { if (s) learnName(s.carIdx, s.fullName); });
+  });
+  ['drivers', 'relative'].forEach(k => {
+    if (Array.isArray(d[k])) d[k].forEach(s => { if (s) learnName(s.carIdx, s.fullName || s.name); });
+  });
+}
+function winnerName(s, num) {
+  let best = String(baseName(s, num) || '').trim();
+  const cands = [s.fullName ? splitRookie(s.fullName).name : '', _fullNames[s.carIdx]];
+  cands.forEach(c => { c = String(c || '').trim(); if (c && !isMarkerOnly(c) && _words(c) > _words(best)) best = c; });
+  return best;
+}
+
+// carMakeFromFile slot per carIdx (manufacturer logos)
+let _cmByIdx = {};
+function cmFeed(d) {
+  (d.standings || []).forEach(e => { if (e && e.carIdx != null && e.carMakeFromFile != null && e.carMakeFromFile >= 0 && !_cmByIdx[e.carIdx]) _cmByIdx[e.carIdx] = e.carMakeFromFile + 1; });
+  (d.drivers || []).forEach(e => { if (e && e.carIdx != null && e.carMakeFromFile != null && e.carMakeFromFile >= 0) _cmByIdx[e.carIdx] = e.carMakeFromFile + 1; });
+}
+
+// Championship table (used by the Driver Info lines "Is Nth in standings" / "Has scored N points")
+let CFG = null;
+async function loadCfg() {
+  try {
+    if (window.shl && window.shl.getChampionship) {
+      const r = await window.shl.getChampionship(SERIES_ID);
+      CFG = (r && r.data) || null;
+      _diKey = ''; if (_diOn && _diLast) diUpdate(_diLast);
+    }
+  } catch (e) {}
+}
+if (window.shl && window.shl.onChampionshipUpdated) window.shl.onChampionshipUpdated(loadCfg);
+loadCfg();
+
+// If this race's points were already added to the totals (and its session is still on screen),
+// take them back out so the live projection isn't counted twice.
+function ppEffectiveCfg(cfg, key) {
+  const la = cfg && cfg.lastApplied;
+  if (!la || !la.live || la.key !== key || !Array.isArray(la.deltas) || !la.deltas.length) return cfg;
+  const sub = new Map(la.deltas.map(x => [String(x.number).trim(), Number(x.pts) || 0]));
+  return { ...cfg, drivers: (cfg.drivers || []).map(x => {
+    const k = String(x.number).trim();
+    return sub.has(k) ? { ...x, points: (Number(x.points) || 0) - sub.get(k) } : x;
+  }) };
+}
+
+// Laps led (for the led-a-lap / most-laps-led bonuses)
+const normNum = n => String(n == null ? '' : n).trim();
+const LED_KEY = 'psf_nbc2019_led_v1';
+let LED = { cookie: null, track: null, lastLap: 0, counts: {} };
+try { const o = JSON.parse(localStorage.getItem(LED_KEY)); if (o && o.counts) LED = o; } catch (e) {}
+function saveLed() { try { localStorage.setItem(LED_KEY, JSON.stringify(LED)); } catch (e) {} }
+function trackLed(d) {
+  const session = (d.session || '').toLowerCase();
+  const state   = (d.sessionState || '').toLowerCase();
+  const off     = d.standings || [];
+  if (session !== 'race' || !off.length) return;
+  const cookie = d.sessionCookie != null ? String(d.sessionCookie) : null;
+  const track  = d.track || null;
+  const lapsOf = s => { if (!s) return 0; const cl = (d.carLaps && s.carIdx !== undefined) ? Number(d.carLaps[s.carIdx]) : NaN;
+                        return Math.max(Number.isFinite(cl) ? cl : 0, Number(s.lap) || 0); };
+  const lead   = ((d.liveStandings && d.liveStandings.length) ? d.liveStandings : off)[0] || off[0];
+  const lap    = Math.max(Number(d.lapsComplete) || 0, lapsOf(lead), lapsOf(off[0]));
+  if (cookie !== LED.cookie || track !== LED.track || lap < LED.lastLap) {
+    LED = { cookie, track, lastLap: 0, counts: {} };
+    saveLed();
+  }
+  if (state !== 'racing' && state !== 'checkered') return;
+  if (lap > LED.lastLap) {
+    if (LED.lastLap === 0 && lap > 1) {
+      LED.lastLap = lap;                         // joined mid-race: earlier laps unknown
+    } else {
+      const k = normNum(lead.number);
+      if (k) LED.counts[k] = (LED.counts[k] || 0) + (lap - LED.lastLap);
+      LED.lastLap = lap;
+    }
+    saveLed();
+  }
+}
+function getLedCounts(d) {
+  const off = d.standings || [];
+  if (off.some(x => x.lapsLead !== undefined || x.leadLaps !== undefined)) {
+    const m = {};
+    off.forEach(x => { m[normNum(x.number)] = Number(x.lapsLead ?? x.leadLaps) || 0; });
+    return m;
+  }
+  return LED.counts;
+}
+
+// ── Driver Info Banner (Driver Info Banner hotkey toggles it, fading in / out) ──────────────────────────────
+// [number | manufacturer | full name] on the driver's colour. Shows the player's car (falls back to the leader).
+// The text block on the right and the tab text are fixed for now (not editable yet): set DI_TAB / DI_LINE1 / DI_LINE2 here.
+const DI_FADE_MS = 600;
+const DI_SCALE = 0.85;                    // size of the banner relative to the ticker
+const DI_BOTTOM = 0.90;                   // bottom edge of the banner as a fraction of the screen height (lower third)
+const DI_TAB = '';                        // little tab above the banner; empty = series name from the sim
+const DI_LINE1 = '', DI_LINE2 = '';       // right-hand text block; both empty = not shown
+let _diOn = false, _diKey = '', _diHideT = null;
+// Per-driver info lines (Info 1 / Info 2) edited in the app's Driver Info window: { "<number>": { line1, line2 } }
+let _diInfo = {};
+function _diSetInfo(m) { _diInfo = (m && typeof m === 'object') ? m : {}; _diKey = ''; if (_diOn && _diLast) diUpdate(_diLast); }
+if (window.shl && window.shl.getDriverInfo) window.shl.getDriverInfo().then(_diSetInfo).catch(() => {});
+if (window.shl && window.shl.onDriverInfoChanged) window.shl.onDriverInfoChanged(_diSetInfo);
+function diRightHTML(l1, l2) {
+  return (l1 ? '<div class="a">' + esc(l1) + '</div>' : '') +
+         (l2 ? '<div class="b"><svg class="ar" viewBox="0 0 24 16" width="22" height="15" aria-hidden="true"><path fill="currentColor" d="M0 8L9 0V5H24V11H9V16Z"/></svg><span>' + esc(l2) + '</span></div>' : '');
+}
+const diWrap = $('di-wrap'), diBox = $('di-box');
+// Which car is being watched. playerCarIdx is the user's OWN car, so when spectating another driver we look for a camera / focus field
+// from the bridge first (names are a guess: the current bridge sends none) and only then fall back to playerCarIdx.
+const DI_CAM_KEYS = ['camCarIdx', 'cameraCarIdx', 'viewCarIdx', 'viewedCarIdx', 'focusCarIdx', 'focusedCarIdx', 'watchedCarIdx', 'spectatedCarIdx', 'followCarIdx'];
+function diWatchedIdx(d) {
+  for (const k of DI_CAM_KEYS) if (typeof d[k] === 'number' && d[k] >= 0) return d[k];
+  if (d.camera && typeof d.camera.carIdx === 'number' && d.camera.carIdx >= 0) return d.camera.carIdx;
+  return d.playerCarIdx;
+}
+// Diagnostic snapshot: appended to driverinfo-debug.json (last 8, next to config.json) every time the banner is shown
+function diDump(d) {
+  try {
+    if (!d || !(window.shl && window.shl.writeDebugDump)) return;
+    const pl = d.player || {}, opp = Array.isArray(d.opponents) ? d.opponents : [], rel = Array.isArray(d.relative) ? d.relative : [];
+    const st = Array.isArray(d.standings) ? d.standings : [];
+    const r4 = x => (typeof x === 'number') ? Math.round(x * 10000) / 10000 : x;
+    const byWorld = opp.filter(o => o && typeof o.worldX === 'number' && typeof pl.worldX === 'number')
+      .map(o => ({ carIdx: o.carIdx, dist: r4(Math.hypot(o.worldX - pl.worldX, o.worldY - pl.worldY)) })).sort((x, y) => x.dist - y.dist).slice(0, 4);
+    const byPct = opp.filter(o => o && typeof o.trkPct === 'number' && typeof pl.trkPct === 'number')
+      .map(o => { let dp = Math.abs(o.trkPct - pl.trkPct); dp = Math.min(dp, 1 - dp); return { carIdx: o.carIdx, dpct: r4(dp) }; }).sort((x, y) => x.dpct - y.dpct).slice(0, 4);
+    const relFields = r => ({ carIdx: r.carIdx, number: r.number, name: r.name, isPlayer: r.isPlayer, trkPct: r4(r.trkPct), deltaS: r4(r.deltaS), lap: r.lap });
+    const shown = diDriver(d);
+    window.shl.writeDebugDump({
+      time: new Date().toISOString(), session: d.session, sessionState: d.sessionState,
+      selectedCarIdx: _diSel, camPos: _camPos, camCar: _camCar, camCarRaw: _camCarRaw, camCarFound: !!(_camCar >= 0 && diFind(d, _camCar)), shownCarIdx: shown ? shown.carIdx : null, watchedIdxUsed: diWatchedIdx(d),
+      playerCarIdx: d.playerCarIdx, playerName: d.playerName, player: pl, staleCars: d.staleCars,
+      relativePlayer: rel.filter(r => r && r.isPlayer).map(relFields),
+      relativeNearestDelta: rel.filter(r => r && typeof r.deltaS === 'number').sort((x, y) => Math.abs(x.deltaS) - Math.abs(y.deltaS)).slice(0, 3).map(relFields),
+      nearestToPlayerWorld: byWorld, nearestToPlayerTrkPct: byPct,
+      opponents: opp.map(o => o ? [o.carIdx, r4(o.trkPct), r4(o.worldX), r4(o.worldY)] : null),
+      standingsTop: st.slice(0, 5).map(x => ({ carIdx: x.carIdx, number: x.number, name: x.name, trkPct: r4(x.trkPct) })),
+      otherTopKeys: Object.keys(d).filter(k => /cam|view|focus|watch|spect|follow|replay|tv/i.test(k))
+    });
+  } catch (e) {}
+}
+const DI_VERIFY_MS = 3000;                 // how long a position / id disagreement must last before the banner is corrected
+let _mmKey = '', _mmSince = 0, _mmT = null, _diSel = null;   // _diSel: car picked with the next / previous hotkeys (null = automatic)
+// Race position of the car the camera is on, read from NR2003's memory by the app (-1 = unknown)
+let _camPos = -1;
+// carIdx of the car the camera is on, read by the app from a second NR2003 memory address (no dependence on race position; -1 = unknown)
+let _camCar = -1, _camCarRaw = -1;
+// One combined poll (position + car id in the same pass, 50 ms) so the check never sees one value from before and one from after a camera change.
+// The position (0x8B97B4) is what drives the banner; the car id is only used afterwards to confirm / correct it.
+function _applyCam(pos, car, raw) {
+  pos = (typeof pos === 'number') ? pos : -1; car = (typeof car === 'number') ? car : -1;
+  _camCarRaw = (typeof raw === 'number') ? raw : -1;
+  const changed = (pos !== _camPos) || (car !== _camCar);
+  if (changed) _diSel = null;
+  _camPos = pos; _camCar = car;
+  if (changed && _diOn && _diLast) diUpdate(_diLast);   // refresh right away, without waiting for the next bridge frame
+}
+if (window.shl && window.shl.onCam && window.shl.getCam) {
+  // The app pushes position + car id the moment either changes (no polling, no IPC round trips)
+  window.shl.onCam(v => { if (v) _applyCam(v.pos, v.idx, v.raw); });
+  window.shl.getCam().then(v => { if (v) _applyCam(v.pos, v.idx, v.raw); }).catch(() => {});
+} else if (window.shl && (window.shl.getCamPos || window.shl.getCamCar)) {
+  let _pollBusy = false;   // old app without push support: poll
+  const _pollCamAll = () => {
+    if (_pollBusy) return; _pollBusy = true;
+    Promise.all([
+      window.shl.getCamPos ? window.shl.getCamPos().catch(() => -1) : -1,
+      window.shl.getCamCar ? window.shl.getCamCar().catch(() => null) : null
+    ]).then(([p, v]) => _applyCam(p, v && v.idx, v && v.raw)).finally(() => { _pollBusy = false; });
+  };
+  _pollCamAll(); setInterval(_pollCamAll, 50);
+}
+function diByCamPos(d) {
+  if (!(_camPos >= 1)) return null;
+  const st = getStandings(d);
+  return (Array.isArray(st) && st[_camPos - 1]) || null;
+}
+function diFind(d, idx) {
+  for (const l of [d.standings, d.liveStandings, d.computedStandings, d.drivers]) {
+    const f = Array.isArray(l) && l.find(x => x && x.carIdx === idx);
+    if (f) return f;
+  }
+  return null;
+}
+function diDriver(d) {
+  if (!d) return null;
+  if (_diSel !== null) { const f = diFind(d, _diSel); if (f) return f; }
+  {
+    // Phase 1 (instant): show the driver at the observed car's race position, no waiting for any check.
+    // Phase 2 (afterwards): compare with the car id read from the second address. If it disagrees and keeps disagreeing for
+    // DI_VERIFY_MS (so a value that has not caught up yet after a camera change does not cause a false correction), switch to the driver
+    // the id says is on screen. If the id is unavailable the position result stays.
+    const byPos = diByCamPos(d);
+    if (byPos) {
+      if (!(_camCar >= 0) || byPos.carIdx === _camCar) { _mmKey = ''; return byPos; }
+      const byId = diFind(d, _camCar);
+      if (!byId) return byPos;
+      const k = _camPos + '|' + _camCar + '|' + byPos.carIdx, now = performance.now();
+      if (k !== _mmKey) { _mmKey = k; _mmSince = now; }
+      const left = DI_VERIFY_MS - (now - _mmSince);
+      if (left <= 0) return byId;
+      clearTimeout(_mmT); _mmT = setTimeout(() => { if (_diOn && _diLast) diUpdate(_diLast); }, left + 5);   // re-check when the wait is over
+      return byPos;
+    }
+    if (_camCar >= 0) { const f = diFind(d, _camCar); if (f) return f; }   // no position available: use the id
+  }
+  const hasCamField = DI_CAM_KEYS.some(k => typeof d[k] === 'number' && d[k] >= 0) || (d.camera && typeof d.camera.carIdx === 'number');
+  const spectating = !hasCamField && d.player && d.player.inCar === false;   // own car parked: it is not what is on screen
+  const w = diWatchedIdx(d);
+  if (!spectating && w !== undefined && w !== null && w >= 0) { const f = diFind(d, w); if (f) return f; }
+  const st = getStandings(d);
+  return (st && st[0]) || diFind(d, w) || null;
+}
+// Next / previous driver in the running order (shows the banner if it is not up, so you see who was picked)
+function diStep(dir) {
+  const d = _diLast; if (!d) return;
+  let list = getStandings(d);
+  if (!list || !list.length) list = Array.isArray(d.drivers) ? d.drivers.filter(x => x && x.carIdx !== undefined) : [];
+  if (!list.length) return;
+  let i = list.findIndex(x => x.carIdx === _diSel);
+  if (i < 0) { const cur = diDriver(d); i = cur ? list.findIndex(x => x.carIdx === cur.carIdx) : -1; }
+  if (i < 0) i = dir > 0 ? -1 : 0;
+  i = (i + dir + list.length) % list.length;
+  _diSel = list[i].carIdx;
+  if (_diOn) diUpdate(d); else diShow();
+}
+const _diBust = Date.now();
+// manufacturer logo candidates (same order as the 2017 Shart Edition): per-car file <num>.png first, then the game's make slot manu<N>.png
+function diManuCands(s, num) {
+  if (!SERIES_ID || SERIES_ID === 'default') return [];
+  const n = String(num).trim(), v = `?v=${_diBust}`;
+  const c = [assetPath(`series/${SERIES_ID}/manufacturers/${n}.png`) + v];
+  const slot = (s && _cmByIdx[s.carIdx]) || ((s && s.carMakeFromFile != null && s.carMakeFromFile >= 0) ? s.carMakeFromFile + 1 : 0);
+  if (slot) c.push(assetPath(`series/${SERIES_ID}/manufacturers/manu${slot}.png`) + v);
+  return c;
+}
+function diManuHTML(s, num) {
+  const c = diManuCands(s, num);
+  if (!c.length) return '';
+  const alt = c[1] ? ' data-alt="' + esc(c[1]) + '"' : '';
+  return '<img src="' + esc(c[0]) + '"' + alt + ' alt="" onerror="var a=this.dataset.alt;if(a){this.dataset.alt=\'\';this.src=a}else{var p=this.parentNode;this.remove();p.style.display=\'none\'}">';
+}
+function diFit() {
+  const nm = $('di-name'), max = nm.clientWidth - 44;
+  const els = Array.from(nm.querySelectorAll('.f, .l'));
+  // one pass: set base sizes, measure all, then shrink proportionally (no layout thrash inside a loop)
+  const base = els.map(el => { const sz = el.classList.contains('l') ? 38 : 26; el.style.fontSize = sz + 'px'; return sz; });
+  const widths = els.map(el => el.scrollWidth);
+  els.forEach((el, i) => { if (widths[i] > max) el.style.fontSize = Math.max(14, Math.floor(base[i] * max / widths[i])) + 'px'; });
+  els.forEach((el, i) => { let sz = parseInt(el.style.fontSize, 10); while (el.scrollWidth > max && sz > 14) { sz -= 1; el.style.fontSize = sz + 'px'; } });
+  const rr = $('di-r');
+  if (rr && rr.style.display !== 'none') {
+    const mx = rr.clientWidth - 36;
+    rr.querySelectorAll('.a, .b').forEach(el => {
+      const base = el.classList.contains('a') ? 28 : 21; let sz = base; el.style.fontSize = sz + 'px';
+      while (el.scrollWidth > mx && sz > 7) { sz -= 1; el.style.fontSize = sz + 'px'; }
+    });
+  }
+}
+// ── Info 1 / Info 2 chosen in the Driver Info window: each one is a "kind" resolved live (or custom text) ──────
+// saved per driver as { k1, k2, line1, line2, n1, n2 }: k* = kind, line* = custom text, n* = "last Y races" for wins
+const _ord = n => { const v = n % 100; if (v >= 11 && v <= 13) return n + 'th'; return n + ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th'); };
+const _fmtPts = v => String(Math.round((Number(v) || 0) * 100) / 100);
+const _fmtLap = t => (t > 0 && isFinite(t)) ? t.toFixed(3) + 's' : '';
+// Season history (races stored in the active season, from the app): used for laps led all season and wins
+let _season = { races: [] };
+async function loadSeasonStats() {
+  try {
+    if (!(window.shl && window.shl.getSeasonState)) return;
+    const st = await window.shl.getSeasonState(SERIES_ID);
+    const sn = (st && Array.isArray(st.seasons)) ? st.seasons.find(x => x.id === st.activeId) : null;
+    _season = { races: sn ? (sn.races || []).filter(r => !r.nonPoints && Array.isArray(r.rows) && r.rows.length) : [] };
+    _diKey = ''; if (_diOn && _diLast) diUpdate(_diLast);
+  } catch (e) {}
+}
+if (window.shl && window.shl.onSeasonUpdated) window.shl.onSeasonUpdated(loadSeasonStats);
+loadSeasonStats();
+// Starting grid: the order seen up to the green flag (same rule as the race recorder); unknown if the overlay joined after the start
+let _grid = { key: '', order: null, locked: false };
+function trackGrid(d) {
+  if ((d.session || '').toLowerCase() !== 'race') return;
+  const key = String(d.sessionCookie) + '|' + String(d.track);
+  if (_grid.key !== key) _grid = { key, order: null, locked: false };
+  if (_grid.locked) return;
+  const state = (d.sessionState || '').toLowerCase();
+  const off = (d.standings && d.standings.length) ? d.standings : (d.liveStandings || []);
+  const snap = () => { const o = {}; off.forEach((x, i) => { if (!x) return; const k = normNum(x.number); if (!(k in o)) o[k] = i + 1; }); return o; };
+  if (state === 'racing' || state === 'checkered' || state === 'cool down') {
+    // no grid seen before the green flag (overlay opened late, or the session id changed): use the first racing frame if the race has just started
+    if (!_grid.order && off.length && (Number(d.lapsComplete) || 0) <= 1 && state === 'racing') _grid.order = snap();
+    if (_grid.order) _grid.locked = true;
+    return;
+  }
+  if (off.length) _grid.order = snap();
+}
+// Pit stops seen during this race: the lap in progress when a car's status switches to 'pitting' (unknown if the overlay joined after the stop)
+// The last pit stop of every car is saved (localStorage, shared by all overlays) so it survives an overlay reload or an app restart during the same race.
+const PIT_KEY = 'psf_pit_v1';
+function pitLoad() {
+  try { const o = JSON.parse(localStorage.getItem(PIT_KEY)); return (o && typeof o.key === 'string' && o.last && typeof o.last === 'object') ? o : null; } catch (e) { return null; }
+}
+let _pitSig = '', _pitSavedAt = 0;
+function pitPersist() {
+  const now = Date.now(), sig = JSON.stringify([_pit.last, _pit.count]);
+  if (sig === _pitSig && now - _pitSavedAt < 1500) return;       // a new stop is written at once, the rest of the state at most every 1.5 s
+  _pitSavedAt = now;
+  const o = pitLoad();
+  if (o && o.key === _pit.key) {                                  // merge what another overlay saved (the lap of a car's last stop only goes up within a race)
+    Object.keys(o.last).forEach(k => { const v = Number(o.last[k]) || 0; if (v > (Number(_pit.last[k]) || 0)) _pit.last[k] = v; });
+    if (o.count && typeof o.count === 'object') Object.keys(o.count).forEach(k => { const v = Number(o.count[k]) || 0; if (!_ptvAuth[k] && v > (Number(_pit.count[k]) || 0)) _pit.count[k] = v; });   // the pit count of a car only goes up within a race
+  }
+  _pitSig = JSON.stringify([_pit.last, _pit.count]);
+  try { localStorage.setItem(PIT_KEY, JSON.stringify({ key: _pit.key, st: _pit.st, last: _pit.last, count: _pit.count, evs: _pit.evs || [] })); } catch (e) {}
+}
+let _pit = (function () { const o = pitLoad(); return o ? { key: o.key, st: (o.st && typeof o.st === 'object') ? o.st : {}, last: o.last, count: (o.count && typeof o.count === 'object') ? o.count : {} } : { key: '', st: {}, last: {}, count: {} }; })();
+// A stop is detected from the pit-stall flags of the telemetry: InPitStallWaitingSlow / InPitStallWaitingFast / InPitStallSlow / InPitStallFast.
+// The first one that turns on counts the stop; no other flag counts until all four have been off for a moment (the next stop).
+// If the telemetry frame has none of these fields, the old running -> pitting status switch is used instead.
+const PIT_STALL_KEYS = ['inpitstallwaitingslow', 'inpitstallwaitingfast', 'inpitstallslow', 'inpitstallfast'];
+const _pitStallKey = k => PIT_STALL_KEYS.includes(String(k).toLowerCase().replace(/[^a-z]/g, ''));
+const _pitOn = v => v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true';
+const PIT_REARM_MS = 1500;                 // all four flags must stay off this long before the next stop can be counted (a Waiting -> Stall hand-over is the same stop)
+const _pitHot = {};                        // car number -> last time one of the four flags was on
+// true / false = a flag is on / all are off; null = this car has none of the fields in the frame
+function pitStallState(d, s, topKeys) {
+  let found = false, on = false;
+  const read = o => { if (!o || typeof o !== 'object') return; for (const k in o) if (_pitStallKey(k)) { found = true; if (_pitOn(o[k])) on = true; } };
+  read(s); read(s.pit); read(s.pitStall);
+  if (s.carIdx !== undefined) topKeys.forEach(k => { const v = d[k]; if (v && typeof v === 'object') { const x = v[s.carIdx]; if (x !== undefined && x !== null) { found = true; if (_pitOn(x)) on = true; } } });
+  return found ? on : null;
+}
+// Pit-out messages: the app reads NR2003's on-screen text "AIPIT OUT 84: 16.00" (car 84 left the pits) from the game's memory; each one is a pit stop of that car.
+// Once the first message has been seen, the stops of the AI cars come only from these messages (the player's car keeps using the status / stall detection).
+let _pitOutQ = [], _pitOutOn = false;
+const _pitCountAt = {};                    // car number -> when a stop was last counted (by either route), so one stop is never counted twice
+if (window.shl && window.shl.onPitOut) window.shl.onPitOut(e => { if (e && e.id) _pitOutQ.push(e); });
+if (window.shl && window.shl.onPitOutStatus) window.shl.onPitOutStatus(v => { _pitOutOn = !!v; });
+if (window.shl && window.shl.getPitOutStatus) window.shl.getPitOutStatus().then(v => { _pitOutOn = !!v; }).catch(() => {});
+function pitLapOf(d, s) {
+  const cl = (d.carLaps && s.carIdx !== undefined) ? Number(d.carLaps[s.carIdx]) : NaN;
+  return Math.max(Number.isFinite(cl) ? cl : 0, Number(s.lap) || 0) + 1;      // the lap in progress
+}
+function pitOutProcess(d) {
+  if (!_pitOutQ.length) return;
+  const q = _pitOutQ; _pitOutQ = [];
+  const o = pitLoad(), seen = (o && o.key === _pit.key && Array.isArray(o.evs)) ? o.evs : [];
+  _pit.evs = Array.from(new Set([...(Array.isArray(_pit.evs) ? _pit.evs : []), ...seen]));    // events another overlay already counted
+  const now = Date.now();
+  q.forEach(e => {
+    if (_pit.evs.includes(e.id)) return;
+    _pit.evs.push(e.id); if (_pit.evs.length > 60) _pit.evs.shift();
+    if (now - (Number(e.at) || now) > 15000) return;
+    const num = normNum(e.car);
+    let car = null;
+    [d.standings, d.liveStandings].forEach(l => { if (!car && Array.isArray(l)) car = l.find(x => x && normNum(x.number) === num) || null; });
+    if (!car || now - (_pitCountAt[num] || 0) < 90000) return;                // unknown car, or this stop was already counted when the car entered the pits
+    _pit.count[num] = (Number(_pit.count[num]) || 0) + 1;
+    _pit.last[num] = pitLapOf(d, car);
+    _pitCountAt[num] = now;
+  });
+}
+// ── Pit stops: the telemetry's pitStops (the PITS column of Race Stats) is the authority ──────────────────────────
+// The stall-flag / status / "pit out" message detection above can miscount; whenever the frame carries a numeric pitStops for a car, that number wins,
+// and the lap is taken when we see it rise (the lap in progress), keeping the lap the detection noted a moment earlier when it caught the entry first.
+let _ptvKey = '', _ptvPrev = {}, _ptvLastSeen = {}, _ptvLastAt = {}, _ptvAuth = {};   // _ptvAuth: cars whose count comes from the telemetry (never raised from storage)
+function _ptvOf(s) { const v = s ? s.pitStops : undefined; const n = typeof v === 'number' ? v : (typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN); return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null; }
+function _ptvLap(d, s) {
+  const cl = (d.carLaps && s.carIdx !== undefined) ? Number(d.carLaps[s.carIdx]) : NaN;
+  return Math.max(Number.isFinite(cl) ? cl : 0, Number(s.lap) || 0) + 1;      // the lap in progress
+}
+function pitTelApply(d) {
+  const key = String(d.sessionCookie) + '|' + String(d.track);
+  if (_ptvKey !== key) { _ptvKey = key; _ptvPrev = {}; _ptvLastSeen = {}; _ptvLastAt = {}; _ptvAuth = {}; }
+  const live = d.liveStandingsEnabled !== false;
+  const lists = live ? [d.liveStandings, d.standings] : [d.standings, d.liveStandings];   // same preference as the Race Stats table
+  const done = {}, now = Date.now();
+  lists.forEach(l => (Array.isArray(l) ? l : []).forEach(s => {
+    if (!s) return;
+    const num = normNum(s.number); if (!num || done[num]) return;
+    const tp = _ptvOf(s); if (tp === null) return;
+    done[num] = true; _ptvAuth[num] = true;
+    if (_pit.last[num] !== _ptvLastSeen[num]) { _ptvLastSeen[num] = _pit.last[num]; _ptvLastAt[num] = now; }      // the detection just noted a lap
+    const prev = _ptvPrev[num];
+    if (prev !== undefined && tp > prev && (!_pit.last[num] || now - (_ptvLastAt[num] || 0) > 30000)) {
+      _pit.last[num] = _ptvLap(d, s); _ptvLastSeen[num] = _pit.last[num]; _ptvLastAt[num] = 0;      // 0 = set by the telemetry itself: the next rise may overwrite it at once
+    }
+    _ptvPrev[num] = tp;
+    if ((Number(_pit.count[num]) || 0) !== tp) _pit.count[num] = tp;
+    if (tp === 0 && _pit.last[num]) { _pit.last[num] = 0; _ptvLastSeen[num] = 0; }
+  }));
+}
+function trackPits(d) {
+  if ((d.session || '').toLowerCase() !== 'race') { _pitOutQ.length = 0; return; }
+  const key = String(d.sessionCookie) + '|' + String(d.track);
+  if (_pit.key !== key) { const o = pitLoad(); _pit = (o && o.key === key) ? { key, st: (o.st && typeof o.st === 'object') ? o.st : {}, last: o.last, count: (o.count && typeof o.count === 'object') ? o.count : {} } : { key, st: {}, last: {}, count: {} }; }
+  const state = (d.sessionState || '').toLowerCase();
+  if (state === 'get in car' || state === 'warmup' || state === 'parade laps') { _pit.st = {}; return; }
+  const stallTop = Object.keys(d).filter(_pitStallKey);
+  (d.standings || []).forEach(s => {
+    if (!s) return;
+    const num = normNum(s.number), stall = pitStallState(d, s, stallTop);
+    let now;
+    if (stall === null) now = String(s.status || 'running').trim().toLowerCase();
+    else if (stall) { _pitHot[num] = Date.now(); now = 'pitting'; }
+    else now = (_pit.st[num] === 'pitting' && Date.now() - (_pitHot[num] || 0) < PIT_REARM_MS) ? 'pitting' : 'running';
+    if (now === 'pitting' && _pit.st[num] !== undefined && _pit.st[num] !== 'pitting' && !(_pitOutOn && s.carIdx !== d.playerCarIdx)) {
+      const done = pitLapOf(d, s) - 1;
+      // every running -> pitting switch is one more stop (a stop already merged from another overlay for the same lap is not counted twice)
+      if (_pit.last[num] !== done + 1) _pit.count[num] = (Number(_pit.count[num]) || 0) + 1;
+      _pit.last[num] = done + 1;
+      _pitCountAt[num] = Date.now();
+    }
+    _pit.st[num] = now;
+  });
+  pitOutProcess(d);
+  pitTelApply(d);                            // telemetry pitStops wins over the detection above
+  pitPersist();
+}
+// Qualifying order: the standings seen in the qualifying session (kept in localStorage per track, so it survives a restart or skipping the session).
+// It is the first choice for "Start position"; the order seen before the green flag is only the fallback.
+const QUAL_KEY = 'psf_nbc2019_qual_v1';
+let _qual = null;
+try { const o = JSON.parse(localStorage.getItem(QUAL_KEY)); if (o && o.track && o.order) _qual = o; } catch (e) {}
+function trackQual(d) {
+  const session = (d.session || '').toLowerCase(), state = (d.sessionState || '').toLowerCase();
+  if (session === 'qualifying') {
+    const off = (d.standings && d.standings.length) ? d.standings : (d.liveStandings || []);
+    if (!off.length || !off.some(x => x && Number(x.time) > 0)) return;     // no lap set yet (session just opened): keep the previous table
+    const order = {}; off.forEach((x, i) => { if (!x) return; const k = normNum(x.number); if (!(k in order)) order[k] = i + 1; });
+    const track = String(d.track || '');
+    if (_qual && _qual.track === track && JSON.stringify(_qual.order) === JSON.stringify(order)) return;
+    _qual = { track, order };
+    try { localStorage.setItem(QUAL_KEY, JSON.stringify(_qual)); } catch (e) {}
+    return;
+  }
+  // the race is over: this qualifying table is used up (the next race on the same track must not reuse it)
+  if (session === 'race' && (state === 'checkered' || state === 'cool down') && _qual) {
+    _qual = null; try { localStorage.removeItem(QUAL_KEY); } catch (e) {}
+  }
+}
+// Starting order kept by the app's hidden recorder (same source as Race Stats / Prime): real grid > qualifying table > order on track.
+// It is always running, so it is right even when this overlay was opened late or reloaded (e.g. after switching overlay).
+let _srvStart = null, _srvStartBusy = false, _srvStartPort = 0;
+async function loadSrvStart() {
+  if (_srvStartBusy) return; _srvStartBusy = true;
+  try {
+    if (window.shl && window.shl.getStartOrder) { _srvStart = await window.shl.getStartOrder(); return; }
+    const host = location.hostname || 'localhost';
+    const tryPort = async p => {
+      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 800);
+      try { const r = await fetch('http://' + host + ':' + p + '/api/startorder', { signal: ctl.signal, cache: 'no-store' }); if (r.ok) { _srvStart = await r.json(); return true; } } catch (e) {} finally { clearTimeout(t); }
+      return false;
+    };
+    if (_srvStartPort && await tryPort(_srvStartPort)) return;
+    _srvStartPort = 0;
+    for (let p = 48765; p <= 48785; p++) { if (await tryPort(p)) { _srvStartPort = p; break; } }
+  } catch (e) {} finally { _srvStartBusy = false; }
+}
+setInterval(loadSrvStart, 2500); loadSrvStart();
+// Live championship place: season points + this race's points projected from the live order (same maths as the "as they run" panel)
+function diLiveRows(d) {
+  const cfg0 = d && d._championship ? d._championship : CFG;
+  const cfg = cfg0 ? ppEffectiveCfg(cfg0, String(d.sessionCookie) + '|' + String(d.track)) : null;
+  if (!cfg || !Array.isArray(cfg.drivers) || !cfg.drivers.length) return null;
+  const session = (d.session || '').toLowerCase(), state = (d.sessionState || '').toLowerCase();
+  const project = session === 'race' && (state === 'racing' || state === 'checkered' || state === 'cool down');
+  const table = Array.isArray(cfg.pointsTable) ? cfg.pointsTable : [];
+  const led = getLedCounts(d) || {};
+  const bLed = Number(cfg.bonusLedLap) || 0, bMost = Number(cfg.bonusMostLed) || 0;
+  let maxLed = 0; Object.keys(led).forEach(k => { if (led[k] > maxLed) maxLed = led[k]; });
+  const race = new Map();
+  (getStandings(d) || []).forEach((st, i) => { const k = normNum(st.number); if (!race.has(k)) race.set(k, i + 1); });
+  const stageMap = (project && typeof stagePtsMap === 'function') ? stagePtsMap(d, cfg) : {};
+  const seen = new Set(), rows = [];
+  cfg.drivers.forEach((dr, idx) => {
+    const k = normNum(dr.number); if (seen.has(k)) return; seen.add(k);
+    const base = Number(dr.points) || 0, pos = race.get(k), ledN = led[k] || 0;
+    const add = project ? ((pos ? (Number(table[pos - 1]) || 0) : 0) + (ledN > 0 ? bLed : 0) + (ledN > 0 && ledN === maxLed ? bMost : 0) + (stageMap[k] || 0)) : 0;
+    rows.push({ k, base, total: base + add, idx });
+  });
+  rows.sort((a, b) => (b.total - a.total) || (b.base - a.base) || (a.idx - b.idx));
+  return { rows, cfg0 };
+}
+function diLiveChampPos(d, num) {
+  const r = diLiveRows(d); if (!r) return 0;
+  return r.rows.findIndex(x => x.k === num) + 1;
+}
+// Points to the cutoff line (only while the cutoff line is on in the Championship screen): points above / below it in the live championship
+function diCutoffText(d, num) {
+  const r = diLiveRows(d); if (!r) return '';
+  const c = r.cfg0 || {}, cp = parseInt(c.cutoffPos, 10) || 0, rows = r.rows;
+  if (c.cutoffEnabled !== true || cp < 1 || cp >= rows.length) return '';
+  const i = rows.findIndex(x => x.k === num); if (i < 0) return '';
+  const gap = i < cp ? rows[i].total - rows[cp].total : rows[i].total - rows[cp - 1].total;   // same rule as the Championship overlay
+  const above = gap > 0 || (gap === 0 && i < cp);
+  const n = Math.round(Math.abs(gap) * 100) / 100;
+  return 'Is ' + _fmtPts(n) + (n === 1 ? ' point ' : ' points ') + (above ? 'above' : 'below') + ' the cutoff line';
+}
+function diKindText(kind, inf, i, d, s, num) {
+  const isRace = (d.session || '').toLowerCase() === 'race';
+  const key = String(d.sessionCookie) + '|' + String(d.track);
+  const past = _season.races.filter(r => r.key !== key);            // stored races, not counting the one on screen
+  const mine = r => (r.rows || []).find(x => normNum(x.number) === num);
+  switch (kind) {
+    case 'custom': return inf['line' + i] || '';
+    case 'ledToday': {
+      if (!isRace) return '';
+      const led = (getLedCounts(d) || {})[num] || 0;
+      const total = Math.max(Number(d.lapsComplete) || 0, LED.lastLap || 0);   // laps run so far in the race
+      return total ? 'Has led ' + led + ' of ' + total + ' laps' : 'Has led ' + led + ' laps';
+    }
+    case 'ledSeason': {
+      let n = isRace ? ((getLedCounts(d) || {})[num] || 0) : 0;
+      past.forEach(r => { const x = mine(r); if (x) n += Number(x.led) || 0; });
+      return 'Has led ' + n + ' laps all season';
+    }
+    case 'champPos': case 'champPts': {
+      const cfg0 = d._championship || CFG; if (!cfg0) return '';
+      const cfg = ppEffectiveCfg(cfg0, key);                          // points before this race
+      if (!cfg || !Array.isArray(cfg.drivers)) return '';
+      const rows = cfg.drivers.map((x, idx) => ({ k: normNum(x.number), pts: Number(x.points) || 0, idx }));
+      const me = rows.find(x => x.k === num); if (!me) return '';
+      if (kind === 'champPts') return 'Has scored ' + _fmtPts(me.pts) + ' points';
+      rows.sort((a, b) => (b.pts - a.pts) || (a.idx - b.idx));
+      return 'Is ' + _ord(rows.findIndex(x => x.k === num) + 1) + ' in standings';
+    }
+    case 'winsSeason': {
+      const w = past.filter(r => { const x = mine(r); return x && !x.dq && Number(x.finish) === 1; }).length;
+      return w === 0 ? 'Has not won yet this season' : 'Has won ' + w + (w === 1 ? ' race' : ' races') + ' this season';
+    }
+    case 'top5Season': case 'top10Season': {
+      const lim = kind === 'top5Season' ? 5 : 10;
+      const n = past.filter(r => { const x = mine(r); const f = x ? Number(x.finish) : 0; return x && !x.dq && f >= 1 && f <= lim; }).length;
+      return 'Has finished ' + n + (n === 1 ? ' time' : ' times') + ' in the top ' + lim + ' this season';
+    }
+    case 'wins': {
+      const want = Math.max(1, Math.min(99, parseInt(inf['n' + i], 10) || 5));
+      const last = past.slice(-want); if (!last.length) return '';
+      const w = last.filter(r => { const x = mine(r); return x && !x.dq && Number(x.finish) === 1; }).length;
+      return 'Has won ' + w + ' of the last ' + last.length + ' races';
+    }
+    case 'dnfSeason': case 'dnfLast': {
+      const isDnf = x => { const st = String(x.status || '').trim().toLowerCase(); return !!x.dq || (st && st !== 'running' && st !== 'pitting'); };
+      if (kind === 'dnfSeason') {
+        const n = past.filter(r => { const x = mine(r); return x && isDnf(x); }).length;
+        return 'Has not finished in ' + n + ' races this season';
+      }
+      const want = Math.max(1, Math.min(99, parseInt(inf['n' + i], 10) || 5));
+      const last = past.slice(-want); if (!last.length) return '';
+      const n = last.filter(r => { const x = mine(r); return x && isDnf(x); }).length;
+      return 'Has not finished in ' + n + ' of the last ' + last.length + ' races';
+    }
+    case 'pitCount': {
+      const c = isRace && _pit.key === key ? (Number(_pit.count[num]) || 0) : 0;
+      return c ? 'Has pitted ' + c + (c === 1 ? ' time' : ' times') : (isRace ? 'Yet to pit' : '');
+    }
+    case 'lastPit': {
+      const l = isRace && _pit.key === key ? _pit.last[num] : 0;
+      return l ? 'Last pitted on lap ' + l : (isRace ? 'Yet to pit' : '');
+    }
+    case 'startPos': {
+      if (!isRace) return '';
+      const nn = normNum(num), trk = String(d.track || '');
+      let p = 0;
+      if (_srvStart && String(_srvStart.track || '') === trk) {          // the recorder's order first (same as Race Stats)
+        p = (_srvStart.start && _srvStart.start[nn]) || (_srvStart.qual && _srvStart.qual[nn]) || ((_srvStart.grid && String(_srvStart.key) === String(d.sessionCookie) + '|' + trk) ? (_srvStart.grid[nn] || 0) : 0) || 0;
+      }
+      if (!p) p = (_qual && _qual.track === trk ? (_qual.order[nn] || 0) : 0) || (_grid.order ? (_grid.order[nn] || 0) : 0);
+      return p ? 'Started ' + _ord(p) + ' today' : '';
+    }
+    case 'curPos': {
+      const st = getStandings(d);
+      let i = st.findIndex(x => x && x.carIdx === s.carIdx);
+      if (i < 0) i = st.findIndex(x => x && normNum(x.number) === num);
+      return i >= 0 ? 'Current position: ' + _ord(i + 1) : '';
+    }
+    case 'lastLap': {
+      const ld = (d.lapData || []).find(l => l.carIdx === s.carIdx);
+      const lt = d.lapTracker && d.lapTracker[s.carIdx];
+      const t = _fmtLap((ld && ld.lastLap > 0) ? ld.lastLap : (lt ? Number(lt.lastLap) : 0));
+      return t ? 'Last Lap: ' + t : '';
+    }
+    case 'cutoffPts': return diCutoffText(d, num);
+    case 'liveChampPos': {
+      const p = diLiveChampPos(d, num);
+      return p > 0 ? 'Is ' + _ord(p) + ' in championship as it stands' : '';
+    }
+    case 'fastestLap': {                                              // fastest lap of the whole race + surname of the driver who set it
+      let fc = (d.fastestCarIdx == null ? -1 : Number(d.fastestCarIdx)), ft = Number(d.fastestLap) || 0;
+      if (!(ft > 0) || fc < 0) {
+        ft = 0; fc = -1; const lts = d.lapTracker || {};
+        Object.keys(lts).forEach(k => { const b = Number(lts[k] && lts[k].bestLap); if (b > 0 && (ft === 0 || b < ft)) { ft = b; fc = Number(k); } });
+      }
+      const t = (ft > 0 && fc >= 0) ? _fmtLap(ft) : '';
+      if (!t) return '';
+      const fe = (d.standings || []).find(x => x && x.carIdx === fc) || (d.drivers || []).find(x => x && x.carIdx === fc);
+      let fn = '';
+      if (fe) { const fnum = normNum(fe.number); try { fn = String((typeof winnerName === 'function' ? winnerName(fe, fnum) : diNameOf(fe, fnum)) || ''); } catch (e) { fn = String(fe.fullName || fe.name || ''); } }
+      const parts = fn.trim().split(/\s+/).filter(Boolean);
+      while (parts.length > 1 && /^(jr\.?|sr\.?|ii|iii|iv|v)$/i.test(parts[parts.length - 1])) parts.pop();
+      const sn = parts.length ? parts[parts.length - 1] : '';
+      return 'Fastest Lap: ' + t + (sn ? ' (' + sn + ')' : '');
+    }
+    case 'bestLap': {
+      const lt = d.lapTracker && d.lapTracker[s.carIdx];
+      const t = _fmtLap(lt ? Number(lt.bestLap) : 0);
+      return t ? 'Best Lap: ' + t : '';
+    }
+  }
+  return '';
+}
+// text of line i (1 or 2) for this driver; entries saved before kinds existed are plain custom text
+function diLine(inf, i, d, s, num) {
+  const kind = inf['k' + i] || (inf['line' + i] ? 'custom' : '');
+  return kind ? diKindText(kind, inf, i, d, s, num) : '';
+}
+// Smooth change from one driver to the next while the banner is up: a copy of the card as it was stays on top and dissolves,
+// so the new driver appears underneath without a hard cut. (The copy keeps its ids on purpose: the CSS is written by id and the original comes first in the page.)
+const DI_SWAP_MS = 200;
+let _diShownCar = null;
+function diCrossfade(car) {
+  const prev = _diShownCar; _diShownCar = car;
+  if (!_diOn || prev == null || prev === car || diWrap.style.display === 'none') return;
+  try {
+    const g = diWrap.cloneNode(true);
+    g.style.pointerEvents = 'none'; g.style.transition = 'none';
+    diWrap.parentNode.insertBefore(g, diWrap.nextSibling);
+    const o = parseFloat(g.style.opacity); const from = isNaN(o) ? 1 : o;
+    if (g.animate) { const a = g.animate([{ opacity: from }, { opacity: 0 }], { duration: DI_SWAP_MS, easing: 'ease-in-out', fill: 'forwards' }); a.onfinish = () => g.remove(); }
+    else g.remove();
+    setTimeout(() => { if (g.isConnected) g.remove(); }, DI_SWAP_MS + 200);
+  } catch (e) {}
+}
+function diRender(d) {
+  const s = diDriver(d); if (!s) return false;
+  const num = (s.number || '??').toString().trim();
+  const full = String(winnerName(s, num) || '').trim().toUpperCase() || num.toUpperCase();
+  const bg = numColor(num), col = _driverColors[num] || '';   // col = colour assigned to this driver in the Series Editor ('' = none: navy banner)
+  const tab = DI_TAB || ((SERIES_ID && SERIES_ID !== 'default') ? SERIES_NAME : '');
+  const inf = _diInfo[num] || {}, l1 = diLine(inf, 1, d, s, num) || DI_LINE1, l2 = diLine(inf, 2, d, s, num) || DI_LINE2;
+  const key = [s.carIdx, num, full, bg, tab, l1, l2, col].join('|');
+  if (key === _diKey) return true;
+  diCrossfade(s.carIdx);
+  _diKey = key;
+  const last = lastNameOf(full), first = (last && full.endsWith(last)) ? full.slice(0, full.length - last.length).trim() : '';
+  if (col) { diBox.style.setProperty('--di-bg', col); diBox.style.setProperty('--di-fg', bgLuma(col) > 0.6 ? '#111' : '#fff'); diBox.style.setProperty('--di-accent', bgLuma(col) > 0.45 ? '#111' : '#ffd21f'); }
+  else { diBox.style.removeProperty('--di-bg'); diBox.style.removeProperty('--di-fg'); diBox.style.removeProperty('--di-accent'); }
+  $('di-num').innerHTML = numberHTML(num);
+  $('di-manu').innerHTML = diManuHTML(s, num);
+  $('di-manu').style.display = $('di-manu').innerHTML ? '' : 'none';
+  $('di-name').innerHTML = (first ? '<div class="f">' + esc(first) + '</div>' : '') + '<div class="l">' + esc(last || full) + '</div>';
+  const tabEl = $('di-tab'); tabEl.textContent = tab; tabEl.style.display = tab ? 'flex' : 'none';
+  const r = $('di-r');
+  if (l1 || l2) { r.innerHTML = diRightHTML(l1, l2); r.style.display = ''; }
+  else { r.innerHTML = ''; r.style.display = 'none'; }
+  return true;
+}
+// Put the banner near the bottom of the screen, centred horizontally. The overlay window only covers the ticker, so it is
+// stretched down to the screen bottom and across to the banner's right edge while the banner is up (and put back afterwards).
+// Without the app bridge (OBS) it stays to the right of the ticker.
+async function diPlace() {
+  const sc = SCALE * DI_SCALE;
+  diWrap.style.transform = 'scale(' + DI_SCALE + ')';
+  if (!(window.shl && window.shl.extendOverlay) || !window.screen) {
+    diWrap.style.left = (TICKER_W + 12) + 'px'; diWrap.style.top = Math.max(0, NBC_H - 100) + 'px';
+    return;
+  }
+  try {
+    const scrH = window.screen.height, scrW = window.screen.width;
+    const winLeft = window.screenX || 0, winTop = window.screenY || 0;
+    const left = Math.max(0, Math.round((scrW / 2 - winLeft - 350 * sc) / SCALE));
+    await window.shl.extendOverlay(scrH, winLeft + left * SCALE + 700 * sc + 4);
+    diWrap.style.left = left + 'px';
+    diWrap.style.top = Math.max(0, Math.round((scrH * DI_BOTTOM - 80 * sc - winTop) / SCALE)) + 'px';
+  } catch (e) { diWrap.style.left = (TICKER_W + 12) + 'px'; diWrap.style.top = Math.max(0, NBC_H - 100) + 'px'; }
+}
+function diRestoreWindow() {
+  try { if (window.shl && window.shl.extendOverlay) window.shl.extendOverlay(null); } catch (e) {}
+}
+async function diShow() {
+  clearTimeout(_diHideT); _diKey = '';
+  diDump(_diLast);                        // diagnostic snapshot (driverinfo-debug.json), written on every show
+  if (!diRender(_diLast)) return;
+  _diOn = true;
+  await diPlace();
+  if (!_diOn) return;                       // toggled off while the window was being stretched
+  diWrap.style.display = 'block';
+  void diWrap.offsetWidth;                  // start the fade from opacity 0
+  diWrap.style.opacity = String(isNaN(OPACITY) ? 1 : OPACITY);
+  diFit();
+}
+function diHide() {
+  _diOn = false; diWrap.style.opacity = '0';
+  clearTimeout(_diHideT);
+  _diHideT = setTimeout(() => { if (!_diOn) { diWrap.style.display = 'none'; diRestoreWindow(); } }, DI_FADE_MS + 50);
+}
+function diToggle() { if (_diOn) diHide(); else diShow(); }
+function diUpdate(d) { if (_diOn && diRender(d)) diFit(); }
+window.__toggleDriverInfo = diToggle;
+if (window.shl && window.shl.onDriverInfoToggle) window.shl.onDriverInfoToggle(diToggle);
+if (window.shl && window.shl.onDriverInfoStep) window.shl.onDriverInfoStep(diStep);
+window.__stepDriverInfo = diStep;
+
+// Called with every data frame (the driver info lines need laps led, grid, pit stops and the qualifying order even while the banner is hidden)
+function diFeed(d) { trackLed(d); trackQual(d); trackGrid(d); trackPits(d); }
+
+// ── Flag banners: the yellow CAUTION / GREEN FLAG banner pushes the LCD out to the left ──────────────
+// Enters from the right, the text spreads out a little, the LCD leaves to the left. CAUTION stays up while the race is yellow;
+// GREEN FLAG (race start and every restart) stays FLAG.greenHoldMs and then the LCD comes back the same way.
+const FLAG = { enterMs: 650, textMs: 1300, textDelay: 250, greenHoldMs: 8000, cautionBannerMs: 3500 };
+const _fEls = { lcd: document.getElementById('lcd'), yellow: document.getElementById('flag-y'), green: document.getElementById('flag-g') };
+// modes: 'lcd' (teal) | 'yellow' (CAUTION banner) | 'yellowlcd' (amber LCD with race name + lap) | 'green' (GREEN FLAG banner)
+const _elOf = m => (m === 'lcd' || m === 'yellowlcd') ? _fEls.lcd : _fEls[m];
+let _fMode = 'lcd', _fInit = false, _fSeen = false, _prevYellow = false, _prevPre = false, _greenUntil = 0, _yellowSince = 0, _fTimer = null, _fClsTimer = null;
+function setFlagMode(next, animate) {
+  if (_fInit && next === _fMode) return;
+  const prev = _fMode; _fMode = next; _fInit = true;
+  const eNext = _elOf(next), ePrev = _elOf(prev);
+  Object.values(_fEls).forEach(e => { e.getAnimations().forEach(a => a.cancel()); const t = e.querySelector('.ft'); if (t) t.getAnimations().forEach(a => a.cancel()); });
+  clearTimeout(_fClsTimer);
+  const setAmber = on => _fEls.lcd.classList.toggle('caution', on);
+  if (next === 'yellowlcd') setAmber(true);
+  else if (prev === 'yellowlcd' && animate && eNext !== ePrev) _fClsTimer = setTimeout(() => { if (_fMode !== 'yellowlcd') setAmber(false); }, FLAG.enterMs + 80);   // stays amber while it slides out
+  else setAmber(false);
+  Object.keys(_fEls).forEach(k => { _fEls[k].style.transform = (_fEls[k] === eNext) ? 'translateX(0)' : 'translateX(100%)'; });   // end state
+  if (next === 'yellow' || next === 'green') fit(_fEls[next].querySelector('.ft'), 36, 14);
+  if (!animate || eNext === ePrev || !_fEls.lcd.animate) return;
+  const ease = 'cubic-bezier(.2,.8,.2,1)';
+  eNext.animate([{ transform: 'translateX(100%)' }, { transform: 'translateX(0)' }], { duration: FLAG.enterMs, easing: ease });
+  ePrev.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-100%)' }], { duration: FLAG.enterMs, easing: ease });
+  if (next === 'yellow' || next === 'green') {                // the banner text spreads out a bit while it settles
+    eNext.querySelector('.ft').animate([{ letterSpacing: '.03em', paddingLeft: '.03em' }, { letterSpacing: '.15em', paddingLeft: '.15em' }],
+      { duration: FLAG.textMs, delay: FLAG.textDelay, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'backwards' });
+  }
+}
+function updateFlag(d) {
+  const session = (d.session || '').toLowerCase(), state = (d.sessionState || '').toLowerCase(), flag = (d.sessionFlag || '').toLowerCase();
+  const isRace = session === 'race';
+  const pre = isRace && (state === 'get in car' || state === 'warmup' || state === 'parade laps');
+  const fin = isRace && (state === 'checkered' || state === 'cool down');
+  const yellow = isRace && !pre && !fin && flag === 'yellow';
+  const now = Date.now();
+  if (_fSeen && isRace && !pre && !fin && !yellow) {
+    if (_prevYellow) _greenUntil = now + FLAG.greenHoldMs;                      // caution just ended: restart
+    else if (_prevPre && state === 'racing') _greenUntil = now + FLAG.greenHoldMs;   // race just started
+  }
+  if (!isRace || pre || fin) _greenUntil = 0;
+  if (yellow && !_prevYellow) _yellowSince = _fSeen ? now : now - FLAG.cautionBannerMs - 1;   // already yellow when first seen: skip the banner
+  _prevYellow = yellow; _prevPre = pre;
+  let want = 'lcd', wake = 0;
+  if (yellow) {
+    const left = FLAG.cautionBannerMs - (now - _yellowSince);
+    if (left > 0) { want = 'yellow'; wake = left; } else want = 'yellowlcd';        // CAUTION banner for a few seconds, then the amber LCD
+  } else if (now < _greenUntil) { want = 'green'; wake = _greenUntil - now; }
+  setFlagMode(want, _fSeen);                                                    // first frame seen: no intro, straight to the right state
+  _fSeen = true;
+  clearTimeout(_fTimer);
+  if (wake) _fTimer = setTimeout(() => { if (_latestData) updateFlag(_latestData); }, Math.max(50, wake + 40));
+}
+
+// ── Visibility + data ────────────────────────────────────────────────────
+let _preview = false, _latestData = null;
+function isVisible(d) {
+  if (_preview) return true;
+  switch (VISIBILITY_MODE) {
+    case 'always': return true;
+    case 'in_car': return !!(d.atTrack && d.player && d.player.inCar);
+    default:       return !!d.atTrack;
+  }
+}
+function isPreRace(d) {
+  const session = (d.session || '').toLowerCase(), state = (d.sessionState || '').toLowerCase();
+  return session === 'race' && (state === 'get in car' || state === 'warmup' || state === 'parade laps');
+}
+function renderAll(d) {
+  updateHeader(d);
+  document.getElementById('board').classList.toggle('pre', isPreRace(d));   // header only before the race starts
+  renderRows(d);
+}
+function handleData(d) {
+  // Driver Info banner: keep its data fresh even while the ticker itself is hidden
+  if (d.sessionCookie !== _diCookie) { if (_diCookie !== null) { _diSel = null; _fullNames = {}; resetNumberCache(); } _diCookie = d.sessionCookie; }
+  _diLast = d;
+  if (d.driverColors) _driverColors = d.driverColors;
+  learnNames(d); cmFeed(d); diFeed(d);
+  document.getElementById('app').style.display = isVisible(d) ? '' : 'none';
+  if (!isVisible(d)) return;
+  _latestData = d;
+  renderAll(d);
+  updateFlag(d);
+  diUpdate(d);
+}
+// Layout editor preview (sample data plus live setting changes)
+window.addEventListener('message', e => {
+  if (typeof e.data !== 'string') return;
+  try {
+    const m = JSON.parse(e.data);
+    if (m.reset) return;
+    _preview = true;
+    document.getElementById('app').style.display = '';
+    if (m._visibilityMode !== undefined) VISIBILITY_MODE = m._visibilityMode;
+    if (m._series !== undefined && m._series !== SERIES_ID) { SERIES_ID = m._series; _lastRowsKey = ''; loadSeriesLogo(); }
+    if (m._customName !== undefined) { customName = m._customName; if (_latestData) renderAll(_latestData); }
+    if (m.standings || m.session) handleData(m);
+  } catch (_) {}
+});
+
+// ── WebSocket ────────────────────────────────────────────────────────────
+let ws;
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onmessage = e => { try { handleData(JSON.parse(e.data)); } catch (_) {} };
+  ws.onclose = () => setTimeout(connect, 2000);
+  ws.onerror = () => ws.close();
+}
+connect();
+// once the banner font has loaded the text widths change: refit everything
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { _lastRowsKey = ''; if (_latestData) renderAll(_latestData); });
+</script>
+</body>
+</html>

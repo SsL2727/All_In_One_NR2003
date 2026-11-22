@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="stage_shim.js"></script>
+<script src="perf-shim.js"></script>
+<meta charset="UTF-8">
+<title>NR2003 Live Ticker</title>
+<style>
+/* Chase highlight — drivers in the chase get a yellow name background */
+.chase { background: #f5d100 !important; color: #111 !important; text-shadow: none !important;
+         box-shadow: -3px 0 0 #f5d100, 3px 0 0 #f5d100; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --yellow:   #f0c419;
+  --white:    #ffffff;
+  --red:      #e84444;
+  --font:     'D-DIN Condensed Bold', 'Arial Narrow', sans-serif;
+  --bg-a:     1.0;
+  --bg-img:   url('images/ticker/ticker_bg.png');
+  --pill-img: url('images/ticker/ticker_pill.png');
+  --flag-green-img:     url('images/ticker/flags/flag_green.png');
+  --flag-yellow-img:    url('images/ticker/flags/flag_yellow.png');
+  --flag-red-img:       url('images/ticker/flags/flag_red.png');
+  --flag-white-img:     url('images/ticker/flags/flag_white.png');
+  --flag-checkered-img: url('images/ticker/flags/flag_checkered.png');
+  --flag-stage-img:     url('images/ticker/flags/stage.png');
+}
+/* @font-face src is injected at runtime via JS (see script below) since
+   Chromium does not reliably re-resolve @font-face when a custom property
+   it references changes after the stylesheet has parsed. */
+
+html, body {
+  background: transparent;
+  color: #fff;
+  font-family: var(--font);
+  overflow: hidden;
+}
+
+#ticker {
+  width: 1920px;
+  height: 145px;
+  position: relative;
+  transform-origin: top left;
+}
+
+/* Background lives on its own layer so opacity only dims the bar art —
+   row1/row2 content, the series logo, and the flag icon all stay fully
+   opaque regardless of the configured opacity. */
+#ticker-bg {
+  position: absolute;
+  inset: 0;
+  background-image: var(--bg-img);
+  background-repeat: no-repeat;
+  background-position: top left;
+  background-size: 1920px auto;
+  opacity: var(--bg-a);
+  pointer-events: none;
+}
+
+/* ── Row 1 content wrapper — lap box + top-5 pills, single flex row ───── */
+/* ── Baked-in labels — previously part of the background art, now real
+   HTML so they're never affected by the background opacity and don't
+   need to be inferred/guessed at by JS. Coordinates measured directly
+   from the original ticker_bg.png art (converted to the 1920px CSS
+   space) and should be re-checked against the updated background once
+   it's regenerated without these labels baked in. ──────────────────── */
+#behind-leader-label {
+  position: absolute;
+  left: 199px;
+  top: 2px;
+  width: 84px;
+  height: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+#top5-label {
+  position: absolute;
+  left: 1456px;
+  top: 23px;
+  font-family: var(--font);
+  font-weight: 700;
+  font-style: italic;
+  font-size: 22px;
+  letter-spacing: 0.02em;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+#row1-content {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  right: 16px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+#lap-box {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#lap-flag-icon {
+  width: 44px;
+  height: 34px;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  transition: background-image 0.3s ease;
+}
+#lap-flag-icon.flag-green     { background-image: var(--flag-green-img); }
+#lap-flag-icon.flag-yellow    { background-image: var(--flag-yellow-img); }
+#lap-flag-icon.flag-red       { background-image: var(--flag-red-img); }
+#lap-flag-icon.flag-white     { background-image: var(--flag-white-img); }
+#lap-flag-icon.flag-checkered { background-image: var(--flag-checkered-img); }
+#lap-flag-icon.flag-stage     { background-image: var(--flag-stage-img); }
+
+#lap-text {
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  color: var(--yellow);
+  white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+#lap-text .lt-top,
+#lap-text .lt-bot { display: block; }
+#lap-text .lt-white { color: #ffffff; }
+#lap-text .lt-green { color: var(--green); }
+
+/* ── Row 1 — top 5 pills ───────────────────────────────────────────────── */
+#row1-cards {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.r1-pill {
+  height: 44px;
+  flex: 1 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  white-space: nowrap;
+  position: relative;
+  will-change: transform;
+  transition: transform 0.75s cubic-bezier(0.65, 0, 0.35, 1);
+}
+/* Pill artwork on its own pseudo-element so it fades with opacity while
+   the pos/number/name/gap content (real children) stays fully opaque. */
+.r1-pill::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--pill-img);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  opacity: var(--bg-a);
+  z-index: -1;
+}
+
+.r1-pill .r1-pos {
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 24px;
+  color: var(--yellow);
+}
+.r1-pill.leader .r1-pos {
+  letter-spacing: 0.03em;
+}
+
+.r1-pill .r1-numimg {
+  height: 28px;
+  width: auto;
+  max-width: 46px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.r1-pill .r1-numtext {
+  font-family: var(--font);
+  font-weight: 700;
+  font-style: italic;
+  font-size: 24px;
+  line-height: 1;
+  color: #ffffff;
+  -webkit-text-stroke: 1px #ffffff;
+  text-shadow: 0 0 1px #ffffff, 0 2px 4px rgba(0,0,0,0.75);
+  letter-spacing: 0.01em;
+}
+
+.r1-pill .r1-name {
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--white);
+  letter-spacing: 0.01em;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.r1-pill .r1-gap {
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--white);
+  font-variant-numeric: tabular-nums;
+}
+.r1-pill .r1-gap.gap-time   { color: var(--yellow); }
+.r1-pill .r1-gap.gap-lapped { color: var(--red); font-size: 18px; }
+.r1-pill .r1-gap.gap-out    { color: var(--red); font-size: 16px; letter-spacing: 0.05em; }
+
+#row1-logo {
+  position: absolute;
+  top: 14px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+#row1-logo img {
+  height: 36px;
+  width: auto;
+  max-width: 200px;
+  object-fit: contain;
+}
+#row1-logo img.hidden { display: none; }
+
+/* ── Pass animation layer states ─────────────────────────────────────── */
+.passing { z-index: 5; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.5)); }
+.passed  { z-index: 1; }
+
+/* ── Row 2 — scrolling full field ────────────────────────────────────── */
+#row2-wrap {
+  position: absolute;
+  left: 14px;
+  right: 16px;
+  top: 60px;
+  height: 48px;
+  overflow: hidden;
+}
+
+#row2-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+}
+
+.r2-pill {
+  height: 48px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  white-space: nowrap;
+  position: relative;
+  will-change: transform;
+  transition: transform 0.75s cubic-bezier(0.65, 0, 0.35, 1);
+}
+.r2-pill::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--pill-img);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  opacity: var(--bg-a);
+  z-index: -1;
+}
+
+.r2-pill .r2-pos {
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 24px;
+  color: var(--yellow);
+}
+
+.r2-pill .r2-numimg {
+  height: 28px;
+  width: auto;
+  max-width: 46px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.r2-pill .r2-numtext {
+  font-family: var(--font);
+  font-weight: 700;
+  font-style: italic;
+  font-size: 24px;
+  line-height: 1;
+  color: #ffffff;
+  -webkit-text-stroke: 1px #ffffff;
+  text-shadow: 0 0 1px #ffffff, 0 1px 3px rgba(0,0,0,0.75);
+  letter-spacing: 0.01em;
+}
+
+.r2-pill .r2-name {
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--white);
+  letter-spacing: 0.01em;
+}
+
+.r2-pill .r2-gap {
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--white);
+  font-variant-numeric: tabular-nums;
+}
+.r2-pill .r2-gap.gap-time   { color: var(--yellow); }
+.r2-pill .r2-gap.gap-lapped { color: var(--red); font-size: 18px; }
+.r2-pill .r2-gap.gap-out    { color: var(--red); font-size: 16px; letter-spacing: 0.05em; }
+.r2-pill .r2-leader-tag {
+  color: var(--yellow);
+  letter-spacing: 0.03em;
+}
+
+.row2-break {
+  height: 48px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 0 32px;
+  white-space: nowrap;
+}
+.row2-break-label {
+  font-family: var(--font);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+.row2-break::before,
+.row2-break::after {
+  content: '';
+  width: 26px;
+  height: 2px;
+  background: rgba(255,255,255,0.45);
+  flex-shrink: 0;
+}
+
+/* ── Race name tab ────────────────────────────────────────────────────── */
+#race-name {
+  position: absolute;
+  left: 14px;
+  top: 112px;
+  width: 245px;
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  color: var(--yellow);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#connecting {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.6);
+  color: #888;
+  font-family: Arial, sans-serif;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  z-index: 999;
+}
+#connecting.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div id="ticker">
+  <div id="ticker-bg"></div>
+  <div id="behind-leader-label">BEHIND LEADER</div>
+  <div id="top5-label">TOP 5</div>
+  <div id="connecting">WAITING FOR BRIDGE…</div>
+
+  <div id="row1-content">
+    <div id="lap-box">
+      <div id="lap-flag-icon" class="flag-green"></div>
+      <span id="lap-text">LAP — of —</span>
+    </div>
+
+    <div id="row1-cards"></div>
+  </div>
+
+  <div id="row1-logo">
+    <img id="series-logo-img" src="" alt="Series logo">
+  </div>
+
+  <div id="row2-wrap">
+    <div id="row2-track"></div>
+  </div>
+
+  <div id="race-name"></div>
+</div>
+
+<script>
+// ── Chase highlight ─────────────────────────────────────────────────────────
+// The main process tells every overlay which car numbers are in the chase
+// (empty list = feature off). Name elements carry data-chase-num; the class
+// is toggled here so it updates instantly, without waiting for a re-render.
+let _CHASE = new Set();
+const chaseKey = n => String(n == null ? '' : n).trim().replace(/"/g, '');
+const chaseCls = n => (_CHASE.size && _CHASE.has(chaseKey(n))) ? ' chase' : '';
+function chaseMark(el, n) {
+  if (!el) return;
+  const k = chaseKey(n);
+  el.dataset.chaseNum = k;
+  el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(k));
+}
+function _chasePass() {
+  document.querySelectorAll('[data-chase-num]').forEach(el =>
+    el.classList.toggle('chase', _CHASE.size > 0 && _CHASE.has(el.dataset.chaseNum)));
+}
+function _setChase(list) {
+  _CHASE = new Set((Array.isArray(list) ? list : []).map(chaseKey));
+  _chasePass();
+}
+if (window.shl && window.shl.onChaseSet) {
+  window.shl.onChaseSet(_setChase);
+  if (window.shl.getChaseSet) window.shl.getChaseSet().then(_setChase).catch(() => {});
+}
+window.addEventListener('message', e => {      // layout-editor preview
+  if (typeof e.data !== 'string' || e.data.indexOf('"_chase"') < 0) return;
+  try { const m = JSON.parse(e.data); if (Array.isArray(m._chase)) _setChase(m._chase); } catch (x) {}
+});
+// ── URL params ────────────────────────────────────────────────────────────
+const params      = new URLSearchParams(location.search);
+const INSTALL_DIR = params.get('installdir') || '';
+function assetPath(rel) {
+  const psf = window.__PSF;
+  if (psf && psf.assetBase) return psf.assetBase + '/' + rel;
+  if (INSTALL_DIR) {
+    const encoded = INSTALL_DIR.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+    return 'file:///' + encoded + '/' + rel;
+  }
+  return rel;
+}
+const WS_HOST  = params.get('host') || location.hostname || 'localhost';
+const WS_PORT  = params.get('port') || '8765';
+const WS_URL   = window.__PSF?.wsUrl || `ws://${WS_HOST}:${WS_PORT}`;
+const SCALE    = Math.max(0.1, Math.min(4.0, parseFloat(params.get('scale')   || '1.0')));
+const OPACITY  = Math.max(0.0, Math.min(1.0, parseFloat(params.get('opacity') || '1.0')));
+
+// ── Asset paths — resolved through assetPath() so these work whether the
+// widget is loaded via file:// (regular overlay), the bridge's HTTP routes
+// (OBS/master overlay), all of which have different relative-path bases.
+// CSS url()/@font-face can't call JS, so these get injected as either CSS
+// custom properties (for background-image) or a runtime <style> block
+// (for @font-face, since Chromium doesn't reliably re-resolve a custom
+// property referenced inside an @font-face src after the fact).
+(function setupAssets() {
+  const root = document.documentElement.style;
+  root.setProperty('--bg-img',   `url('${assetPath('images/ticker/ticker_bg.png')}')`);
+  root.setProperty('--pill-img', `url('${assetPath('images/ticker/ticker_pill.png')}')`);
+  root.setProperty('--flag-green-img',     `url('${assetPath('images/ticker/flags/flag_green.png')}')`);
+  root.setProperty('--flag-yellow-img',    `url('${assetPath('images/ticker/flags/flag_yellow.png')}')`);
+  root.setProperty('--flag-red-img',       `url('${assetPath('images/ticker/flags/flag_red.png')}')`);
+  root.setProperty('--flag-white-img',     `url('${assetPath('images/ticker/flags/flag_white.png')}')`);
+  root.setProperty('--flag-checkered-img', `url('${assetPath('images/ticker/flags/flag_checkered.png')}')`);
+
+  const fontUrl = assetPath('images/ticker/DIN Condensed Bold.ttf');
+  const styleEl = document.createElement('style');
+  styleEl.textContent = `@font-face {
+    font-family: 'D-DIN Condensed Bold';
+    src: url('${fontUrl}') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+  }`;
+  document.head.appendChild(styleEl);
+})();
+const SERIES_ID   = params.get('series') || 'default';
+const IS_DEFAULT  = !SERIES_ID || SERIES_ID === 'default';
+const SERIES_NAME = IS_DEFAULT ? 'NR2003' : (params.get('seriesname') || SERIES_ID);
+const LOGO_PATH   = IS_DEFAULT ? assetPath('images/nr2003_logo.svg') : assetPath(`series/${SERIES_ID}/serieslogo.png`);
+const ROW2_SPEED  = Math.max(10, Math.min(400, parseFloat(params.get('scrollspeed') || '70')));
+let _liveScrollSpeed = ROW2_SPEED;
+let customName = params.get('customname') ? decodeURIComponent(params.get('customname')) : '';
+
+// ── In-car visibility — default at_track for this broadcast-style widget ──
+let DNF_DISPLAY = (window.__PSF?.dnfdisplay || new URLSearchParams(location.search).get('dnfdisplay') || 'reason');
+let VISIBILITY_MODE = params.get('visibilitymode') || 'at_track';
+
+function checkVisibility(d) {
+  if (!d) return false;
+  switch (VISIBILITY_MODE) {
+    case 'always':  return true;
+    case 'in_car':  return !!(d.atTrack && d.player?.inCar);
+    case 'at_track':
+    default:        return !!d.atTrack;
+  }
+}
+
+let _visHideTimer = null;
+let _hasValidData = false;
+
+let _lastVisible = null;
+
+function updateVisibility(d) {
+  const visible = checkVisibility(d) && _hasValidData;
+  const ticker = document.getElementById('ticker');
+  if (visible) {
+    if (_visHideTimer) { clearTimeout(_visHideTimer); _visHideTimer = null; }
+    if (_lastVisible !== true) { ticker.style.opacity = '1'; _lastVisible = true; }
+  } else {
+    if (!_visHideTimer) {
+      _visHideTimer = setTimeout(() => { ticker.style.opacity = '0'; _lastVisible = false; }, 200);
+    }
+  }
+}
+
+document.documentElement.style.setProperty('--bg-a', OPACITY);
+
+// ── Scale ─────────────────────────────────────────────────────────────────
+const tickerEl = document.getElementById('ticker');
+tickerEl.style.transform = `scale(${SCALE})`;
+document.body.style.width  = Math.round(1920 * SCALE) + 'px';
+document.body.style.height = Math.round(145  * SCALE) + 'px';
+
+// ── Series logo ───────────────────────────────────────────────────────────
+const logoImg = document.getElementById('series-logo-img');
+logoImg.src = LOGO_PATH;
+logoImg.onerror = () => logoImg.classList.add('hidden');
+logoImg.onload  = () => logoImg.classList.remove('hidden');
+
+function numImgSrc(numStr) {
+  const n = (numStr || '').trim();
+  if (!n || n === '??' || IS_DEFAULT) return '';
+  return assetPath(`series/${SERIES_ID}/numbers/${n}.png`);
+}
+
+function buildBadges(carIdx, d) {
+  const session = (d.session || '').toLowerCase();
+  if (session !== 'race') return '';
+  const bs = 'height:10px;width:auto;vertical-align:middle;margin-left:2px;opacity:0.9';
+  let html = '';
+  if (d.fastestCarIdx !== undefined && d.fastestCarIdx === carIdx) {
+    html += `<img src="${assetPath('images/badges/fastest_lap.png')}" style="${bs}" alt="FL" onerror="this.style.display='none'">`;
+  }
+  if (Array.isArray(d.stageWinners)) {
+    d.stageWinners.filter(w => w.carIdx === carIdx && w.pos === 1).forEach(() => {
+      html += `<img src="${assetPath('images/badges/stage_winner.png')}" style="${bs}" alt="SW" onerror="this.style.display='none'">`;
+    });
+  }
+  return html;
+}
+
+// ── Gap / lap-time formatting — mirrors livestandings' fmtDelta exactly ───
+function fmtDelta(standing, leaderLap, isPracQual, leaderBestLap, isYellow, d) {
+  if (isPracQual) {
+    const best = standing.time || 0;
+    if (best <= 0) return { text: '—', cls: '' };
+    return { text: best.toFixed(3), cls: '' };
+  }
+
+  const liveStatus = standing.liveStatus;
+  const status     = (standing.status || '').toLowerCase();
+
+  if (liveStatus === 'retired' || (status !== 'running' && status !== '')) {
+    const reasonMap = {
+      'accident':     'ACCIDENT', 'retired':      'RETIRED', 'dq':           'DQ',
+      'disconnected': 'DISC',     'ejected':      'EJECTED', 'brakes':       'BRAKES',
+      'coolant':      'COOLANT',  'radiator':     'RADIATOR','engine':       'ENGINE',
+      'fire':         'FIRE',     'fuel':         'FUEL',    'oil':          'OIL',
+      'suspension':   'SUSP',     'tire':         'TIRE',    'out of fuel':  'NO FUEL',
+    };
+    const reason = DNF_DISPLAY === 'out' ? 'OUT' : (reasonMap[status] || (status !== 'running' && status ? status.toUpperCase() : 'OUT'));
+    return { text: reason, cls: 'out' };
+  }
+
+  const t = standing.time || 0;
+
+  if (liveStatus === 'lapped') {
+    const lapsDown = standing.lapsDown || 0;
+    const lapCount = lapsDown >= 1 ? lapsDown : Math.abs(Math.round(t));
+    return { text: `-${lapCount}L`, cls: 'lapped' };
+  }
+  if (t <= 0 && liveStatus === 'running') return { text: '', cls: 'leader' };
+
+  // Under caution with live status — blank lead-lap gaps
+  if (isYellow && liveStatus === 'running') return { text: '', cls: '' };
+
+  // No liveStatus — official standings path (caution phases, cooldown)
+  // Must check BEFORE t > 0 since official standings have time=seconds gap
+  // which would otherwise show raw seconds instead of -XL or blank
+  if (!liveStatus) {
+    const bridgeLapsDown = (d?.lappedState || {})[standing.carIdx] || 0;
+    const stickyDown     = bridgeLapsDown || (_lappedState.get(standing.carIdx) || 0);
+    if (stickyDown >= 1) return { text: `-${stickyDown}L`, cls: 'lapped' };
+    if (isYellow)        return { text: '', cls: '' };
+    const lapsDown = standing.lapsDown || 0;
+    if (lapsDown >= 1)   return { text: `-${lapsDown}L`, cls: 'lapped' };
+    if (t <= 0)          return { text: '', cls: 'leader' };
+    return { text: `-${t.toFixed(3)}`, cls: '' };
+  }
+
+  if (t > 0) return { text: `-${t.toFixed(3)}`, cls: '' };
+
+  return { text: '', cls: 'leader' };
+}
+
+// ── Periodic live-gap refresh ──────────────────────────────────────────────
+// In live (offline) mode, gap *numbers* should tick continuously even
+// between official per-lap updates from the bridge. The hash-gated render
+// in handleMessage only fires on real standings/lap/flag changes, so a
+// fixed-cadence timer recomputes live standings and refreshes just the gap
+// text on each pill — full reorders (with the pass animation) still only
+// happen through the normal render() path so the animation stays clean.
+const LIVE_UPDATE_MS = 500;
+let _liveTimer = null;
+let _lastLiveOrder = '';
+
+function refreshLiveGapText(standings, isPracQual, leaderBest, isYellow, d) {
+  document.querySelectorAll('#row1-cards .r1-pill, #row2-track .r2-pill').forEach(pill => {
+    const ci = Number(pill.dataset.caridx);
+    const idx = standings.findIndex(s => s.carIdx === ci);
+    if (idx === -1) return;
+    const s = standings[idx];
+    const delta = fmtDelta(s, standings[0]?.lap || 0, isPracQual, leaderBest, isYellow, d);
+    const isLeaderLabel = !isPracQual && idx === 0;
+    const gapEl = pill.querySelector('.r1-gap, .r2-gap');
+    if (gapEl && !isLeaderLabel) gapEl.textContent = delta.text;
+  });
+}
+
+function startLiveTimer() {
+  if (_liveTimer) clearInterval(_liveTimer);
+  _lastLiveOrder = '';
+
+  _liveTimer = setInterval(() => {
+    if (!latestData || OFFICIAL_MODE) return;
+    const session = (latestData.session || '').toLowerCase();
+    if (session !== 'race') return;
+
+    const standings = latestData.liveStandings || latestData.standings || [];
+    if (!standings || !standings.length) return;
+
+    const newOrder = standings.map(s => s.carIdx).join(',');
+    if (newOrder === _lastLiveOrder) {
+      // Order unchanged — just tick the gap numbers forward
+      const isYellow = (latestData.sessionFlag || '').toLowerCase() === 'yellow';
+      refreshLiveGapText(standings, false, standings[0]?.time || 0, isYellow, latestData);
+      return;
+    }
+    // Order changed — go through the full render path so the pass
+    // animation fires correctly
+    _lastLiveOrder = newOrder;
+    render(latestData);
+  }, LIVE_UPDATE_MS);
+}
+
+// ── Standings data state ──────────────────────────────────────────────────
+let latestData  = null;
+let _lastHash   = '';
+let _lastRow1Order = '';
+let _lastRow2Order = '';
+let _lastSeenSession = null;
+
+// ── Live standings engine — ported from nr2003_livestandings.html ─────────
+// Offline races compute live, frequently-updating gaps from track position
+// (trkPct) since the bridge's official standings only update once per lap.
+// Online races trust the bridge's official standings directly, since trkPct
+// lag over the network makes live computation unreliable there.
+function lastName(full) {
+  return (full || '?').toUpperCase();
+}
+
+function displayName(entry) {
+  return (entry.name || '?').toUpperCase();
+}
+
+let OFFICIAL_MODE = params.get('officialmode') === '1';
+let _refLapTime        = 0;
+let _isLiveMode         = false;
+const _lappedState      = new Map();  // carIdx -> laps down (sticky until gap < 1 lap)
+let _lastOfficialHash   = '';
+const _stickyLapDeficit = {};
+let _stickyLeaderLap    = 0;
+
+function resetStickyLaps() {
+  Object.keys(_stickyLapDeficit).forEach(k => delete _stickyLapDeficit[k]);
+  _stickyLeaderLap = 0;
+}
+
+function _syncWithOfficialStandings(d) {
+  const standings = d.standings || [];
+  if (!standings.length) return;
+
+  const leaderLap = standings[0].lap || 0;
+  if (leaderLap <= _stickyLeaderLap && _stickyLeaderLap > 0) return;
+  _stickyLeaderLap = leaderLap;
+
+  standings.forEach(s => {
+    const ci           = s.carIdx;
+    const officialDown = leaderLap - (s.lap || 0);
+    const stickyDown   = _lappedState.get(ci) || 0;
+
+    if (officialDown === 0 && stickyDown > 0) {
+      _lappedState.delete(ci);
+    } else if (officialDown > stickyDown) {
+      _lappedState.set(ci, officialDown);
+    }
+  });
+}
+
+function _computeLiveStandings(d) {
+  const opponents = d.opponents  || [];
+  const standings = d.standings  || [];
+  const drivers   = d.drivers    || [];
+  const relative  = d.relative   || [];
+  const playerIdx = d.playerCarIdx;
+  const session   = (d.session      || '').toLowerCase();
+  const state     = (d.sessionState || '').toLowerCase();
+
+  if (session !== 'race') return standings;
+  if (state === 'cool down' || state === 'get in car' || state === 'warmup' || state === 'parade laps') return standings;
+
+  // Caution freeze — return official standings during all caution phases
+  const cautionPhase = d.cautionPhase;
+  if (cautionPhase === 'frozen' || cautionPhase === 'official' || cautionPhase === 'warmup') {
+    _isLiveMode = false;
+    return standings;
+  }
+
+  const officialHash = standings.map(s => s.carIdx + ':' + s.lap).join(',');
+  if (officialHash !== _lastOfficialHash) {
+    _lastOfficialHash = officialHash;
+    _syncWithOfficialStandings(d);
+  }
+
+  // Prefer the bridge's already-deduplicated last-name from `standings`
+  // over the raw full name in drivers/relative — those only fill in cars
+  // missing from standings entirely.
+  const numMap = {}, nameMap = {}, metaMap = {};
+  standings.forEach(s => {
+    numMap[s.carIdx]  = s.number;
+    nameMap[s.carIdx] = s.name;
+    metaMap[s.carIdx] = s;
+  });
+  drivers.forEach(drv => {
+    if (drv.number && drv.number !== '??' && numMap[drv.carIdx] === undefined) numMap[drv.carIdx] = drv.number;
+    if (drv.name && nameMap[drv.carIdx] === undefined)                          nameMap[drv.carIdx] = drv.name;
+  });
+  relative.forEach(r => {
+    if (r.number && r.number !== '??' && numMap[r.carIdx] === undefined) numMap[r.carIdx] = r.number;
+    if (r.name && nameMap[r.carIdx] === undefined)                        nameMap[r.carIdx] = r.name;
+  });
+
+  const known = new Set([
+    ...relative.map(r => r.carIdx),
+    ...drivers.map(r => r.carIdx),
+    ...standings.map(r => r.carIdx),
+    playerIdx,
+  ]);
+
+  const carLaps = d.carLaps || {};
+  const cars = [];
+  const carsSet = new Set();
+  opponents.forEach(opp => {
+    const ci = opp.carIdx;
+    if (!known.has(ci)) return;
+    const laps = carLaps[ci] !== undefined ? carLaps[ci] : (metaMap[ci]?.lap || 0);
+    cars.push({ carIdx: ci, trkPct: opp.trkPct||0, laps,
+                totalProgress: laps + (opp.trkPct||0) });
+    carsSet.add(ci);
+  });
+
+  // Add retired/non-running cars from standings that dropped out of opponents
+  standings.forEach(s => {
+    const ci = s.carIdx;
+    if (carsSet.has(ci) || !known.has(ci)) return;
+    const status = (s.status || 'running').toLowerCase();
+    if (status === 'running' || status === '') return;
+    const laps = carLaps[ci] !== undefined ? carLaps[ci] : (s.lap || 0);
+    cars.push({ carIdx: ci, trkPct: s.trkPct || 0, laps,
+                totalProgress: laps + (s.trkPct || 0) });
+    carsSet.add(ci);
+  });
+
+  const player = d.player || {};
+  if (player.trkPct !== undefined && player.inCar !== false &&
+      !cars.find(c => c.carIdx === playerIdx)) {
+    const laps = carLaps[playerIdx] !== undefined
+      ? carLaps[playerIdx] : (metaMap[playerIdx]?.lap || 0);
+    cars.push({ carIdx: playerIdx, trkPct: player.trkPct, laps,
+                totalProgress: laps + player.trkPct });
+  }
+
+  cars.sort((a, b) => b.totalProgress - a.totalProgress);
+  const leaderProgress = cars.length > 0 ? cars[0].totalProgress : 0;
+
+  cars.forEach(car => {
+    const stickyDown = _lappedState.get(car.carIdx) || 0;
+    if (stickyDown > 0) {
+      const leaderLaps = Math.round(leaderProgress);
+      car.totalProgress = (leaderLaps - stickyDown) + car.trkPct;
+    }
+  });
+
+  const officialOrder = {};
+  standings.forEach((s, i) => { officialOrder[s.carIdx] = i; });
+
+  cars.sort((a, b) => {
+    const aDown = _lappedState.get(a.carIdx) || 0;
+    const bDown = _lappedState.get(b.carIdx) || 0;
+    if (aDown === 0 && bDown === 0) return b.totalProgress - a.totalProgress;
+    if (aDown === 0) return -1;
+    if (bDown === 0) return 1;
+    if (aDown !== bDown) return aDown - bDown;
+    return (officialOrder[a.carIdx] ?? 999) - (officialOrder[b.carIdx] ?? 999);
+  });
+
+  const leader = cars[0];
+  if (!leader) return standings;
+
+  _isLiveMode = leader.laps >= 1;
+  if (!_isLiveMode) return standings;
+
+  const leaderMeta = metaMap[leader.carIdx];
+  if (leaderMeta?.lastLap && leaderMeta.lastLap > 0) _refLapTime = leaderMeta.lastLap;
+  else if (d.fastestLap && d.fastestLap > 0)         _refLapTime = d.fastestLap;
+  if (_refLapTime <= 0) return standings;
+
+  return cars.map((car, i) => {
+    const meta     = metaMap[car.carIdx] || {};
+    const progDiff = leader.totalProgress - car.totalProgress;
+    const mathLaps = Math.floor(progDiff);
+
+    const prevLapped = _lappedState.get(car.carIdx) || 0;
+    const carAheadOfLeader = car.trkPct > leader.trkPct + 0.05;
+    const currentMathLaps  = (mathLaps >= 1 && !carAheadOfLeader) ? mathLaps : 0;
+    let lapsDiff = Math.max(prevLapped, currentMathLaps);
+    if (lapsDiff > 0) _lappedState.set(car.carIdx, lapsDiff);
+
+    let time, liveStatus;
+    if (i === 0)            { time = 0;         liveStatus = 'running'; }
+    else if (lapsDiff >= 1) { time = -lapsDiff; liveStatus = 'lapped'; }
+    else                    { time = Math.max(0, progDiff) * _refLapTime; liveStatus = 'running'; }
+
+    const officialStatus = (meta.status || 'running').toLowerCase();
+    const isRetired = officialStatus !== 'running' && officialStatus !== '';
+    if (isRetired) liveStatus = 'retired';
+
+    return {
+      carIdx:     car.carIdx,
+      number:     numMap[car.carIdx]  || meta.number || '??',
+      name:       nameMap[car.carIdx] || meta.name   || '?',
+      lap:        car.laps,
+      trkPct:     car.trkPct,
+      time:       time,
+      status:     meta.status     || 'running',
+      liveStatus,
+    };
+  });
+}
+
+function buildRow1Pills(standings, isPracQual, leaderBest, isYellow, d) {
+  const top5 = standings.slice(0, 5);
+  return top5.map((s, i) => {
+    const pos = i + 1;
+    const isLeaderLabel = !isPracQual && pos === 1;
+    const delta  = fmtDelta(s, standings[0]?.lap || 0, isPracQual, leaderBest, isYellow, d);
+    const numImg = numImgSrc(s.number);
+    const num    = (s.number || '').trim();
+    const numHtml = numImg
+      ? `<img class="r1-numimg" src="${numImg}" alt="${num}"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='inline'">
+         <span class="r1-numtext" style="display:none">${num}</span>`
+      : `<span class="r1-numtext">${num}</span>`;
+    const badges = buildBadges(s.carIdx, d || {});
+    return `
+      <div class="r1-pill${isLeaderLabel ? ' leader' : ''}" data-caridx="${s.carIdx}">
+        <span class="r1-pos">${isLeaderLabel ? 'LEADER' : pos + ')'}</span>
+        ${numHtml}
+        <span class="r1-name${chaseCls(s.number)}" data-chase-num="${chaseKey(s.number)}">${displayName(s)}${badges}</span>
+        ${isLeaderLabel ? '' : `<span class="r1-gap ${delta.cls === 'out' ? 'gap-out' : delta.cls === 'lapped' ? 'gap-lapped' : delta.text && delta.cls !== 'leader' ? 'gap-time' : ''}">${delta.text}</span>`}
+      </div>`;
+  }).join('');
+}
+
+function renderRow1(standings, isPracQual, leaderBest, isYellow, d) {
+  document.getElementById('row1-cards').innerHTML = buildRow1Pills(standings, isPracQual, leaderBest, isYellow, d);
+  document.querySelectorAll('#row1-cards .r1-name').forEach(el => {
+    let size = 14; el.style.fontSize = '';
+    while (el.scrollWidth > el.offsetWidth && size > 9) { size -= 0.5; el.style.fontSize = size + 'px'; }
+  });
+}
+
+function updateRow1Gaps(standings, isPracQual, leaderBest, isYellow, d) {
+  const top5 = standings.slice(0, 5);
+  const pills = document.querySelectorAll('#row1-cards .r1-pill');
+  pills.forEach((pill, i) => {
+    const s = top5[i];
+    if (!s) return;
+    const gapEl = pill.querySelector('.r1-gap');
+    if (!gapEl) return;
+    const delta = fmtDelta(s, standings[0]?.lap || 0, isPracQual, leaderBest, isYellow, d);
+    gapEl.textContent = delta.text;
+  });
+}
+
+function renderRow2(standings, isPracQual, leaderBest, isYellow, d) {
+  document.getElementById('row2-track').innerHTML = buildRow2CardsHTML(standings, isPracQual, leaderBest, isYellow, d);
+  document.getElementById('row2-track').dataset.duplicated = 'false';
+  document.querySelectorAll('#row2-track .r2-name').forEach(el => {
+    let size = 14; el.style.fontSize = '';
+    while (el.scrollWidth > el.offsetWidth && size > 9) { size -= 0.5; el.style.fontSize = size + 'px'; }
+  });
+}
+
+function updateRow2Gaps(standings, isPracQual, leaderBest, isYellow, d) {
+  const pills = document.querySelectorAll('#row2-track .r2-pill');
+  pills.forEach((pill, i) => {
+    const s = standings[i];
+    if (!s) return;
+    const gapEl = pill.querySelector('.r2-gap');
+    if (!gapEl) return;
+    const isLeaderLabel = !isPracQual && i === 0;
+    const delta = fmtDelta(s, standings[0]?.lap || 0, isPracQual, leaderBest, isYellow, d);
+    gapEl.textContent = isLeaderLabel ? 'LEADER' : delta.text;
+  });
+}
+
+function buildRow2CardsHTML(standings, isPracQual, leaderBest, isYellow, d) {
+  const cards = standings.map((s, i) => {
+    const pos = i + 1;
+    const isLeaderLabel = !isPracQual && pos === 1;
+    const delta  = fmtDelta(s, standings[0]?.lap || 0, isPracQual, leaderBest, isYellow, d);
+    const numImg = numImgSrc(s.number);
+    const num    = (s.number || '').trim();
+    const numHtml = numImg
+      ? `<img class="r2-numimg" src="${numImg}" alt="${num}"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='inline'">
+         <span class="r2-numtext" style="display:none">${num}</span>`
+      : `<span class="r2-numtext">${num}</span>`;
+    const badges = buildBadges(s.carIdx, d || {});
+    return `
+      <div class="r2-pill" data-caridx="${s.carIdx}">
+        <span class="r2-pos">${pos}.</span>
+        ${numHtml}
+        <span class="r2-name${chaseCls(s.number)}" data-chase-num="${chaseKey(s.number)}">${displayName(s)}${badges}</span>
+        <span class="r2-gap${isLeaderLabel ? ' r2-leader-tag' : delta.cls === 'out' ? ' gap-out' : delta.cls === 'lapped' ? ' gap-lapped' : delta.text && delta.cls !== 'leader' ? ' gap-time' : ''}">${isLeaderLabel ? 'LEADER' : delta.text}</span>
+      </div>`;
+  }).join('');
+  const loopBreak = `
+    <div id="row2-break" class="row2-break">
+      <span class="row2-break-label">RUNNING ORDER</span>
+    </div>`;
+  return cards + loopBreak;
+}
+
+// ── Lap box / flag / race name ────────────────────────────────────────────
+// Format countdown time (seconds) → M:SS — same convention as livestandings
+function fmtCountdownTime(sec) {
+  if (sec === undefined || sec === null || sec < 0) return null;
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+// Flag icon — mirrors livestandings' fmtFlag2, plus forces yellow during
+// gridding/pacing (state-driven) regardless of whatever sessionFlag NR2003
+// itself happens to be reporting at that moment.
+function resolveFlagIcon(d, state) {
+  if (state === 'checkered' || state === 'cool down') return 'checkered';
+  if (state === 'get in car' || state === 'warmup' || state === 'parade laps') return 'yellow';
+  if (d.stageCompleteActive) return 'stage';
+  if ((d.lapsRemaining || 0) === 1 && state === 'racing') return 'white';
+  const flag = (d.sessionFlag || '').toLowerCase();
+  if (flag === 'yellow') return 'yellow';
+  if (flag === 'red')    return 'red';
+  return 'green';
+}
+
+let _lastLapHtml  = '';
+let _lastLapIcon  = '';
+let _lastRaceName = '';
+
+function updateLapBox(d, session, isPracQual) {
+  const icon  = document.getElementById('lap-flag-icon');
+  const text  = document.getElementById('lap-text');
+  const state = (d.sessionState || '').toLowerCase();
+
+  const newIcon = 'flag-' + resolveFlagIcon(d, state);
+  if (newIcon !== _lastLapIcon) { icon.className = newIcon; _lastLapIcon = newIcon; }
+
+  // Helper to set single-row content (non-race sessions / state overrides)
+  const single = (top, cls = '') => {
+    const h = `<span class="lt-top${cls ? ' ' + cls : ''}">${top}</span>`;
+    if (h !== _lastLapHtml) { text.innerHTML = h; _lastLapHtml = h; }
+  };
+
+  // Helper for two-row content
+  const dual = (top, bot, topCls = '', botCls = '') => {
+    const h = `<span class="lt-top${topCls ? ' ' + topCls : ''}">${top}</span>` +
+              `<span class="lt-bot${botCls ? ' ' + botCls : ''}">${bot}</span>`;
+    if (h !== _lastLapHtml) { text.innerHTML = h; _lastLapHtml = h; }
+  };
+
+  // Green number helper
+  const g = n => `<span class="lt-green">${n}</span>`;
+
+  if (session === 'qualifying') { single('QUALIFYING'); return; }
+  if (session === 'practice' || session === 'testing') {
+    const t = fmtCountdownTime(d.timeRemaining);
+    single(t ? `PRACTICE ${t}` : 'PRACTICE');
+    return;
+  }
+
+  // Session state overrides
+  if (state === 'get in car')                          { single('GRIDDING');   return; }
+  if (state === 'warmup' || state === 'parade laps')   { single('PACING');     return; }
+  if (state === 'cool down')                           { single('RESULTS');    return; }
+  if (state === 'checkered')                           { single('CHECKERED'); return; }
+
+  const lapsComp   = d.lapsComplete  || 0;
+  const lapsRem    = d.lapsRemaining || 0;
+  const lapsTotal  = (d.lapsTotal && d.lapsTotal < 32767) ? d.lapsTotal : (lapsComp + lapsRem);
+  const isYellow   = (d.sessionFlag  || '').toLowerCase() === 'yellow';
+  const cautions   = d.cautionFlags  || 0;
+  const lapNum     = lapsComp + 1;
+  const isFinal    = d.stageFinalStage || !d.stageRacingActive;
+  const stageActive = d.stageRacingActive && d.stageTotalLaps > 0;
+
+  if (lapsTotal <= 0) { single(lapsComp > 0 ? `LAP ${lapNum}` : 'PACING'); return; }
+  if (lapsRem <= 1 && lapsComp > 0) { single('FINAL LAP'); return; }
+
+  const lapLine    = `LAP ${g(lapNum)} OF ${lapsTotal}`;
+  const cautionLine = `CAUTION #${cautions} — LAP ${lapNum} OF ${lapsTotal}`;
+
+  if (isYellow) {
+    // ── Yellow scenarios ───────────────────────────────────────────────
+    if (!isFinal && d.stageCompleteActive) {
+      // Stage complete — top white, bottom yellow
+      dual(`STAGE ${d.stageCompleteNum} COMPLETE`, cautionLine, 'lt-white', '');
+    } else if (!isFinal) {
+      // Stage in progress under caution
+      const stageRem = d.stageTotalLaps - Math.max(0, d.stageLap);
+      dual(`STAGE ${d.stageNum} — ${stageRem} TO GO`, cautionLine);
+    } else {
+      // Final stage or no stage racing under caution
+      dual(`${lapsRem} TO GO`, `CAUTION #${cautions}`);
+    }
+  } else {
+    // ── Green scenarios ────────────────────────────────────────────────
+    if (stageActive && !isFinal) {
+      const stageRem = d.stageTotalLaps - Math.max(0, d.stageLap);
+      dual(lapLine, `STAGE ${d.stageNum} — ${g(stageRem)} TO GO`, 'lt-white', 'lt-white');
+    } else if (stageActive && isFinal) {
+      dual(lapLine, `FINAL STAGE — ${g(lapsRem)} TO GO`, 'lt-white', 'lt-white');
+    } else {
+      // No stage racing — standard single row
+      const halfway = Math.floor(lapsTotal / 2);
+      single(lapsComp < halfway ? lapLine : `${g(lapsRem)} TO GO`, 'lt-white');
+    }
+  }
+}
+
+function updateRaceName(d) {
+  const el  = document.getElementById('race-name');
+  const val = customName || d.raceName || d.trackNameShort || d.track || '';
+  if (val !== _lastRaceName) { el.textContent = val; _lastRaceName = val; }
+}
+
+// ── Row1 cards width — must span exactly out to the real #top5-label
+// element's left edge (previously this was guessed from a pixel position
+// baked into the background art; now it's measured directly since the
+// label is real HTML). Lap box width varies with its text, so this is
+// recomputed every render rather than assumed. ───────────────────────────
+function layoutRow1Cards() {
+  const cards     = document.getElementById('row1-cards');
+  const ticker    = document.getElementById('ticker');
+  const top5Label = document.getElementById('top5-label');
+  const logo      = document.getElementById('row1-logo');
+  const cardsRect  = cards.getBoundingClientRect();
+  const tickerRect = ticker.getBoundingClientRect();
+  const top5Rect   = top5Label.getBoundingClientRect();
+  const scale = tickerRect.width / 1920 || 1;
+  const cardsLeftInTickerSpace = (cardsRect.left  - tickerRect.left) / scale;
+  const top5LeftInTickerSpace  = (top5Rect.left   - tickerRect.left) / scale;
+  const top5RightInTickerSpace = (top5Rect.right  - tickerRect.left) / scale;
+  const availableWidth = top5LeftInTickerSpace - cardsLeftInTickerSpace - 20;
+  cards.style.width = Math.max(0, availableWidth) + 'px';
+
+  // Logo zone: from the real right edge of "TOP 5" through to the
+  // widget's own right edge (1920px in CSS space), centered within
+  // that span via the flex centering already set up on #row1-logo.
+  const RIGHT_EDGE = 1920;
+  const logoLeft  = top5RightInTickerSpace + 12; // small gap after the label
+  const logoWidth = RIGHT_EDGE - logoLeft - 16;  // 16px matches the widget's own right inset
+  logo.style.left  = logoLeft + 'px';
+  logo.style.width = Math.max(0, logoWidth) + 'px';
+}
+
+// ── Row 2 — continuous scroll-and-loop ────────────────────────────────────
+let row2LoopWidth = 0;
+let row2ScrollX   = 0;
+let row2LastTs    = null;
+
+function setupRow2Loop(force) {
+  const track = document.getElementById('row2-track');
+  if (track.dataset.duplicated === 'true' && !force) return;
+  // Preserve scroll progress ratio so rebuild doesn't cause a position jump
+  const prevWidth    = row2LoopWidth || 0;
+  const scrollRatio  = prevWidth > 0 ? (Math.abs(row2ScrollX) / prevWidth) : 0;
+  const originalHTML = track.innerHTML;
+  track.innerHTML = originalHTML + originalHTML;
+  track.dataset.duplicated = 'true';
+  row2LoopWidth = track.scrollWidth / 2;
+  // Apply saved ratio to new width so position is continuous
+  row2ScrollX = -(scrollRatio * row2LoopWidth);
+  track.style.transform = `translateX(${row2ScrollX}px)`;
+}
+
+function row2Tick(ts) {
+  if (row2LastTs === null) row2LastTs = ts;
+  const dt = (ts - row2LastTs) / 1000;
+  row2LastTs = ts;
+
+  if (row2LoopWidth > 0 && _hasValidData) {
+    row2ScrollX -= _liveScrollSpeed * dt;
+    if (Math.abs(row2ScrollX) >= row2LoopWidth) {
+      row2ScrollX += row2LoopWidth;
+    }
+    document.getElementById('row2-track').style.transform = `translateX(${row2ScrollX}px)`;
+  }
+  requestAnimationFrame(row2Tick);
+}
+requestAnimationFrame(row2Tick);
+
+// ── Pass / swap animation — FLIP technique, ported from mockup verbatim ──
+// Geometry: car gaining a position slides left and renders on top; car
+// losing a position slides right and renders underneath. ~750ms duration.
+let _prevOrder = []; // array of carIdx in previous render's order, for pass detection
+
+function detectAndAnimatePasses(newStandings) {
+  if (!_prevOrder.length) {
+    _prevOrder = newStandings.map(s => s.carIdx);
+    return;
+  }
+  const newOrder = newStandings.map(s => s.carIdx);
+  // Find the first adjacent swap between previous and new order (enough to
+  // drive the visual — multiple simultaneous passes are rare in practice
+  // and the FLIP below still looks correct since it's keyed by carIdx).
+  for (let i = 0; i < Math.min(_prevOrder.length, newOrder.length) - 0; i++) {
+    if (_prevOrder[i] !== newOrder[i]) {
+      animatePass(_prevOrder, newOrder);
+      break;
+    }
+  }
+  _prevOrder = newOrder;
+}
+
+function animatePass(oldOrder, newOrder) {
+  // Snapshot on-screen positions (offsetLeft, not getBoundingClientRect —
+  // row2's scroll transform would contaminate viewport-relative coords)
+  // for every car currently rendered, keyed by carIdx + scope.
+  const firstPositions = new Map();
+  document.querySelectorAll('[data-caridx]').forEach(node => {
+    const ci = node.dataset.caridx;
+    const scopeEl = node.closest('#row1-cards, #row2-track');
+    const scopeId = scopeEl ? scopeEl.id : null;
+    if (!firstPositions.has(ci)) firstPositions.set(ci, []);
+    firstPositions.get(ci).push({ left: node.offsetLeft, scopeId });
+  });
+
+  requestAnimationFrame(() => {
+    const pending = [];
+    const usedPerScope = {};
+
+    document.querySelectorAll('[data-caridx]').forEach(node => {
+      const ci = node.dataset.caridx;
+      const rowScopeEl = node.closest('#row1-cards, #row2-track');
+      const rowScopeId = rowScopeEl ? rowScopeEl.id : null;
+      const newLeft = node.offsetLeft;
+      const oldIdx = oldOrder.indexOf(Number(ci));
+      const newIdx = newOrder.indexOf(Number(ci));
+      if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return;
+
+      const key = ci + '|' + rowScopeId;
+      const candidates = firstPositions.get(ci) || [];
+      const inScope = candidates.filter(c => c.scopeId === rowScopeId);
+      const usedSoFar = usedPerScope[key] || 0;
+      const match = inScope[usedSoFar];
+      usedPerScope[key] = usedSoFar + 1;
+      if (!match) return;
+
+      const dx = match.left - newLeft;
+      if (Math.abs(dx) < 1) return;
+
+      node.style.transition = 'none';
+      node.style.transform = `translateX(${dx}px)`;
+      node.classList.add(newIdx < oldIdx ? 'passing' : 'passed');
+      void node.offsetWidth;
+      pending.push(node);
+    });
+
+    requestAnimationFrame(() => {
+      pending.forEach(node => {
+        node.style.transition = 'transform 0.75s cubic-bezier(0.65, 0, 0.35, 1)';
+        node.style.transform = '';
+      });
+      setTimeout(() => {
+        pending.forEach(node => {
+          node.classList.remove('passing', 'passed');
+          node.style.transition = '';
+        });
+      }, 770);
+    });
+  });
+}
+
+// ── Main render ────────────────────────────────────────────────────────────
+function render(d) {
+  if (d.liveStandingsEnabled !== undefined) OFFICIAL_MODE = !d.liveStandingsEnabled;
+  else if (d.isOnline !== undefined) OFFICIAL_MODE = d.isOnline;
+
+  const session    = (d.session || '').toLowerCase();
+  const state      = (d.sessionState || '').toLowerCase();
+  const isPracQual = session === 'practice' || session === 'qualifying' || session === 'testing';
+  const isYellow   = (d.sessionFlag || '').toLowerCase() === 'yellow';
+  const liveStandings = d.liveStandings || d.standings || [];
+
+  // Checkered — freeze on computedStandings in live mode (captures crossing order)
+  // Cooldown — always use d.standings (has lapsDown injected by bridge)
+  // Otherwise — use scoring mode selection
+  const standings = state === 'cool down'
+    ? (d.standings || [])
+    : (state === 'checkered' && !OFFICIAL_MODE && Array.isArray(d.computedStandings) && d.computedStandings.length)
+      ? d.computedStandings
+      : (OFFICIAL_MODE ? (d.standings || []) : liveStandings);
+
+  _hasValidData = standings.length > 0;
+  updateVisibility(d);
+  if (!standings.length) return;
+
+  const leaderBest = standings.length > 0 ? (standings[0].time || 0) : 0;
+
+  updateLapBox(d, session, isPracQual);
+  updateRaceName(d);
+
+  detectAndAnimatePasses(standings);
+
+  const row1Order = standings.slice(0, 5).map(s => s.carIdx).join(',');
+  const row2Order = standings.map(s => s.carIdx).join(',');
+
+  if (row1Order !== _lastRow1Order) {
+    _lastRow1Order = row1Order;
+    renderRow1(standings, isPracQual, leaderBest, isYellow, d);
+    layoutRow1Cards();
+  } else {
+    updateRow1Gaps(standings, isPracQual, leaderBest, isYellow, d);
+  }
+
+  if (row2Order !== _lastRow2Order) {
+    _lastRow2Order = row2Order;
+    renderRow2(standings, isPracQual, leaderBest, isYellow, d);
+    setupRow2Loop(true);
+  } else {
+    updateRow2Gaps(standings, isPracQual, leaderBest, isYellow, d);
+  }
+}
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+let ws = null;
+const connEl = document.getElementById('connecting');
+
+function handleMessage(data) {
+  try {
+    const d = JSON.parse(data);
+    if (d.reset === true) {
+      latestData = null;
+      _lastHash  = '';
+      _lastRow1Order = '';
+      _lastRow2Order = '';
+      _lastLapHtml   = '';
+      _lastLapIcon   = '';
+      _lastRaceName  = '';
+      _isLiveMode = false;
+      _refLapTime = 0;
+      _lappedState.clear();
+      _lastOfficialHash = '';
+      resetStickyLaps();
+      _prevOrder = [];
+      _lastLiveOrder = '';
+      _hasValidData = false;
+      _lastSeenSession = (d.session || '').toLowerCase();
+      updateVisibility(d);
+      return;
+    }
+
+    // Backstop: if the session type itself changed (practice → qualifying →
+    // race, etc.) without the bridge's reset signal having fired for some
+    // reason, clear live-standings state ourselves so stale gaps/positions
+    // from the previous session don't bleed into the new one.
+    const incomingSession = (d.session || '').toLowerCase();
+    if (_lastSeenSession !== null && incomingSession && incomingSession !== _lastSeenSession) {
+      _isLiveMode = false;
+      _refLapTime = 0;
+      _lappedState.clear();
+      _lastOfficialHash = '';
+      resetStickyLaps();
+      _prevOrder = [];
+      _lastLiveOrder = '';
+      _hasValidData = false;
+    }
+    _lastSeenSession = incomingSession;
+
+    latestData = d;
+
+    const newHash = (d.lapsComplete||0) + '|' + (d.lapsRemaining||0) + '|' +
+                    (d.sessionFlag||'') + '|' + (d.sessionState||'') + '|' +
+                    (d.session||'') + '|' + (d.timeRemaining||0);
+    // Always render to update gaps — order tracking prevents unnecessary DOM rebuilds
+    render(d);
+  } catch (e) {}
+}
+
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => { connEl.classList.add('hidden'); };
+  ws.onmessage = (evt) => handleMessage(evt.data);
+  ws.onclose = () => { connEl.classList.remove('hidden'); setTimeout(connect, 2000); };
+  ws.onerror = () => ws.close();
+}
+
+// Accept postMessage for layout editor preview — registered once at top level
+window.addEventListener('message', e => {
+  if (typeof e.data === 'string') {
+    try {
+      const m = JSON.parse(e.data);
+      if (m._visibilityMode !== undefined) { VISIBILITY_MODE = m._visibilityMode; return; }
+        if (m._dnfDisplay !== undefined) { DNF_DISPLAY = m._dnfDisplay; _lastRow1Order = ''; _lastRow2Order = ''; }
+      if (m._scrollSpeed !== undefined) {
+        _liveScrollSpeed = Math.max(10, Math.min(400, parseFloat(m._scrollSpeed)));
+        return;
+      }
+      if (m._officialMode !== undefined) { OFFICIAL_MODE = !!m._officialMode; return; }
+      if (m._customName !== undefined) {
+        customName = m._customName;
+        if (latestData) updateRaceName(latestData);
+        return;
+      }
+    } catch(ex) {}
+    connEl.classList.add('hidden');
+    handleMessage(e.data);
+  }
+});
+
+layoutRow1Cards();
+connect();
+startLiveTimer();
+</script>
+
+</body>
+</html>

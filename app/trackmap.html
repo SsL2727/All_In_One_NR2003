@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Track map — RaceControl</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<style>
+:root { --bg:#0c0e12; --border:#222834; --border2:#2c3443; --text:#e8ebf2; }
+* { box-sizing: border-box; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font: 13px/1.45 'Segoe UI', Arial, sans-serif; }
+button { font: inherit; color: var(--text); background: #1b212d; border: 1px solid var(--border2); border-radius: 6px; font-weight: 600; padding: 6px 12px; cursor: pointer; }
+button:hover { border-color: #3a4457; background: #232b3a; }
+body { display: flex; flex-direction: column; margin: 0; }
+#wrap { flex: 1; position: relative; min-height: 200px; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+footer { display: flex; gap: 12px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--border, #2a2f3a); }
+#info { flex: 1; font: 12px Consolas, monospace; white-space: pre-line; min-height: 34px; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv"></canvas></div>
+<footer>
+  <div id="info">—</div>
+  <button id="again" title="Throw this track's map away and draw it again from the cars on track (for a map that came out wrong, or one taken from another app).">Record again</button>
+</footer>
+<script>
+// RaceControl (Nov 2026)'s track map window: the track from above (drawn from the AI cars), the cars, S/F, pit in / out,
+// where the field goes double file, and the cone - click on the track to put the cone there.
+const N = 500;
+const rc = window.shl.rc;
+const cv = document.getElementById('cv'), info = document.getElementById('info');
+let st = null, hover = NaN;
+
+const mod = (a, b) => { const n = a % b; return n < 0 ? n + b : n; };
+function at(m, d) {
+  const t = mod(d, m.length) / m.length * N, a = Math.floor(t) % N, b = (a + 1) % N, f = t - Math.floor(t);
+  return [m.x[a] + (m.x[b] - m.x[a]) * f, m.y[a] + (m.y[b] - m.y[a]) * f];
+}
+function heading(m, d) {
+  const s = m.length / N, p = at(m, d - s), q = at(m, d + s);
+  let tx = q[0] - p[0], ty = q[1] - p[1]; const l = Math.hypot(tx, ty);
+  return l < 1e-6 ? [1, 0] : [tx / l, ty / l];
+}
+function atDlat(m, d, lat) { const p = at(m, d), h = heading(m, d); return [p[0] - h[1] * lat, p[1] + h[0] * lat]; }
+function nearest(m, x, y) {
+  let best = Infinity, a = 0;
+  for (let i = 0; i < N; i++) {
+    const j = (i + 1) % N, dx = m.x[j] - m.x[i], dy = m.y[j] - m.y[i], l2 = dx * dx + dy * dy;
+    let t = l2 > 1e-9 ? ((x - m.x[i]) * dx + (y - m.y[i]) * dy) / l2 : 0; t = Math.max(0, Math.min(1, t));
+    const ex = m.x[i] + dx * t - x, ey = m.y[i] + dy * t - y, d2 = ex * ex + ey * ey;
+    if (d2 < best) { best = d2; a = (i + t) * m.length / N; }
+  }
+  return { d: mod(a, m.length), dist: Math.sqrt(best) };
+}
+function fit(m, W, H) {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (let i = 0; i < N; i++) { x0 = Math.min(x0, m.x[i]); x1 = Math.max(x1, m.x[i]); y0 = Math.min(y0, m.y[i]); y1 = Math.max(y1, m.y[i]); }
+  const mx = 84, my = 44, w = Math.max(1, W - 2 * mx), h = Math.max(1, H - 2 * my);
+  const scale = Math.min(w / Math.max(1, x1 - x0), h / Math.max(1, y1 - y0));
+  return { scale, ox: mx + (w - (x1 - x0) * scale) / 2 - x0 * scale, oy: my + (h - (y1 - y0) * scale) / 2 + y1 * scale };
+}
+const P = (f, x, y) => [f.ox + x * f.scale, f.oy - y * f.scale];
+const metres = d => (Number.isFinite(d) ? Math.round(d) + ' m' : '-');
+
+function dlongAt(ev) {
+  if (!st || !st.map) return NaN;
+  const r = cv.getBoundingClientRect(), f = fit(st.map, r.width, r.height);
+  const x = (ev.clientX - r.left - f.ox) / f.scale, y = (f.oy - (ev.clientY - r.top)) / f.scale;
+  const n = nearest(st.map, x, y);
+  return n.dist * f.scale <= 40 ? n.d : NaN;
+}
+
+function label(g, m, f, d, width, color, name) {
+  const p = P(f, ...atDlat(m, d, 0)), q = P(f, ...atDlat(m, d, -(width / 2 + 8) / f.scale));
+  let dx = q[0] - p[0], dy = q[1] - p[1]; const l = Math.hypot(dx, dy); if (l > 0.001) { dx /= l; dy /= l; }
+  const w = g.measureText(name).width, h = 13;
+  const x = Math.max(2, Math.min(cv.clientWidth - w - 2, q[0] - w / 2 + dx * w / 2));
+  const y = Math.max(2, Math.min(cv.clientHeight - h - 2, q[1] - h / 2 + dy * h / 2));
+  g.fillStyle = color; g.fillText(name, x, y + h - 3);
+}
+function tick(g, m, f, d, width, color, name, thick) {
+  if (!Number.isFinite(d) || !(m.length > 0)) return;
+  const k = (width / 2 + 5) / f.scale, a = P(f, ...atDlat(m, d, k)), b = P(f, ...atDlat(m, d, -k));
+  g.strokeStyle = color; g.lineWidth = thick; g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke();
+  if (name) label(g, m, f, d, width, color, name);
+}
+function cone(g, m, f, d, width) {
+  const p = P(f, ...atDlat(m, d, 0)), s = Math.max(14, width * 1.4);
+  g.beginPath(); g.moveTo(p[0], p[1] - s); g.lineTo(p[0] - s * 0.45, p[1] + s * 0.15); g.lineTo(p[0] + s * 0.45, p[1] + s * 0.15); g.closePath();
+  g.fillStyle = 'rgb(255,120,0)'; g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.stroke();
+  label(g, m, f, d, width + s, 'rgb(255,140,20)', 'CONE ' + Math.round(d) + ' m');
+}
+
+function draw() {
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = getComputedStyle(document.body).backgroundColor || '#121418'; g.fillRect(0, 0, W, H);
+  g.font = 'bold 11px Segoe UI, sans-serif';
+  const m = st && st.map;
+  if (!m) {
+    g.fillStyle = '#cfd3da'; g.font = '13px Segoe UI, sans-serif';
+    ["No map for this track yet.", '', 'It draws itself from the cars on track: start the session (practice or the race)', "and let the AI cars run - the first lap or so is enough. You don't have to drive."]
+      .forEach((t, i) => g.fillText(t, 16, 28 + i * 18));
+    return;
+  }
+  const f = fit(m, W, H), width = Math.max(6, Math.min(16, 15 * f.scale));
+  const path = () => { g.beginPath(); for (let i = 0; i <= N; i++) { const p = P(f, m.x[i % N], m.y[i % N]); if (i) g.lineTo(...p); else g.moveTo(...p); } };
+  g.lineJoin = 'round';
+  path(); g.strokeStyle = 'rgb(18,18,20)'; g.lineWidth = width + 4; g.stroke();
+  path(); g.strokeStyle = 'rgb(120,124,132)'; g.lineWidth = width; g.stroke();
+  // direction of travel
+  const a0 = at(m, m.length * 0.03), h0 = heading(m, m.length * 0.03);
+  const p0 = P(f, ...a0), p1 = P(f, a0[0] + h0[0] * 40 / f.scale, a0[1] + h0[1] * 40 / f.scale);
+  g.strokeStyle = 'rgba(230,232,236,0.6)'; g.lineWidth = 2; g.beginPath(); g.moveTo(...p0); g.lineTo(...p1); g.stroke();
+  const ang = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
+  g.beginPath(); g.moveTo(...p1); g.lineTo(p1[0] - 9 * Math.cos(ang - 0.45), p1[1] - 9 * Math.sin(ang - 0.45)); g.moveTo(...p1); g.lineTo(p1[0] - 9 * Math.cos(ang + 0.45), p1[1] - 9 * Math.sin(ang + 0.45)); g.stroke();
+  (st.cars || []).forEach((c, j) => {
+    if (!c) return;
+    const p = P(f, c[0], c[1]), r = j === 0 ? 5 : 3.5;
+    g.fillStyle = j === 0 ? 'gold' : '#fff'; g.beginPath(); g.arc(p[0], p[1], r, 0, 2 * Math.PI); g.fill();
+  });
+  const mk = st.marks || {};
+  tick(g, m, f, 0, width, '#fff', 'S/F', 4);
+  tick(g, m, f, mk.pitEntry ?? NaN, width, 'rgb(70,140,230)', 'PIT IN', 2);
+  tick(g, m, f, mk.pitExit ?? NaN, width, 'rgb(70,140,230)', 'PIT OUT', 2);
+  tick(g, m, f, mk.doubleFile ?? NaN, width, 'rgb(120,190,90)', 'DOUBLE FILE', 2);
+  if (Number.isFinite(hover)) tick(g, m, f, hover, width, 'rgba(255,140,0,0.63)', null, 2);
+  if (mk.cone != null) cone(g, m, f, mk.cone, width);
+}
+
+function infoText() {
+  if (!st) return '—';
+  if (!st.map) return st.status;
+  const c = st.marks && st.marks.cone;
+  const h = Number.isFinite(hover) ? `Click to put the cone at ${metres(hover)} (${Math.round(st.map.length - hover)} m before the line)` : 'Click on the track to place the cone.';
+  return st.status + '\n' + h + '   Cone: ' + (c == null ? 'where the pace car is' : metres(c));
+}
+
+cv.addEventListener('mousemove', ev => { hover = dlongAt(ev); info.textContent = infoText(); draw(); });
+cv.addEventListener('mouseleave', () => { hover = NaN; draw(); });
+cv.addEventListener('click', ev => { const d = dlongAt(ev); if (Number.isFinite(d)) rc.mapCone(d).then(s => { st = s; draw(); info.textContent = infoText(); }); });
+document.getElementById('again').addEventListener('click', () => {
+  if (confirm("Draw this track's map again from the cars on track?")) rc.mapRedraw().then(s => { st = s; draw(); });
+});
+window.addEventListener('resize', draw);
+function refresh() { rc.mapState().then(s => { st = s; info.textContent = infoText(); draw(); }).catch(() => {}); }
+refresh(); setInterval(refresh, 200);
+</script>
+</body>
+</html>

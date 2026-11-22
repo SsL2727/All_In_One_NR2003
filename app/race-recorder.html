@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Race recorder</title>
+</head>
+<body>
+<script src="championship-core.js"></script>
+<script>
+// Hidden window — runs for as long as the app is open, independent of which
+// overlays are enabled. It watches the telemetry stream, and when a race ends
+// it hands a summary to the main process, which writes the HTML file.
+
+const WS_URL = window.__PSF?.wsUrl || 'ws://localhost:8765';
+const norm   = n => String(n == null ? '' : n).trim();
+const nameOf = s => String((s && (s.fullName || s.name)) || '').trim();
+
+let qual = null;   // latest qualifying snapshot { track, rows }
+let dbgI = { qf: 0, qOff: 0, sess: '', st: '', at: false, track: '' };   // diagnostics shown on the Race Stats page
+let qBest = null;  // best time per car seen in the current qualifying session
+let qualStats = null;   // same table for the Race Stats page (dropped when the race is over)
+let rec  = null;   // current race
+
+// ── Starting grid ────────────────────────────────────────────────────────
+// The bridge only fills the standings after the first start/finish crossing, so before the green flag they are
+// usually EMPTY (qualifying skipped => no table either). The cars' positions on the track (opponents[].trkPct) are
+// there from the start, so the grid is also read from them: the front car of the compact group of cars is the pole.
+let preGrid = null;          // { src: 'standings' | 'track' (+'+green'), rows: [{pos, number, name}] }
+let preGridLocked = false;   // true from the green flag until the next race is being set up
+let preGridFixed = false;    // the first COMPLETE official Pre-Race table is kept: the game re-sorts it (half-ordered) in later frames
+let preGridChg = 0;          // how many later, different official tables were ignored (diagnostics)
+// The official Standings/Qualifying table is only COMMITTED when the pace car starts moving (sessionState 'parade laps'): before that (menus,
+// get in car, warmup) the driver is not on track yet and the table can still be stale / half-built. What is seen earlier is kept here only as a
+// last-resort fallback, used if the table is not available at the moment the pace car starts.
+let preLog = [], _preLogKey = '';   // diagnostics: what the bridge sends before the green flag (state / standings rows), shown on the Race Stats page
+let menuGrid = null;         // rows seen before the pace car moved (fallback only)
+
+function trackRows(d) {
+  const nums = {}, names = {};
+  [d.drivers, d.relative, d.standings, d.liveStandings].forEach(l => (Array.isArray(l) ? l : []).forEach(s => {
+    const n = norm(s && s.number);
+    if (s && typeof s.carIdx === 'number' && n && n !== '??') { nums[s.carIdx] = n; if (!names[s.carIdx]) names[s.carIdx] = nameOf(s); }
+  }));
+  const stale = new Set(d.staleCars || []);
+  const list = [], seen = new Set();
+  const add = (idx, pct, wx, wy) => {
+    if (typeof idx !== 'number' || typeof pct !== 'number' || !isFinite(pct) || seen.has(idx) || !nums[idx] || stale.has(idx)) return;
+    seen.add(idx); list.push({ idx, p: ((pct % 1) + 1) % 1, wx: Number(wx), wy: Number(wy) });
+  };
+  (Array.isArray(d.opponents) ? d.opponents : []).forEach(o => o && add(o.carIdx, o.trkPct, o.worldX, o.worldY));
+  if (d.player && d.player.inCar !== false) add(d.playerCarIdx, d.player.trkPct, d.playerWorldX, d.playerWorldY);
+  const n = list.length;
+  if (n < 2) return null;
+  list.sort((a, b) => a.p - b.p);
+  let gi = 0, gmax = -1;
+  for (let i = 0; i < n; i++) {
+    const nx = i === n - 1 ? list[0].p + 1 : list[i + 1].p;
+    if (nx - list[i].p > gmax) { gmax = nx - list[i].p; gi = i; }
+  }
+  if (gmax < 0.25) return null;                // cars spread all around the lap (garage / pits): not a grid (a real grid fits in well under 3/4 of a lap)
+  const rows = [], used = new Set(), seq = [];
+  rows.span = 1 - gmax;                        // how much of the lap the pack covers: the smallest span = cars stopped on the grid
+  for (let k = 0; k < n; k++) {                // gap ahead of list[gi] => it is the pole; the rest follow behind it
+    const c = list[(gi - k + n) % n], num = nums[c.idx];
+    if (used.has(num)) continue; used.add(num);
+    seq.push({ c, num });
+  }
+  const ref = laneRefine(seq);                 // the two cars of a row sit side by side: their order along the track is noise, so use the lane
+  rows.refined = ref.ok ? ref.side : false;
+  ref.seq.forEach(x => rows.push({ pos: rows.length + 1, number: x.num, name: names[x.c.idx] || '' }));
+  return rows;
+}
+
+// Double-file grid: P1,P3,P5… are in one lane and P2,P4,P6… in the other. The distance along the track between the two cars of a row is
+// about zero, so sorting by it alone swaps some pairs (+-1 position). Here each car is assigned to a lane (left / right of the pack's own
+// centre line, from the world coordinates) and the lanes are interleaved, each lane ordered by track position (cars 2 rows apart: reliable).
+// Which lane holds the odd positions is decided by whichever choice stays closest to the plain track order. If anything looks off
+// (no coordinates, uneven lanes, big changes) the plain track order is returned untouched.
+function laneRefine(seq) {
+  const n = seq.length, none = { ok: false, seq };
+  if (n < 6 || seq.some(x => !isFinite(x.c.wx) || !isFinite(x.c.wy))) return none;
+  const A = [], B = [];
+  for (let i = 0; i < n; i++) {
+    const lo = Math.max(0, i - 4), hi = Math.min(n - 1, i + 4);
+    let cx = 0, cy = 0; for (let j = lo; j <= hi; j++) { cx += seq[j].c.wx; cy += seq[j].c.wy; }
+    cx /= (hi - lo + 1); cy /= (hi - lo + 1);
+    const hx = seq[lo].c.wx - seq[hi].c.wx, hy = seq[lo].c.wy - seq[hi].c.wy;     // forward direction of the pack (front car minus back car)
+    const cross = hx * (seq[i].c.wy - cy) - hy * (seq[i].c.wx - cx);
+    if (!isFinite(cross) || cross === 0) return none;
+    (cross > 0 ? A : B).push(seq[i]);
+  }
+  if (Math.abs(A.length - B.length) > 2 || Math.min(A.length, B.length) < 3) return none;
+  const weave = (P, Q) => { const r = []; for (let k = 0; k < Math.max(P.length, Q.length); k++) { if (k < P.length) r.push(P[k]); if (k < Q.length) r.push(Q[k]); } return r; };
+  const cost = r => r.reduce((t, x, i) => t + Math.abs(i - seq.indexOf(x)), 0);
+  // A = cars on the LEFT of the pack (same convention as the radar: cross > 0 here = left). The leader always starts on the left, so the left
+  // lane takes the odd positions. Only if the track order disagrees by a wide margin (coordinates mirrored) is the other choice used.
+  const r1 = weave(A, B), r2 = weave(B, A), c1 = cost(r1), c2 = cost(r2);
+  const mirrored = c2 + n * 0.2 < c1, best = mirrored ? r2 : r1, c = mirrored ? c2 : c1;
+  if (c / n > 1.2) return none;                // too different from the track order: lane detection not trustworthy
+  return { ok: true, seq: best, side: mirrored ? 'R' : 'L' };
+}
+
+function captureGrid(d, off) {
+  const state = String(d.sessionState || '').toLowerCase();
+  if (state === 'cool down') { preGrid = null; preGridLocked = false; preGridFixed = false; preGridChg = 0; menuGrid = null; qBest = null; qual = null; qualStats = null; return; }
+  const make = () => {
+    if (off.length) return { src: 'standings', rows: off.map((s, i) => ({ pos: i + 1, number: norm(s.number), name: nameOf(s) })) };
+    const r = trackRows(d); return r ? { src: 'track', rows: r, span: r.span, refined: r.refined } : null;
+  };
+  if (state !== 'racing' && state !== 'checkered') {
+    if (preGridLocked) { preGridLocked = false; preGrid = null; preGridFixed = false; preGridChg = 0; menuGrid = null; qBest = null; qual = null; qualStats = null; }   // back to gridding: a new race is being set up
+    // PRE-RACE: the game's OFFICIAL standings are the qualifying page = the starting order. liveStandings (computed from the cars' track
+    // positions) are NOT used here: while the grid forms they come out half-ordered.
+    const offi = (Array.isArray(d.standings) ? d.standings : []).filter(s => s && norm(s.number) && norm(s.number) !== '??');
+    const paceOn = state === 'parade laps';   // the pace car is moving: from here the official table is the starting order
+    // Back to the menus / garage before the pace car has moved: a table committed earlier is dropped so the next pace start captures a fresh one
+    if ((state === 'get in car' || state === 'warmup') && preGrid && preGrid.src === 'standings-prerace') { preGrid = null; preGridFixed = false; preGridChg = 0; }
+    const offRows = offi.map((s, i) => ({ pos: i + 1, number: norm(s.number), name: nameOf(s) }));
+    if (offi.length && !paceOn) menuGrid = offRows;   // seen too early: kept only as a fallback, NOT committed
+    if (paceOn) {
+      let rows = offRows;
+      // table not available at the moment the pace car starts: fall back to what the menu showed (never overrides a real table)
+      if (!rows.length && menuGrid && !(preGrid && preGrid.src === 'standings-prerace')) { preGrid = { src: 'standings-prerace', rows: menuGrid, fromMenu: true }; preGridFixed = false; return; }
+      if (rows.length) {
+        // the latest official table wins (the game can still be filling it in the first frames), but never a clearly partial one
+        if (preGridFixed) {
+          if (preGrid && rows.some((r, i) => !preGrid.rows[i] || preGrid.rows[i].number !== r.number)) preGridChg++;   // later frame differs: ignored
+          return;
+        }
+        if (!preGrid || preGrid.src !== 'standings-prerace' || rows.length >= preGrid.rows.length * 0.8) preGrid = { src: 'standings-prerace', rows };
+        const fieldN = Math.max((Array.isArray(d.drivers) ? d.drivers.length : 0), rows.length);
+        if (rows.length >= fieldN * 0.9) preGridFixed = true;   // complete: keep it, ignore the re-sorted ones that follow
+        return;
+      }
+    }
+    const g = trackRows(d);
+    // Official table not available yet: order read from the track, as before (only while no official table has been captured)
+    if (g && !(preGrid && preGrid.src === 'standings-prerace')) {
+      const gg = { src: 'track', rows: g, span: g.span, refined: g.refined };
+      if (!preGrid || preGrid.src !== 'track' || gg.rows.length > preGrid.rows.length ||
+          (gg.rows.length === preGrid.rows.length && gg.span <= (preGrid.span == null ? 1 : preGrid.span) + 0.0005)) preGrid = gg;
+    }
+    return;
+  }
+  if (!preGridLocked) {
+    // The game's standings seen BEFORE the green flag can still be half-built (some cars listed ahead of their real slot, especially with
+    // accelerated sessions). The first racing frame that has standings (before the first start/finish crossing) is the real starting order.
+    const havePre = preGrid && preGrid.src === 'standings-prerace';
+    if (state === 'racing' && !havePre && (Number(d.lapsComplete) || 0) <= 1) {
+      // Only the game's OFFICIAL standings can replace the grid. liveStandings (computed from the cars' track positions) come out half-ordered
+      // at the green flag, so they never overwrite a grid already read from the cars lined up on the track.
+      const offOfficial = (Array.isArray(d.standings) ? d.standings : []).filter(x => x && norm(x.number) && norm(x.number) !== '??');
+      if (offOfficial.length) preGrid = { src: 'standings+green', rows: offOfficial.map((x, i) => ({ pos: i + 1, number: norm(x.number), name: nameOf(x) })) };
+      else if (!preGrid) { const g = make(); if (g) { g.src += '+green'; preGrid = g; } }
+    }
+    preGridLocked = true;
+  }
+}
+
+// Which source wins: the game's own standings before the green flag are the real grid; otherwise the qualifying table; the order on track last
+const isStdSrc = s => /^standings/.test(String(s || ''));
+
+function newRec(key) {
+  return {
+    key, lastLap: 0, partial: false,
+    grid: null, gridLocked: false,          // starting order, locked at the green flag
+    stages: {},                             // stage number → { position: car number }
+    counts: {}, leaders: new Set(), prevLeader: null, leadChanges: 0,
+    flags: 0, cautionLaps: 0, wasYellow: false,
+    sawRacing: false, sawFinish: false, saved: false,
+    final: null,                            // last official standings seen at/after the flag
+  };
+}
+
+// ── Chase ────────────────────────────────────────────────────────────────
+// When the chase is enabled in the Championship window, work out which drivers
+// are in it (top N of the championship order, plus anyone within X points of
+// the leader) and tell the overlays, which paint those names yellow.
+let champCfg = null, champCfgJson = '', lastD = null, lastChaseSig = null;
+
+async function refreshCfg() {
+  try {
+    const r = await window.shl.getChampionship();
+    const next = r && r.data ? r.data : null;
+    // Compare against the cached string instead of re-serialising the old config each time
+    const nextJson = JSON.stringify(next);
+    const changed = nextJson !== champCfgJson;
+    champCfg = next; champCfgJson = nextJson;
+    if (changed) updateChase();
+  } catch (e) {}
+}
+// The main process pushes 'championship-updated' on every change (see onChampionshipUpdated
+// below); this poll is only a safety net, so it doesn't need to run every 3 s.
+setInterval(refreshCfg, 15000);
+if (window.shl.onChampionshipUpdated) window.shl.onChampionshipUpdated(refreshCfg);
+refreshCfg();
+
+function ledForChase(d) {
+  const off = d.standings || [];
+  if (off.some(s => s.lapsLead !== undefined || s.leadLaps !== undefined)) {
+    const m = {}; off.forEach(s => { m[norm(s.number)] = Number(s.lapsLead ?? s.leadLaps) || 0; }); return m;
+  }
+  return (rec && String(d.session || '').toLowerCase() === 'race') ? rec.counts : {};
+}
+
+function updateChase() {
+  let list = [];
+  const c = (champCfg && lastD) ? ChampCore.effectiveConfig(champCfg, String(lastD.sessionCookie) + '|' + String(lastD.track)) : champCfg;
+  if (c && c.chaseEnabled && c.chaseMode === 'manual' && Array.isArray(c.drivers)) {
+    // Playoff: exactly the drivers the user ticked — independent of the standings
+    list = c.drivers.filter(d => d.playoff === true).map(d => d.number);
+  } else if (c && c.chaseEnabled && lastD && Array.isArray(c.drivers) && c.drivers.length) {
+    const standings = ChampCore.pickStandings(lastD);
+    const mode      = ChampCore.getMode(lastD, standings);
+    const project   = c.chaseBasis !== 'pre' && (mode === 'live' || mode === 'final');
+    const rows      = ChampCore.computeChampionship(c, standings, project, ledForChase(lastD), ChampCore.stagePtsMap(lastD, c));
+    const lead      = rows.length ? rows[0].total : 0;
+    rows.forEach((r, i) => {
+      if (i < (c.chaseSize || 10) || (c.chaseWithin > 0 && lead - r.total <= c.chaseWithin)) list.push(r.number);
+    });
+  }
+  const sig = list.join(',');
+  if (sig === lastChaseSig) return;
+  lastChaseSig = sig;
+  window.shl.setChaseSet(list).catch(() => {});
+}
+
+// ── Telemetry in ─────────────────────────────────────────────────────────
+// Reads a qualifying table (the game's Standings > QUALIFYING page) and ADDS it to what was already seen: the bridge can deliver only some
+// rows per frame (a window of the page), so rows are accumulated across frames and the order is rebuilt from the best times.
+function ingestQual(d, off, isQualSession) {
+    const trk = d.track || '', ck = String(d.sessionCookie);
+    // Accelerated qualifying: the frames seen can be mid-session snapshots (cars that have not run yet sit among / above the timed ones,
+    // and the final table may never arrive). So the order is rebuilt from the best time each car has shown during THIS qualifying
+    // session: timed cars by time, cars without a time after them in the latest table order.
+    if (!qBest || qBest.track !== trk || false) qBest = { track: trk, cookie: ck, times: {}, names: {}, seen: [] };
+    const cur = [];
+    off.forEach(s => {
+      const n = norm(s && s.number); if (!n || n === '??' || cur.includes(n)) return;
+      cur.push(n); qBest.names[n] = nameOf(s) || qBest.names[n] || '';
+      const t = Number(s.time); if (t > 0 && !(qBest.times[n] <= t)) qBest.times[n] = t;
+    });
+    qBest.seen = cur.concat(qBest.seen.filter(n => !cur.includes(n)));
+    const nums = qBest.seen.slice();
+    const timedNums = nums.filter(n => qBest.times[n] > 0).sort((x, y) => qBest.times[x] - qBest.times[y]);
+    const rest = nums.filter(n => !(qBest.times[n] > 0));
+    // Complete table (every car has a time) = the game's own final order: use it as it is, not re-sorted
+    const full = cur.length > 0 && cur.every(n => qBest.times[n] > 0);
+    // The telemetry lists the cars in an order that is NOT the final table (two groups, each in order). The final qualifying table is the
+    // cars sorted by their best time (what the game's Qualifying page shows). Ties keep the order of the latest table; cars without a
+    // time go after, in the order they were seen.
+    const rows = timedNums.concat(rest).map((n, k) => ({
+      pos: k + 1, number: n, name: qBest.names[n] || '',
+      time: qBest.times[n] > 0 ? qBest.times[n].toFixed(3) : '--',
+    }));
+    qual = { track: trk, rows, timed: timedNums.length > 0, nTimed: timedNums.length, cookie: ck };
+    qualStats = qual;
+    qualStats.consumedBy = null;   // fresh qualifying table: not yet used by any race
+  reportStart(d);
+}
+// Is this frame's standings a qualifying page (lap times, ascending) and not race intervals?
+function looksLikeQualPage(rows) {
+  if (!Array.isArray(rows) || rows.length < 5) return false;
+  const t = rows.map(s => Number(s && s.time) || 0);
+  if (!(t[0] >= 10)) return false;                       // race intervals start at 0 for the leader; lap times are well above that
+  let prev = 0;
+  for (const x of t) { if (x > 0) { if (x + 0.0005 < prev) return false; prev = x; } }
+  return true;
+}
+
+function onData(d) {
+  lastD = d && d.reset !== true ? d : lastD;
+  try { updateChase(); } catch (e) {}
+  if (!d || d.reset === true) {
+    endIfPending();
+    if (rec && rec.sawRacing) { qualStats = null; qual = null; qBest = null; preGrid = null; preGridLocked = false; preGridFixed = false; preGridChg = 0; menuGrid = null; }   // a race was started: its qualifying table / grid are used up
+    rec = null; return;
+  }
+  const session = String(d.session || '').toLowerCase();
+  const off     = (d.standings && d.standings.length) ? d.standings : (d.liveStandings || []);
+  dbgI.sess = session; dbgI.st = String(d.sessionState || '').toLowerCase(); dbgI.at = !!d.atTrack; dbgI.track = String(d.track || '');
+  if (session === 'qualifying') { dbgI.qf++; if (off.length) dbgI.qOff++; }
+  const _st = String(d.sessionState || '').toLowerCase();
+  if (session !== 'qualifying' && _st !== 'cool down' && !(rec && rec.sawRacing)) {
+    const sl = Array.isArray(d.standings) ? d.standings.length : 0, ll = Array.isArray(d.liveStandings) ? d.liveStandings.length : 0;
+    const k = [session, _st, d.atTrack ? 'T' : 'M', sl, ll].join('/');
+    if (k !== _preLogKey) {
+      _preLogKey = k;
+      preLog.push(k + (sl ? '[' + d.standings.slice(0, 4).map(x => norm(x && x.number)).join(',') + ']' : ''));
+      if (preLog.length > 14) preLog.shift();
+    }
+  }
+  // the Pre-Race page (a menu, like the qualifying one) also carries the official table: read it too, but only to capture the grid
+  const preRace = session === 'race' && _st !== 'racing' && _st !== 'checkered' && _st !== 'cool down';
+  if (preRace && _st === 'parade laps' && looksLikeQualPage(d.standings)) ingestQual(d, d.standings, false);   // only once the pace car is moving   // the QUALIFYING page open in the game: accumulate it
+  const preRaceMenu = preRace && !d.atTrack && Array.isArray(d.standings) && d.standings.length > 0;
+  if (preRaceMenu) { captureGrid(d, off); reportStart(d); return; }
+  if (!d.atTrack && !(session === 'qualifying' && off.length)) { endIfPending(); return; }   // qualifying is read even from the game's menus
+
+  if (session !== 'race') { preGrid = null; preGridLocked = false; preGridFixed = false; preGridChg = 0; menuGrid = null; qBest = null; qual = null; qualStats = null; endIfPending(); return; }   // qualifying (or anything before the race) is NOT read: the table comes only from Pre-Race
+  captureGrid(d, off);                       // also works while the standings are still empty (grid from the track positions)
+  if (!off.length) { reportStart(d); return; }
+
+  onRace(d, off);
+}
+
+function onRace(d, off) {
+  const state = String(d.sessionState || '').toLowerCase();
+  const key   = String(d.sessionCookie) + '|' + String(d.track);
+  const lead  = leaderOf(d, off);
+  const lap   = Math.max(Number(d.lapsComplete) || 0, lapsOf(d, lead), lapsOf(d, off[0]));
+
+  if (!rec || rec.key !== key || lap < rec.lastLap) {
+    endIfPending(); rec = newRec(key);
+    // A qualifying table already consumed by an earlier race is stale: if qualifying was skipped this time, the real grid must win
+    if (qualStats && qualStats.consumedBy && qualStats.consumedBy !== key) qualStats = null;
+    if (qual && qual.consumedBy && qual.consumedBy !== key) qual = null;
+  }
+
+  // Starting grid: captured by captureGrid() (not tied to rec, so a session cookie change at the green flag can't lose it)
+  if (preGrid) { rec.grid = preGrid.rows; rec.gridSrc = preGrid.src; }
+  if (state === 'checkered' || state === 'cool down') qualStats = null;   // this qualifying table is used up
+  reportStart(d);
+  if (state === 'racing') {
+    rec.gridLocked = true;
+    if (qualStats && !qualStats.consumedBy) qualStats.consumedBy = key;
+    if (qual && !qual.consumedBy) qual.consumedBy = key;
+    if (!rec.sawRacing) { rec.sawRacing = true; window.shl.raceStarted().catch(() => {}); }
+  }
+
+  // Stage results reported by the bridge (non-final stages): remember who finished where
+  if (Array.isArray(d.stageWinners)) {
+    const srcs = [d.liveStandings, d.standings, d.drivers];
+    d.stageWinners.forEach(w => {
+      if (!w || !(w.pos >= 1) || !(w.stage >= 1)) return;
+      let e = null;
+      for (const sr of srcs) { if (Array.isArray(sr)) { e = sr.find(x => x && x.carIdx === w.carIdx); if (e) break; } }
+      if (!e) return;
+      (rec.stages[w.stage] = rec.stages[w.stage] || {})[w.pos] = norm(e.number);
+    });
+  }
+
+  if (state === 'racing' || state === 'checkered') {
+    // Each time the leader completes a lap, that lap is credited to P1
+    const k = norm(lead.number);
+    if (lap > rec.lastLap) {
+      if (rec.lastLap === 0 && lap > 1) {          // recorder started mid-race
+        rec.partial = true; rec.prevLeader = k; rec.lastLap = lap;
+      } else {
+        const add = lap - rec.lastLap;
+        rec.counts[k] = (rec.counts[k] || 0) + add;
+        if (rec.prevLeader !== null && rec.prevLeader !== k) rec.leadChanges++;
+        rec.leaders.add(k); rec.prevLeader = k;
+        if (isYellow(d)) rec.cautionLaps += add;
+        rec.lastLap = lap;
+      }
+    }
+    // Caution periods
+    const y = isYellow(d);
+    if (y && !rec.wasYellow && state === 'racing') rec.flags++;
+    rec.wasYellow = y;
+    if (Number(d.cautionFlags) > rec.flags) rec.flags = Number(d.cautionFlags);
+  }
+
+  if (state === 'checkered' || state === 'cool down') {
+    rec.sawFinish = true;
+    rec.final = snapshot(d, off);
+  }
+  if (state === 'cool down' && rec.sawRacing && !rec.saved) send();
+}
+
+const isYellow = d => String(d.sessionFlag || '').toLowerCase() === 'yellow';
+
+// Laps completed by a car. The per-car `lap` field of the standings is not always filled in
+// (it stays 0 during the race), so use the same sources the overlays use: d.carLaps[carIdx].
+function lapsOf(d, s) {
+  if (!s) return 0;
+  const cl = d.carLaps && s.carIdx !== undefined ? Number(d.carLaps[s.carIdx]) : NaN;
+  return Math.max(Number.isFinite(cl) ? cl : 0, Number(s.lap) || 0);
+}
+// Race leader right now: the live order when the bridge sends it, otherwise the official one
+function leaderOf(d, off) {
+  const live = (d.liveStandings && d.liveStandings.length) ? d.liveStandings : off;
+  return live[0] || off[0];
+}
+
+function snapshot(d, off) {
+  return {
+    track: d.trackName || d.trackNameShort || d.track || '',
+    cars: off.map(s => ({
+      number: norm(s.number), name: nameOf(s), lap: lapsOf(d, s),
+      time: Number(s.time) || 0, lapsDown: Number(s.lapsDown) || 0,
+      status: String(s.status || 'running'),
+      led: (s.lapsLead !== undefined || s.leadLaps !== undefined) ? (Number(s.lapsLead ?? s.leadLaps) || 0) : undefined,
+    })),
+  };
+}
+
+// The race ended (flag seen) but the session closed before 'cool down' — still save it
+function endIfPending() {
+  if (rec && rec.sawRacing && rec.sawFinish && !rec.saved) send();
+}
+
+// ── Build + send ─────────────────────────────────────────────────────────
+function titleCase(s) { return s.replace(/\b\w/g, c => c.toUpperCase()); }
+
+function send() {
+  if (!rec || !rec.final || rec.saved) return;
+  rec.saved = true;
+  const f = rec.final, cars = f.cars;
+  const leaderLap = cars.length ? cars[0].lap : 0;
+  const bridgeLed = cars.some(c => c.led !== undefined);
+
+  // Starting position: the Qualifying table of this track (the in-game Qualifying tab, with or without times) always wins; the grid seen before the green flag is only the fallback
+  const startPos = {};
+  const trackNow = rec.key.split('|')[1];
+  const qSrc = (qual && qual.track === trackNow && (!qual.consumedBy || qual.consumedBy === rec.key) && qual.rows.length >= cars.length * 0.9) ? qual.rows : null;
+  const qM = {}, gM = {};
+  (qSrc || []).forEach(g => { if (g.number && !(g.number in qM)) qM[g.number] = g.pos; });
+  (rec.grid || []).forEach(g => { if (!(g.number in gM)) gM[g.number] = g.pos; });
+  [qM, gM].forEach(m => Object.keys(m).forEach(k => { if (!(k in startPos)) startPos[k] = m[k]; }));
+
+  // finishing position of every car in each stage (0 = did not score a listed position)
+  const stageNums = Object.keys(rec.stages).map(Number).sort((a, b) => a - b);
+  const stagesOf = {};
+  stageNums.forEach(sn => { Object.entries(rec.stages[sn]).forEach(([pos, num]) => {
+    (stagesOf[num] = stagesOf[num] || {})[sn] = Number(pos);
+  }); });
+
+  const rows = cars.map((c, i) => {
+    const down = c.lapsDown >= 1 ? c.lapsDown : Math.max(0, leaderLap - c.lap);
+    let interval = '--';
+    if (i > 0) interval = down >= 1 ? `-${down}L` : (c.time > 0 ? `-${c.time.toFixed(3)}` : '--');
+    const st = c.status.toLowerCase();
+    return {
+      finish: i + 1,
+      start:  startPos[c.number] ?? null,
+      number: c.number, name: c.name,
+      interval, laps: c.lap,
+      led:    bridgeLed ? (c.led || 0) : (rec.counts[c.number] || 0),
+      ...(stagesOf[c.number] ? { stages: stageNums.map(sn => stagesOf[c.number][sn] || 0) } : {}),
+      status: (st === 'running' || st === '') ? 'Running' : titleCase(st),
+    };
+  });
+
+  // Qualifying table: real qualifying results if seen on this track, else the starting grid
+  let qrows = [];
+  if (qual && qual.track === (rec.key.split('|')[1])) qrows = qual.rows;
+  else if (rec.grid) qrows = rec.grid.map(g => ({ pos: g.pos, number: g.number, name: g.name, time: '--' }));
+
+  window.shl.saveRaceResult({
+    key:         rec.key,
+    track:       f.track,
+    qualifying:  qrows,
+    rows,
+    cautionFlags: rec.flags,
+    cautionLaps:  rec.cautionLaps,
+    leadChanges:  rec.leadChanges,
+    leadDrivers:  rec.leaders.size || (bridgeLed ? cars.filter(c => (c.led || 0) > 0).length : 0),
+    partial:      rec.partial,
+  }).catch(() => {});
+}
+
+// ── starting order for the Race Stats page (qualifying table of this track + grid seen before the green flag) ──
+let _startSig = '';
+function reportStart(d) {
+  try {
+    const track = String(d.track || '');
+    const q = (qualStats && (!qualStats.track || !track || qualStats.track === track)) ? qualStats.rows : null;
+    const toMap = rows => { const m = {}; (rows || []).forEach(x => { if (x && x.number && !(x.number in m)) m[x.number] = x.pos; }); return m; };
+    const qM = q ? toMap(q) : null, gM = preGrid ? toMap(preGrid.rows) : null;
+    // Every car of the field, so the resolved order is ALWAYS a complete 1..N list taken from ONE source (no per-driver mixing of
+    // qualifying / grid / page fallback, which produced repeated numbers like 1,1,2,2 after an accelerated qualifying)
+    const field = [];
+    [d.drivers, d.standings, d.liveStandings].forEach(l => (Array.isArray(l) ? l : []).forEach(s => { const n = norm(s && s.number); if (n && n !== '??' && !field.includes(n)) field.push(n); }));
+    field.sort((a, b) => (parseInt(a, 10) - parseInt(b, 10)) || (a < b ? -1 : a > b ? 1 : 0));
+    const byPos = m => Object.keys(m || {}).sort((a, b) => m[a] - m[b]);
+    const complete = (m, ...orders) => {
+      const out = {}; let mx = 0;
+      Object.keys(m).sort((a, b) => m[a] - m[b]).forEach(n => { out[n] = ++mx; });    // renumber 1..N without gaps or repeats
+      orders.forEach(o => (o || []).forEach(n => { if (n && !(n in out)) out[n] = ++mx; }));
+      return out;
+    };
+    const qCover = qM && field.length ? field.filter(n => n in qM).length / field.length : (qM ? 1 : 0);
+    // `start` is the resolved order (what Race Stats / Driver Info show): complete qualifying with real times > real grid > qualifying without times > order on track
+    let start = null;
+    // Same path as when the qualifying session is skipped: the grid the game itself built (from the qualifying result) is the starting order.
+    // The qualifying table seen in telemetry is only a fallback when no grid was captured (it can be partial with accelerated qualifying).
+    // Accelerated sessions: a grid read from the cars' track positions is unreliable (cars teleport / bunch up), so when the qualifying
+    // table has real times for (almost) the whole field it wins, unless the grid comes from the game's own standings.
+    const useQual = !!qM && qCover >= 0.9 && !(preGrid && preGrid.src === 'standings-prerace');   // the Pre-Race page decides when captured; else the final qualifying table
+    if (useQual) start = complete(qM, field);
+    else if (gM) {
+      let g2 = gM;
+      // Grid read from the track: the two cars of a row (P1/P2, P3/P4 …) sit side by side and can come out swapped. When both have a
+      // qualifying time seen this session, the faster one goes first.
+      if (!isStdSrc(preGrid.src) && qBest && qBest.times) {
+        const T = qBest.times, ord = byPos(gM); g2 = Object.assign({}, gM);
+        for (let i = 0; i + 1 < ord.length; i += 2) {
+          const a = ord[i], b = ord[i + 1];
+          if (T[a] > 0 && T[b] > 0 && T[a] > T[b]) { const t = g2[a]; g2[a] = g2[b]; g2[b] = t; }
+        }
+      }
+      start = complete(g2, field);
+    }
+    else if (qM)  start = complete(qM, field);
+    const dbg = 'rec: src=' + (preGrid ? preGrid.src : (qM ? 'qual' : 'none')) + ' | qualFrames=' + dbgI.qf + ' (with table ' + dbgI.qOff + ') | qualRows=' + (q ? q.length : 0) + ' timed=' + (qualStats ? qualStats.nTimed : '-') +
+      ' | gridRows=' + (preGrid ? preGrid.rows.length : 0) + ' fixed=' + preGridFixed + ' ignoredChanges=' + preGridChg + ' | last session=' + dbgI.sess + '/' + dbgI.st + ' atTrack=' + dbgI.at + ' track=' + (dbgI.track || '(empty)') + ' | field=' + field.length + ' | gridTop=' + byPos(gM).slice(0, 12).join(',') + ' | qualTop=' + byPos(qM).slice(0, 12).join(',') + ' | startTop=' + byPos(start).slice(0, 12).join(',') + ' | lane=' + ((preGrid && preGrid.refined) || 'n') + ' | log=' + preLog.join(' ; ');
+    const p = { key: String(d.sessionCookie) + '|' + track, track, qual: qM, grid: gM, start, src: useQual ? 'qual' : (preGrid ? preGrid.src : (qM ? 'qual' : '')), dbg };
+    const sig = JSON.stringify(p);
+    if (sig === _startSig) return; _startSig = sig;
+    window.shl.reportStartOrder(p).catch(() => {});
+  } catch (e) {}
+}
+
+// ── carIdx -> car number, so the Driver Info editor can follow the car on screen ──────────────
+let _carMapSig = '';
+function reportCarMap(d) {
+  const m = {};
+  [d.drivers, d.computedStandings, d.liveStandings, d.standings].forEach(l => (Array.isArray(l) ? l : []).forEach(s => {
+    if (s && typeof s.carIdx === 'number' && s.carIdx >= 0 && s.number != null && String(s.number).trim() !== '') m[s.carIdx] = String(s.number).trim();
+  }));
+  const sig = JSON.stringify(m);
+  if (sig === _carMapSig || sig === '{}') return;
+  _carMapSig = sig;
+  window.shl.reportCarMap(m).catch(() => {});
+}
+
+// ── Socket ───────────────────────────────────────────────────────────────
+let lastProc = 0;
+function connect() {
+  const ws = new WebSocket(WS_URL);
+  ws.onmessage = evt => {
+    // Perf: this hidden window lives for the whole session and used to
+    // JSON.parse every frame (up to 288/s) only to drop almost all of them.
+    // Sample full telemetry frames ~4x/s *before* parsing; small control
+    // frames (e.g. reset) are always processed. State changes (lap, flag,
+    // checkered, cool down) persist for many frames, so none is missed.
+    const raw = evt.data;
+    if (typeof raw === 'string' && raw.length > 1024 && Date.now() - lastProc < 250) return;
+    let d; try { d = JSON.parse(raw); } catch (e) { return; }
+    try { reportCarMap(d); } catch (e) {}
+    // Lap/state changes matter, not every telemetry tick — but never skip
+    // the moments that carry a transition
+    const now = Date.now();
+    const st  = String(d.sessionState || '');
+    if (now - lastProc < 100 && st === lastState && d.reset !== true) return;
+    lastProc = now; lastState = st;
+    try { onData(d); } catch (e) { console.error('recorder', e); }
+  };
+  ws.onclose = () => setTimeout(connect, 2000);
+  ws.onerror = () => ws.close();
+}
+let lastState = '';
+connect();
+</script>
+</body>
+</html>
