@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('shl', {
     enable: (on) => ipcRenderer.invoke('racelab:enable', on), check: () => ipcRenderer.invoke('racelab:check'), installAssets: () => ipcRenderer.invoke('racelab:install-assets'),
     openLauncher: () => ipcRenderer.invoke('racelab:open-launcher'), log: () => ipcRenderer.invoke('racelab:log'), openFile: (w) => ipcRenderer.invoke('racelab:open-file', w),
     browse: () => ipcRenderer.invoke('racelab:browse'), gameExe: (n) => ipcRenderer.invoke('racelab:game-exe', n),
+    installBundled: () => ipcRenderer.invoke('racelab:install-bundled'),
     rendererSwitch: () => ipcRenderer.invoke('racelab:renderer-switch'), rendererRestore: () => ipcRenderer.invoke('racelab:renderer-restore'), rendererPick: () => ipcRenderer.invoke('racelab:renderer-pick'),
   },
   openCompanionsWindow:    ()      => ipcRenderer.invoke('open-companions-window'),

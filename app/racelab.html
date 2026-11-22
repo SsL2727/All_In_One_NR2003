@@ -50,6 +50,8 @@
       </div>
     </div>
     <div class="row"><span class="muted">RaceLab folder</span><code id="rl-dir">—</code><button class="btn sm" id="rl-browse">Choose…</button></div>
+    <div class="callout info hide" id="rl-bundled"><div><b>RaceLab is included with this install.</b> Unpack it into your NR2003 folder (about 560 MB, a minute or two), where it keeps its own settings, logs and Career saves.
+      <div class="row" style="margin-top:6px"><button class="btn sm primary" id="rl-unpack">Install the included RaceLab</button><span class="small" id="rl-unpack-msg"></span></div></div></div>
     <div class="row"><span class="muted">Game EXE</span><select id="rl-gexe"></select><button class="btn sm" id="rl-check">Validate</button><span class="small" id="rl-check-res"></span></div>
     <div class="muted small">RaceLab only loads into its own game builds and they must keep their names, so the game then runs as NR2003_RaceLabV2.exe or NR2003_MS.exe. All In One NR2003's mods (Race Control, AIMOD, AI Enhanced, RaceVision, the overlays) find the game under those names too. Pick the build that matches your rend_dxg.dll (RaceLab's Game EXEs\Choosing a game EXE.txt); a build not in the game folder yet is copied there from Game EXEs. Start the game with All In One NR2003's Launch NR2003 so the shim, bridge and overlays start with it.</div>
     <pre class="out hide" id="rl-check-out"></pre>
@@ -125,6 +127,7 @@ function paint() {
   $('chip-launch').textContent = S.enabled ? 'Launches with NR2003' : 'Not launched by All In One NR2003'; $('chip-launch').className = 'chip ' + (S.enabled ? 'ok' : '');
   $('chip-active').textContent = S.active ? 'Running in the game' : 'Not running'; $('chip-active').className = 'chip ' + (S.active ? 'ok' : '');
   $('rl-on').checked = !!S.enabled; $('rl-on').disabled = !S.found;
+  $('rl-bundled').classList.toggle('hide', !(S.bundled && !S.found)); if (S.unpacking) { $('rl-unpack').disabled = true; $('rl-unpack-msg').textContent = S.unpackMsg; }
   $('rl-dir').textContent = S.dir || 'not found - choose the folder with SpinModLauncher.exe'; const ge = $('rl-gexe'); ge.innerHTML = `<option value="">${esc(S.exe ? S.exe.split(/[\\/]/).pop() + ' (your NR2003 EXE)' : 'set the game EXE on the main page')}</option>` + (S.gameExes || []).map(x => `<option value="${esc(x.name)}"${x.name === S.gameExe ? ' selected' : ''}>${esc(x.name)}${x.inGame ? '' : ' (copied from Game EXEs)'}</option>`).join(''); ge.value = S.gameExe || ''; paintRenderer();
   if (S.check) { $('rl-check-res').textContent = S.check.ok ? 'RaceLab supports this EXE' : 'Not supported: RaceLab will not inject'; $('rl-check-res').style.color = S.check.ok ? 'var(--green)' : 'var(--red)'; $('rl-check-out').textContent = S.check.text; $('rl-check-out').classList.remove('hide'); }
   if (document.activeElement !== $('rl-body')) $('rl-body').innerHTML = S.bodyModes.map(m => `<option${m === S.bodyMode ? ' selected' : ''}>${esc(m)}</option>`).join('');
@@ -163,6 +166,12 @@ $('rl-rend-pick').onclick = () => rendDo(RL.rendererPick);
 $('rl-rend-restore').onclick = () => rendDo(RL.rendererRestore);
 $('rl-gexe').onchange = async () => { S = await RL.gameExe($('rl-gexe').value); paint(); };
 $('rl-browse').onclick = async () => { S = await RL.browse(); paint(); };
+$('rl-unpack').onclick = async () => {
+  $('rl-unpack').disabled = true; $('rl-unpack-msg').textContent = 'Unpacking... (a minute or two)';
+  const r = await RL.installBundled();
+  $('rl-unpack-msg').textContent = r.message; $('rl-unpack').disabled = false;
+  S = await RL.state(); paint();
+};
 $('rl-check').onclick = async () => { $('rl-check-res').textContent = 'Checking…'; await RL.check(); refresh(); };
 $('rl-body').onchange = async () => { S = await RL.set({ bodyMode: $('rl-body').value }); paint(); };
 $('rl-assets').onclick = async () => { $('rl-assets-res').textContent = 'Installing…'; const r = await RL.installAssets(); $('rl-assets-res').textContent = (r.ok ? '' : 'Failed: ') + String(r.text || '').split(/\r?\n/).pop(); };

@@ -170,6 +170,33 @@ class RaceLabService {
     }
     return '';
   }
+  // ── RaceLab included with the app: the original download (a zip in <install>\RaceLab, opts.bundledZip()) unpacked into the NR2003
+  // folder, where dir() finds it - not into the install folder, because RaceLab keeps its log, settings and Career saves in its own folder
+  bundledZip() { try { const z = this.opts.bundledZip ? this.opts.bundledZip() : ''; return z && fs.existsSync(z) ? z : ''; } catch (e) { return ''; } }
+  installBundled() {
+    if (this.unpacking) return Promise.resolve({ ok: false, message: 'Already unpacking RaceLab.' });
+    const zip = this.bundledZip(), game = this._gameDir();
+    if (!zip) return Promise.resolve({ ok: false, message: 'RaceLab is not included with this install.' });
+    if (!game) return Promise.resolve({ ok: false, message: 'Choose NR2003 on the main page first.' });
+    if (this.opts.gameRunning && this.opts.gameRunning()) return Promise.resolve({ ok: false, message: 'Close NR2003 first.' });
+    const dest = path.join(game, path.basename(zip, path.extname(zip))), inner = path.join(dest, 'RaceLab');
+    if (fs.existsSync(path.join(inner, LAUNCHER))) { this.setDir(inner); return Promise.resolve({ ok: true, message: 'RaceLab is already unpacked in ' + dest + ' and is now selected.' }); }
+    this.unpacking = true; this.unpackMsg = 'Unpacking RaceLab into ' + dest + '...';
+    this.log('unpacking the included RaceLab into ' + dest);
+    const done = (ok, message) => { this.unpacking = false; this.unpackMsg = message; this.log(message); return { ok, message }; };
+    return new Promise((resolve) => {
+      try { fs.mkdirSync(dest, { recursive: true }); } catch (e) { resolve(done(false, 'Could not make ' + dest + ': ' + e.message)); return; }
+      // Windows' own tar (Windows 10 1803+) unpacks a zip quickly; PowerShell's Expand-Archive if it isn't there
+      const tar = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
+      const finish = (err) => {
+        if (!err && fs.existsSync(path.join(inner, LAUNCHER))) { this.setDir(inner); resolve(done(true, 'RaceLab is unpacked in ' + dest + ' and selected. Switch on "Launch NR2003 through RaceLab" to use it.')); }
+        else resolve(done(false, 'Could not unpack RaceLab' + (err ? ': ' + String(err.message || err).split(/\r?\n/)[0] : ' (SpinModLauncher.exe is missing after unpacking).')));
+      };
+      const viaPs = () => execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', "Expand-Archive -LiteralPath '" + zip.replace(/'/g, "''") + "' -DestinationPath '" + dest.replace(/'/g, "''") + "' -Force"], { windowsHide: true, timeout: 900000 }, (err) => finish(err));
+      if (fs.existsSync(tar)) execFile(tar, ['-xf', zip, '-C', dest], { windowsHide: true, timeout: 900000 }, (err) => (err ? viaPs() : finish(null)));
+      else viaPs();
+    });
+  }
   setDir(d) { const c = this.cfg(); c.dir = d && fs.existsSync(path.join(d, LAUNCHER)) ? d : (d && fs.existsSync(path.join(d, 'RaceLab', LAUNCHER)) ? path.join(d, 'RaceLab') : ''); this.opts.saveConfig(); return this.state(); }
   setEnabled(on) { this.cfg().enabled = !!on; this.opts.saveConfig(); return this.state(); }
 
@@ -361,6 +388,7 @@ class RaceLabService {
       enabled: !!c.enabled, dir: d, found: !!d, active: this.active(), owns: { lines: this.owns('lines'), relationships: this.owns('relationships') },
       exe: this.opts.getConfig().nr2003_exe || '', gameExe: c.gameExe || '', gameExes: this.gameExes(), renderer: this.renderer(), fields: values, bodyModes: BODY_MODES, bodyMode: cv.Mode || 'RaceLab panels', preferredMode: cv.PreferredMode || '',
       tuning: this.tuning(), regions: PANEL_REGIONS, series: comp.ActiveSeries || '', check: this.lastCheck, busy: this.busy, careers: this.careers(),
+      bundled: !!this.bundledZip(), unpacking: !!this.unpacking, unpackMsg: this.unpackMsg || '',
     };
   }
   // patch: { 'Section.Key': value } (only the shown settings), plus bodyMode

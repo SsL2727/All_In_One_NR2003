@@ -3923,7 +3923,9 @@ let aimodWindow = null;
 const { RaceLabService } = require('./racelab');
 const raceLabRel = require('./racelab/relations');
 const { readField: readDirectorField } = require('./director/field');
-const raceLab = new RaceLabService({ getConfig: () => config, saveConfig: () => saveConfig(), log: (m) => console.log(m), gameRunning: () => nr2003Running });
+// RaceLab included with the app: the original RaceLab zip in <install>\RaceLab (unpacked into the NR2003 folder from the RaceLab page)
+const bundledRaceLabZip = () => { try { const d = path.join(INSTALL_DIR, 'RaceLab'); const z = fs.readdirSync(d).filter(n => /\.zip$/i.test(n) && /racelab/i.test(n)).sort().pop(); return z ? path.join(d, z) : ''; } catch (e) { return ''; } };
+const raceLab = new RaceLabService({ getConfig: () => config, saveConfig: () => saveConfig(), log: (m) => console.log(m), gameRunning: () => nr2003Running || isNR2003Running(), bundledZip: bundledRaceLabZip });
 const raceLabOwns = (what) => { try { return raceLab.owns(what); } catch (e) { return false; } };
 // RaceLab's allies / rivals reach All In One NR2003 like AIMOD's racing intensity & rivals do (racelab/relations.js): the TV director, the
 // battle label and story line, the rivals card, and the Season Tracker. They need the field: numbers, driver names (RaceLab's driver ids
@@ -3994,6 +3996,7 @@ ipcMain.handle('racelab:renderer-pick', async () => {
   return raceLab.switchRenderer(r.filePaths[0]);
 });
 ipcMain.handle('racelab:check', () => raceLab.check());
+ipcMain.handle('racelab:install-bundled', () => raceLab.installBundled());
 ipcMain.handle('racelab:install-assets', () => raceLab.installAssets());
 ipcMain.handle('racelab:open-launcher', () => raceLab.openLauncher());
 ipcMain.handle('racelab:log', () => raceLab.logTail(120));

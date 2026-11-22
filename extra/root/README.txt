@@ -1,12 +1,12 @@
 ================================================================================
-  ALL IN ONE NR2003  -  version 1.0.10
+  ALL IN ONE NR2003  -  version 1.0.11
   An overlay, race control and AI companion for NASCAR Racing 2003 Season
 ================================================================================
 
 All In One NR2003 brings several community-made NR2003 tools together in one
 app: broadcast-style overlays, stage racing, a season tracker, race control
 (cautions, pace car, qualifying), AI pit strategy, AI Enhanced, a TV director,
-Dynamic Rubber and support for RaceLab.
+Dynamic Rubber and RaceLab.
 
 It is an UNOFFICIAL, community-made build. It is NOT the original Project
 SteelFire Overlays, and it is not made by, or supported by, the authors of the
@@ -27,7 +27,7 @@ You need your own installed copy of NASCAR Racing 2003 Season.
    6. Hotkeys
    7. Mobile (phone) access
    8. AI Enhanced
-   9. RaceLab (optional, separate download)
+   9. RaceLab (included)
   10. Dynamic Rubber
   11. CrashCatch (crash and freeze reports)
   12. Where your settings are kept
@@ -50,7 +50,7 @@ You need your own installed copy of NASCAR Racing 2003 Season.
 --------------------------------------------------------------------------------
   2. INSTALLING
 --------------------------------------------------------------------------------
-  1. Run All-In-One-NR2003-Setup-1.0.10.exe and accept the Windows prompt.
+  1. Run All-In-One-NR2003-Setup-1.0.11.exe and accept the Windows prompt.
   2. Choose the install folder. The default works.
   3. Start All In One NR2003 from the desktop or Start menu shortcut.
 
@@ -172,7 +172,8 @@ You need your own installed copy of NASCAR Racing 2003 Season.
     Racing window.
 
   RACELAB
-    The settings page for RaceLab, if you have it (see section 9).
+    RaceLab by Tight_Principle9572 is included; install it and change its
+    settings from the RaceLab page (see section 9).
 
 
 --------------------------------------------------------------------------------
@@ -217,16 +218,22 @@ You need your own installed copy of NASCAR Racing 2003 Season.
 
 
 --------------------------------------------------------------------------------
-  9. RACELAB (OPTIONAL, SEPARATE DOWNLOAD)
+  9. RACELAB (INCLUDED)
 --------------------------------------------------------------------------------
-  RaceLab is a separate NR2003 mod. It adds AI racecraft, tire failures,
-  crash panels or soft-body damage, traffic yield, drafting rows, allies and
-  rivals, and a player Career. It is NOT included in this installer.
-  Download it from its author's release and keep its own readme and credits.
+  RaceLab by Tight_Principle9572 is an NR2003 mod. It adds AI racecraft, tire
+  failures, crash panels or soft-body damage, traffic yield, drafting rows,
+  allies and rivals, and a player Career. The original RaceLab download
+  (Nine Series Beta, Full Panels, without Cup 2026 Ultra) is included,
+  unchanged, with its own readme, guides and credits. It is in the install
+  folder's "RaceLab" folder as a zip.
 
   To use it with All In One NR2003:
-  1. Extract RaceLab into a folder beside your NR2003 folder (its name must
-     contain "RaceLab"), or choose its folder on the RaceLab page.
+  1. Open the RaceLab card and click "Install the included RaceLab". It
+     unpacks RaceLab (about 560 MB, a minute or two) into your NR2003
+     folder, where it keeps its own settings, logs and Career saves, and
+     selects it. You can also unpack the zip yourself into a folder beside
+     your NR2003 folder (its name must contain "RaceLab"), or use a RaceLab
+     you already have with "Choose...".
   2. Open the RaceLab card and switch on "Launch NR2003 through RaceLab".
   3. Game EXE: RaceLab only loads into its own game builds, and they must
      keep their names (NR2003_RaceLabV2.exe or NR2003_MS.exe). Pick one here.
@@ -368,6 +375,8 @@ You need your own installed copy of NASCAR Racing 2003 Season.
     to the EXE you actually run. Builds other than the standard NR2003.exe
     (and RaceLab's NR2003_RaceLabV2 / NR2003_MS) may use different memory
     addresses.
+  - The RaceLab card says RaceLab isn't found: click "Install the included
+    RaceLab" on the RaceLab page, or "Choose..." its folder.
   - RaceLab shows "Not running": launch from All In One NR2003 with
     "Launch NR2003 through RaceLab" on, then check RaceLab's Log tab.
   - Hotkeys don't respond: click into the NR2003 window first. Hotkeys are
@@ -390,7 +399,9 @@ You need your own installed copy of NASCAR Racing 2003 Season.
   "Restore original" first, or copy rend_dxg.dll.steelfire-original back
   over rend_dxg.dll in your game folder. If you installed Dynamic Rubber,
   use "Undo this install" on its page first: uninstalling the app does not
-  remove ReShade or the add-on from your game folder.
+  remove ReShade or the add-on from your game folder. RaceLab, once
+  installed from the RaceLab page, stays in your NR2003 folder (with its
+  settings and Career saves) until you delete its folder yourself.
 
 
 ================================================================================
@@ -457,8 +468,10 @@ You need your own installed copy of NASCAR Racing 2003 Season.
 
   RACELAB  -  by Tight_Principle9572
     YouTube: https://youtube.com/@mysimracinggame
-    Not included. All In One NR2003 only launches it and edits its settings
-    when you have installed it yourself. As RaceLab's own readme says, the
+    Included unchanged, with permission: the original RaceLab download, its
+    game builds (NR2003_RaceLabV2.exe, NR2003_MS.exe), its adapted series
+    models, and its own readme, guides and credits. As RaceLab's own readme
+    says, the
     original series creators, painters, track authors and contributors keep
     credit for their work, including:
       - the Design Mods Racing Cup11v2 / Cup12 team (Cup12 / Cup12ss),
@@ -493,6 +506,9 @@ You need your own installed copy of NASCAR Racing 2003 Season.
     licenses\RaceVision - LICENSE.txt    Copyright (c) 2026 Jonathon Thomas
     licenses\AIMOD - LICENSE.txt         Copyright (c) 2026 Adolfo Delgado and
                                          Jonathon Thomas
+
+  RaceLab's own author notices and third-party license texts (for example
+  the V8 license in RaceLab\CupVisual) are kept inside the RaceLab package.
 
   Dynamic Rubber's third-party notices (ReShade's add-on SDK and d3d8to9,
   both BSD licensed, Copyright Patrick Mours) are in
